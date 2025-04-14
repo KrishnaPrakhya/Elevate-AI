@@ -64,6 +64,7 @@ model CoverLetter {
   jobDescription String?
   companyName    String?
   jobTitle       String
+  templateId     String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { variantProps } from "./feature-card";
 
 interface PricingCardProps {
   title: string;
@@ -13,7 +14,7 @@ interface PricingCardProps {
   features: string[];
   buttonText: string;
   popular?: boolean;
-  variants?: any;
+  variants?: variantProps;
 }
 
 export default function PricingCard({

@@ -18,12 +18,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 // Import the ThemeToggle component at the top
 import { ThemeToggle } from "./theme-toggle";
+import { checkUser } from "@/lib/checkUser";
 
-type Props = {};
-
-function Header(props: Props) {
-  const {} = props;
-
+async function Header() {
+  await checkUser();
   return (
     <header
       className="fixed top-0 w-full border-b bg-background/80 background-blur-md z-50

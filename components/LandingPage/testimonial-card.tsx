@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { variantProps } from "./feature-card";
 
 interface TestimonialCardProps {
   quote: string;
@@ -9,7 +10,7 @@ interface TestimonialCardProps {
   avatarSrc: string;
   company?: string;
   companySrc?: string;
-  variants?: any;
+  variants?: variantProps;
 }
 
 export default function TestimonialCard({

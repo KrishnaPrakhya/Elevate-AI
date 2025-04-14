@@ -184,3 +184,134 @@
   pointer-events: none;
 }
 
+/* Gradient text effect */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-primary/80 to-primary;
+  background-size: 200% auto;
+  animation: shine 3s ease-in-out infinite alternate;
+}
+
+@keyframes shine {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* Form styles */
+.form-card {
+  @apply relative overflow-hidden border border-border/40 shadow-lg dark:shadow-primary/5 backdrop-blur-sm;
+  transition: all 0.3s ease;
+}
+
+.form-card:hover {
+  @apply shadow-xl dark:shadow-primary/10 border-primary/20 dark:border-primary/30;
+  transform: translateY(-2px);
+}
+
+.form-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  @apply bg-gradient-to-r from-primary/60 via-primary to-primary/60;
+  transform: scaleX(0);
+  transform-origin: 0 0;
+  transition: transform 0.3s ease;
+}
+
+.form-card:hover::before {
+  transform: scaleX(1);
+}
+
+.form-input-wrapper {
+  @apply relative mb-6;
+}
+
+.form-input-wrapper label {
+  @apply block mb-2 font-medium text-foreground;
+}
+
+.form-input {
+  @apply w-full px-4 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all;
+}
+
+.form-input:focus {
+  @apply border-primary/50;
+}
+
+.form-button {
+  @apply relative overflow-hidden transition-all duration-300 transform hover:-translate-y-1;
+}
+
+.form-button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 0;
+  padding-bottom: 120%;
+  border-radius: 50%;
+  @apply bg-primary/10 dark:bg-primary/20;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: transform 0.5s, opacity 0.3s;
+}
+
+.form-button:hover::after {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.form-button span {
+  @apply relative z-10;
+}
+
+/* Floating label animation */
+.floating-label {
+  @apply relative;
+}
+
+.floating-label label {
+  @apply absolute left-3 transition-all duration-200 pointer-events-none;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.floating-label input:focus + label,
+.floating-label input:not(:placeholder-shown) + label {
+  @apply text-xs text-primary;
+  top: 0;
+  transform: translateY(-50%);
+}
+
+.floating-label input {
+  @apply pt-6 pb-2;
+}
+
+@layer utilities {
+  .animate-dash {
+    stroke-dasharray: 8;
+    stroke-dashoffset: 1000;
+    animation: dash 4s linear infinite;
+  }
+
+  .delay-1000 {
+    animation-delay: 1s;
+  }
+
+  @keyframes dash {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .animate-spin-slow {
+    animation: spin 6s linear infinite;
+  }
+}

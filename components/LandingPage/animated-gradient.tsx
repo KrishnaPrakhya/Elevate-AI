@@ -100,7 +100,6 @@ export default function AnimatedGradient() {
       // Animate circles
       circles.forEach((circle, index) => {
         const time = Date.now() / 2000;
-        const amplitude = width * 0.05;
 
         circle.x += Math.sin(time + index) * 0.5;
         circle.y += Math.cos(time + index * 0.7) * 0.5;

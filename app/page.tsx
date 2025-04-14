@@ -17,6 +17,8 @@ import {
   BarChart,
   Users,
   Briefcase,
+  AwardIcon,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TestimonialCard from "@/components/LandingPage/testimonial-card";
@@ -27,19 +29,20 @@ import StatCard from "@/components/LandingPage/stat-card";
 import AnimatedGradient from "@/components/LandingPage/animated-gradient";
 import { useMobile } from "@/hooks/use-mobile";
 import { motion } from "framer-motion";
+import { redirect } from "next/navigation";
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useMobile();
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
-  const sectionVideoRef = useRef(null);
+  const sectionVideoRef = useRef<HTMLDivElement>(null);
 
-  const scrollToSection = (ref: any) => {
-    ref.current.scrollIntoView({ behaviour: "smooth" });
+  const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: "smooth" });
   };
+
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
@@ -79,6 +82,32 @@ export default function Home() {
       },
     },
   };
+
+  function FeatureCardVideo({
+    icon: Icon,
+    title,
+    description,
+    className,
+  }: {
+    icon: React.ElementType;
+    title: string;
+    description: string;
+    className: string;
+  }) {
+    return (
+      <motion.div
+        className={`absolute ${className} w-64 bg-background rounded-xl shadow-lg p-6 backdrop-blur-sm bg-opacity-90`}
+        initial={{ opacity: 0, scale: 0.8 }}
+        whileInView={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        whileHover={{ scale: 1.05 }}
+      >
+        <Icon className="w-10 h-10 text-primary dark:white mb-4" />
+        <h3 className="text-lg font-semibold mb-2">{title}</h3>
+        <p className="text-sm text-gray-600 dark:text-white">{description}</p>
+      </motion.div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -159,10 +188,13 @@ export default function Home() {
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Button
+                    onClick={() => {
+                      redirect("/dashboard");
+                    }}
                     size="lg"
                     className="gap-1.5 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all group relative overflow-hidden"
                   >
-                    <span className="relative z-10">Start Your Free Trial</span>
+                    <span className="relative z-10">Get Started</span>
                     <ArrowRight className="h-4 w-4 relative z-10" />
                     <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
                   </Button>
@@ -693,26 +725,77 @@ export default function Home() {
             </motion.div>
 
             {/* Video testimonial */}
-            <motion.div
-              className="mt-16 md:mt-24 bg-muted/30 rounded-2xl overflow-hidden relative"
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true, margin: "-100px" }}
-              ref={sectionVideoRef}
-            >
-              <div className="aspect-video relative ">
-                <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
+            <div className="min-h-screen bg-background ">
+              <div className="max-w-6xl mx-auto">
+                {/* <motion.h1
+                  className="text-4xl md:text-5xl font-bold text-center text-foreground mb-8"
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
                 >
-                  <source src="elevate-ai-showcase.mp4" type="video/mp4" />
-                </video>
+                  Elevate Your Career with AI
+                </motion.h1> */}
+
+                <div className="relative">
+                  <motion.div
+                    className="mt-16 md:mt-24  rounded-2xl overflow-hidden relative"
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                  >
+                    <div className="flex justify-center items-center aspect-video relative p-3">
+                      <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-[90vh] h-[50vh] border rounded-lg shadow-2xl"
+                      >
+                        <source
+                          src="elevate-ai-showcase.mp4"
+                          type="video/mp4"
+                        />
+                      </video>
+                    </div>
+                  </motion.div>
+
+                  <FeatureCardVideo
+                    icon={FileText}
+                    title="Smart Resume Builder"
+                    description="Create ATS-optimized resumes with AI-powered suggestions and industry-specific templates."
+                    className="top-50 left-25 -translate-x-1/2 -translate-y-1/2 bg-primary/10"
+                  />
+
+                  <FeatureCardVideo
+                    icon={Brain}
+                    title="Career Insights"
+                    description="Get personalized career path recommendations based on your skills and market trends."
+                    className="top-50 right-25 translate-x-1/2 -translate-y-1/2 bg-primary/10"
+                  />
+
+                  <FeatureCardVideo
+                    icon={Award}
+                    title="Mock Interviews"
+                    description="Practice with AI-powered interview simulations and receive instant feedback."
+                    className="bottom-50 left-25 -translate-x-1/2 translate-y-1/2 bg-primary/10"
+                  />
+
+                  <FeatureCardVideo
+                    icon={BookOpen}
+                    title="Skill Assessment"
+                    description="Take interactive quizzes to identify skill gaps and get learning recommendations."
+                    className="bottom-50 right-25 translate-x-1/2 translate-y-1/2 bg-primary/10"
+                  />
+
+                  <motion.div
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.5, duration: 0.5 }}
+                  ></motion.div>
+                </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </section>
 

@@ -3,11 +3,20 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 
+export interface variantProps {
+  [key: string]: {
+    opacity: number;
+    y: number;
+    transition?: {
+      duration: number;
+    };
+  };
+}
 interface FeatureCardProps {
   icon: ReactNode;
   title: string;
   description: string;
-  variants?: any;
+  variants?: variantProps;
 }
 
 export default function FeatureCard({

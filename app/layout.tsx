@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import {
-  ClerkProvider,
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-} from "@clerk/nextjs";
-import { Damion, Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import Header from "@/components/header";
 import { neobrutalism } from "@clerk/themes";
+import { Toaster } from "@/components/ui/sonner";
 export const metadata: Metadata = {
   title: "Elevate AI ",
   description: "Level Up your Career",
@@ -39,6 +33,7 @@ export default function RootLayout({
             {/* header */}
             <Header />
             <main className="min-h-screen">{children}</main>
+            <Toaster richColors />
           </ThemeProvider>
         </body>
       </html>

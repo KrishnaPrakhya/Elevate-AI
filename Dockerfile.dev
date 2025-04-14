@@ -1,0 +1,19 @@
+FROM node:20.9.0
+
+WORKDIR /app
+
+# Copy only necessary files first for caching
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy rest of the project (includes prisma schema)
+COPY . .
+
+# 🔧 Generate Prisma client
+RUN npx prisma generate
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]

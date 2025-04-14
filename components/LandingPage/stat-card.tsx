@@ -2,12 +2,13 @@
 
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { variantProps } from "./feature-card";
 
 interface StatCardProps {
   value: string;
   label: string;
   icon: ReactNode;
-  variants?: any;
+  variants?: variantProps;
 }
 
 export default function StatCard({

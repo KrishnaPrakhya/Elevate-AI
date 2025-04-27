@@ -47,7 +47,7 @@ export default function CreateCoverLetterForm({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, isValid },
+    formState: { errors},
   } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {

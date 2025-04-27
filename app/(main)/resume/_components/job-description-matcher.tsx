@@ -31,6 +31,7 @@ export function JobDescriptionMatcher({
       setJobDescription(text);
       toast.success("Job description pasted from clipboard");
     } catch (error) {
+      console.log(error);
       toast.error("Failed to paste from clipboard");
     }
   };

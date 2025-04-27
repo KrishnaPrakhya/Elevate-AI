@@ -53,6 +53,7 @@ import { CoverLetterScoreCard } from "./cover-letter-score-card";
 import { JobDescriptionMatcher } from "./job-description-matcher";
 import MDEditor from "@uiw/react-md-editor";
 import { AiSuggestionCard } from "./ai-suggestions-card";
+import { coverLetterProps } from "../page";
 
 const formSchema = z.object({
   jobTitle: z.string().min(1, "Job title is required"),
@@ -63,7 +64,7 @@ const formSchema = z.object({
 });
 
 interface CoverLetterEditorProps {
-  coverLetter: any;
+  coverLetter: coverLetterProps;
 }
 
 export default function CoverLetterEditor({
@@ -79,14 +80,38 @@ export default function CoverLetterEditor({
     coverLetter.content
   );
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+  const [analysisResult, setAnalysisResult] =
+    useState<analyseResultProps | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<suggestionsProp[]>([]);
   const [showJobMatcherDialog, setShowJobMatcherDialog] = useState(false);
   const [jobDescription, setJobDescription] = useState(
     coverLetter.jobDescription || ""
   );
   const [editorMode, setEditorMode] = useState<"preview" | "edit">("preview");
 
+  interface suggestionsProp {
+    id: string;
+    type: string;
+    section: string;
+    content: string;
+    reason: string;
+  }
+
+  interface analyseResultProps {
+    overall: number;
+    sections: {
+      feedback: string;
+      name: string;
+      score: number;
+    }[];
+    suggestions: {
+      id: string;
+      type: string;
+      section: string;
+      content: string;
+      reason: string;
+    }[];
+  }
   const {
     register,
     handleSubmit,
@@ -97,9 +122,9 @@ export default function CoverLetterEditor({
     resolver: zodResolver(formSchema),
     defaultValues: {
       jobTitle: coverLetter.jobTitle,
-      companyName: coverLetter.companyName,
-      jobDescription: coverLetter.jobDescription,
-      templateId: coverLetter.templateId,
+      companyName: coverLetter.companyName || "",
+      jobDescription: coverLetter.jobDescription || "",
+      templateId: coverLetter.templateId || "",
       content: coverLetter.content,
     },
   });
@@ -134,12 +159,19 @@ export default function CoverLetterEditor({
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     try {
-      const result = await analyzeCoverLetter(coverLetterContent);
+      const result: analyseResultProps = await analyzeCoverLetter(
+        coverLetterContent
+      );
+      console.log(result);
       setAnalysisResult(result);
 
       // Generate AI suggestions based on analysis
       if (result.suggestions && result.suggestions.length > 0) {
-        setAiSuggestions(result.suggestions);
+        setAiSuggestions(
+          Array.isArray(result.suggestions)
+            ? result.suggestions
+            : [result.suggestions]
+        );
       }
 
       setShowAnalysisDialog(true);
@@ -192,7 +224,7 @@ export default function CoverLetterEditor({
     }
   };
 
-  const applySuggestion = (suggestion: any) => {
+  const applySuggestion = (suggestion: suggestionsProp) => {
     if (suggestion.type === "introduction") {
       const introRegex = `/^(.*?\n\n)/`;
       setCoverLetterContent((prev: string) =>
@@ -400,7 +432,7 @@ export default function CoverLetterEditor({
                   <div className="border rounded-lg overflow-hidden">
                     <MDEditor
                       value={coverLetterContent}
-                      onChange={setCoverLetterContent}
+                      onChange={(value) => setCoverLetterContent(value || "")}
                       height={600}
                       preview={editorMode}
                     />
@@ -481,7 +513,7 @@ export default function CoverLetterEditor({
               </CardHeader>
               <CardContent className="pt-4">
                 <div className="space-y-4">
-                  {aiSuggestions.map((suggestion, index) => (
+                  {aiSuggestions.map((suggestion: suggestionsProp, index) => (
                     <AiSuggestionCard
                       key={index}
                       suggestion={suggestion}
@@ -555,7 +587,7 @@ export default function CoverLetterEditor({
                     <p className="font-medium">Keep it concise</p>
                     <p className="text-sm text-muted-foreground">
                       Aim for 3-4 paragraphs and no more than one page to
-                      respect the reader's time.
+                      respect the reader&apos;s time.
                     </p>
                   </div>
                 </div>
@@ -574,7 +606,16 @@ export default function CoverLetterEditor({
               AI-powered feedback and suggestions for your cover letter
             </DialogDescription>
           </DialogHeader>
-          {analysisResult && <CoverLetterScoreCard score={analysisResult} />}
+          {analysisResult && (
+            <CoverLetterScoreCard
+              score={{
+                ...analysisResult,
+                suggestions: analysisResult.suggestions.map(
+                  (suggestion) => suggestion.content
+                ),
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
 

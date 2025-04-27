@@ -10,13 +10,20 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
+export interface QuizQuestion {
+  question: string;
+  correctAnswer: string;
+  userAnswer: string;
+  explanation: string;
+  isCorrect: boolean;
+}
 
 export interface assessmentsProps {
   assessments: {
     id: string;
     userId: string;
     quizScore: number;
-    questions: any[];
+    questions: QuizQuestion[];
     category: string;
     improvementTip?: string | null;
     createdAt: Date;

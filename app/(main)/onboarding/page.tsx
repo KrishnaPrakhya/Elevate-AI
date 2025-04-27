@@ -4,10 +4,9 @@ import { industries } from "@/data/industries";
 import { getOnboardingStatus } from "@/actions/user";
 import { redirect } from "next/navigation";
 
-interface Props {}
-
-async function Page(props: Props) {
+async function Page() {
   const { isOnBoardingStatus } = await getOnboardingStatus();
+  console.log(isOnBoardingStatus);
   if (isOnBoardingStatus) redirect("/dashboard");
   return (
     <main>

@@ -1,0 +1,20 @@
+flask==2.3.3
+flask-cors==4.0.0
+python-dotenv==1.0.0
+pydantic==2.5.2
+
+# LangChain ecosystem
+langchain==0.1.20
+langchain-core==0.1.52
+langchain-community==0.0.38  # Updated to satisfy langchain's requirement
+langchain-openai
+langchain-huggingface
+langchain-google-genai
+langchain-experimental
+langsmith
+langgraph
+
+# Other tools
+chromadb==0.4.22
+tavily-python==0.3.1
+neo4j==5.15.0

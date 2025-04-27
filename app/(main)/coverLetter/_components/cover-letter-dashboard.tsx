@@ -37,9 +37,10 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import CreateCoverLetterForm from "./create-cover-letter-form";
 import CoverLetterPreview from "./cover-letter-preview";
+import { coverLetterProps } from "../page";
 
 interface CoverLetterDashboardProps {
-  coverLetters: any[];
+  coverLetters: coverLetterProps[];
 }
 
 export default function CoverLetterDashboard({
@@ -48,16 +49,18 @@ export default function CoverLetterDashboard({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("my-letters");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedLetter, setSelectedLetter] = useState<any>(null);
+  const [selectedLetter, setSelectedLetter] = useState<coverLetterProps | null>(
+    null
+  );
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [letterToDelete, setLetterToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
+  console.log(coverLetters);
   const handleCreateNew = () => {
     setShowCreateForm(true);
   };
 
-  const handleViewLetter = (letter: any) => {
+  const handleViewLetter = (letter: coverLetterProps) => {
     setSelectedLetter(letter);
   };
 
@@ -72,6 +75,7 @@ export default function CoverLetterDashboard({
       setLetterToDelete(null);
       router.refresh();
     } catch (error) {
+      console.log(error);
       toast.error("Failed to delete cover letter");
     } finally {
       setIsDeleting(false);
@@ -156,7 +160,7 @@ export default function CoverLetterDashboard({
               initial="hidden"
               animate="visible"
             >
-              {coverLetters.map((letter) => (
+              {coverLetters?.map((letter: coverLetterProps) => (
                 <motion.div key={letter.id} variants={itemVariants}>
                   <Card className="h-full flex flex-col hover:shadow-md transition-shadow">
                     <CardHeader className="pb-3">

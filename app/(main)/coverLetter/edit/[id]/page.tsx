@@ -1,16 +1,15 @@
+import React from "react";
 import { getCoverLetterById } from "@/actions/coverLetter";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import CoverLetterEditor from "../../_components/cover-letter-editor";
 
-interface PageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default async function EditCoverLetterPage({ params }: PageProps) {
-  const { id } = params;
+export default async function EditCoverLetterPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params; // This remains the same
   const coverLetter = await getCoverLetterById(id);
 
   if (!coverLetter) {

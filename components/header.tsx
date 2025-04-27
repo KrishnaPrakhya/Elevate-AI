@@ -97,7 +97,9 @@ async function Header() {
       <div>
         <SignedOut>
           <SignInButton>
-            <Button variant={"outline"}>Sign In</Button>
+            <Button className="mt-[15px]" variant={"outline"}>
+              Sign In
+            </Button>
           </SignInButton>
         </SignedOut>
         <SignedIn>

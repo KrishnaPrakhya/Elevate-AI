@@ -70,7 +70,46 @@ import { ResumeTemplateSelector } from "./resume-template-selector";
 import { JobDescriptionMatcher } from "./job-description-matcher";
 
 interface Props {
-  initialContent: any;
+  initialContent: string;
+}
+interface ContactInfo {
+  email: string;
+  mobile?: string;
+  linkedin?: string;
+  twitter?: string;
+}
+
+interface ResumeEntry {
+  title: string;
+  company: string;
+  startDate: string;
+  endDate?: string | undefined;
+  current?: boolean;
+  description: string;
+}
+interface ResumeFormValues {
+  contactInfo: ContactInfo;
+  summary: string;
+  skills: string;
+  experience: ResumeEntry[];
+  projects: ResumeEntry[];
+  education: ResumeEntry[];
+}
+
+interface AISuggestion {
+  id: string;
+  type: "summary" | "skills" | "experience";
+  section: string;
+  content: string;
+  reason: string;
+  index?: number;
+}
+interface ResumeScore {
+  overall: number;
+  sections: {
+    [key: string]: number;
+  };
+  suggestions: AISuggestion[];
 }
 
 function ResumeBuilder(props: Props) {
@@ -78,15 +117,14 @@ function ResumeBuilder(props: Props) {
   const [activeTab, setActiveTab] = useState<string>("edit");
   const [previewContent, setPreviewContent] = useState(initialContent);
   const { user } = useUser();
-  const [resumeMode, setResumeMode] = useState<any>("preview");
-  const [selectedTemplate, setSelectedTemplate] = useState("modern");
+  const [resumeMode, setResumeMode] = useState<"preview" | "edit">("preview");
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("modern");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [resumeScore, setResumeScore] = useState<any>(null);
+  const [resumeScore, setResumeScore] = useState<ResumeScore | null>(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [jobDescription, setJobDescription] = useState("");
   const [showJobMatcher, setShowJobMatcher] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
-
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const {
     control,
     register,
@@ -94,10 +132,15 @@ function ResumeBuilder(props: Props) {
     handleSubmit,
     setValue,
     formState: { errors },
-  } = useForm({
+  } = useForm<ResumeFormValues>({
     resolver: zodResolver(resumeSchema),
     defaultValues: {
-      contactInfo: {},
+      contactInfo: {
+        email: "",
+        mobile: "", // Ensure mobile is always a string
+        linkedin: "",
+        twitter: "",
+      },
       summary: "",
       skills: "",
       experience: [],
@@ -175,7 +218,7 @@ function ResumeBuilder(props: Props) {
       // Update experience descriptions if provided
       if (tailorResult.experience && tailorResult.experience.length > 0) {
         const currentExperience = [...formValues.experience];
-        tailorResult.experience.forEach((exp: any, index: number) => {
+        tailorResult.experience.forEach((exp: ResumeEntry, index: number) => {
           if (currentExperience[index]) {
             currentExperience[index].description = exp.description;
           }
@@ -192,7 +235,6 @@ function ResumeBuilder(props: Props) {
 
   const parseInitialContent = (content: string) => {
     try {
-      // This is a simplified parser - in a real app, you'd want a more robust markdown parser
       const contactSection = content.match(
         /## <div align="center">(.*?)<\/div>[\s\S]*?<div align="center">([\s\S]*?)<\/div>/m
       );
@@ -214,7 +256,6 @@ function ResumeBuilder(props: Props) {
 
       // Parse contact info
       if (contactSection) {
-        const name = contactSection[1];
         const contactInfo = contactSection[2];
 
         const email = contactInfo.match(/📧 (.*?)(?=\s\||$)/m);
@@ -269,7 +310,7 @@ function ResumeBuilder(props: Props) {
       const startEndMatch = dateRange.match(/(.*?) - (.*)/m);
       if (startEndMatch) {
         const startDate = startEndMatch[1];
-        const endDate = startEndMatch[2];
+        const endDate = startEndMatch[2] || ""; // Ensure endDate is always a string
         const current = endDate === "Present";
 
         entries.push({
@@ -337,7 +378,7 @@ function ResumeBuilder(props: Props) {
     }
   };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async () => {
     try {
       const formattedContent = previewContent
         .replace(/\n/g, "\n")
@@ -374,7 +415,7 @@ function ResumeBuilder(props: Props) {
     }
   };
 
-  const applySuggestion = (suggestion: any) => {
+  const applySuggestion = (suggestion: AISuggestion) => {
     if (suggestion.type === "summary") {
       setValue("summary", suggestion.content);
     } else if (suggestion.type === "skills") {
@@ -578,9 +619,10 @@ function ResumeBuilder(props: Props) {
                                 if (improved) setValue("summary", improved);
                                 toast.success("Summary improved!");
                               })
-                              .catch((err) =>
-                                toast.error("Failed to improve summary")
-                              );
+                              .catch((err) => {
+                                console.log(err);
+                                toast.error("Failed to improve summary");
+                              });
                           }}
                         >
                           <Wand2 className="h-4 w-4" />
@@ -631,9 +673,10 @@ function ResumeBuilder(props: Props) {
                                 if (improved) setValue("skills", improved);
                                 toast.success("Skills improved!");
                               })
-                              .catch((err) =>
-                                toast.error("Failed to improve skills")
-                              );
+                              .catch((err) => {
+                                console.log(err);
+                                toast.error("Failed to improve skills");
+                              });
                           }}
                         >
                           <Wand2 className="h-4 w-4" />
@@ -776,7 +819,7 @@ function ResumeBuilder(props: Props) {
                   <div className="border rounded-lg overflow-hidden">
                     <MDEditor
                       value={previewContent}
-                      onChange={setPreviewContent}
+                      onChange={(value) => setPreviewContent(value ?? "")}
                       height={800}
                       preview={resumeMode}
                     />
@@ -874,7 +917,21 @@ function ResumeBuilder(props: Props) {
         <div className="space-y-6">
           {/* Resume Score Card */}
           {resumeScore ? (
-            <ResumeScoreCard score={resumeScore} />
+            <ResumeScoreCard
+              score={{
+                ...resumeScore,
+                sections: Object.entries(resumeScore.sections).map(
+                  ([name, score]) => ({
+                    name,
+                    score,
+                    feedback: "", // Add appropriate feedback if available
+                  })
+                ),
+                suggestions: resumeScore.suggestions.map(
+                  (suggestion) => suggestion.content
+                ),
+              }}
+            />
           ) : (
             <Card className="shadow-md border-primary/20">
               <CardHeader className="pb-2">
@@ -895,7 +952,7 @@ function ResumeBuilder(props: Props) {
                     Analyze Your Resume
                   </h3>
                   <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                    Get AI-powered feedback on your resume's strengths and
+                    Get AI-powered feedback on your resume&apos;s strengths and
                     weaknesses, with personalized improvement suggestions.
                   </p>
                   <Button
@@ -962,7 +1019,8 @@ function ResumeBuilder(props: Props) {
                     <p className="font-medium">Use action verbs</p>
                     <p className="text-sm text-muted-foreground">
                       Start bullet points with strong action verbs like
-                      "achieved," "implemented," or "managed."
+                      &quot;achieved,&quot; &quot;implemented,&quot; or
+                      &quot;managed.&quot;
                     </p>
                   </div>
                 </div>
@@ -972,7 +1030,7 @@ function ResumeBuilder(props: Props) {
                     <p className="font-medium">Quantify achievements</p>
                     <p className="text-sm text-muted-foreground">
                       Include numbers and percentages to demonstrate your impact
-                      (e.g., "increased sales by 20%").
+                      (e.g., &quot;increased sales by 20%&quot;).
                     </p>
                   </div>
                 </div>
@@ -991,8 +1049,8 @@ function ResumeBuilder(props: Props) {
                   <div>
                     <p className="font-medium">Avoid generic statements</p>
                     <p className="text-sm text-muted-foreground">
-                      Replace vague claims like "team player" with specific
-                      examples that demonstrate these qualities.
+                      Replace vague claims like &quot;team player&quot; with
+                      specific examples that demonstrate these qualities.
                     </p>
                   </div>
                 </div>
@@ -1082,16 +1140,9 @@ function ResumeBuilder(props: Props) {
 }
 
 function entriesToMarkdown(
-  entries: {
-    title: string;
-    company: string;
-    startDate: string;
-    description: string;
-    endDate?: string;
-    current?: boolean;
-  }[],
+  entries: ResumeEntry[],
   sectionTitle: string
-) {
+): string {
   if (!entries || entries.length === 0) return "";
 
   const formatDate = (date: string | undefined) => (date ? date : "Present");

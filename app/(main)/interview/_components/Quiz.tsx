@@ -25,10 +25,24 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { motion, AnimatePresence } from "framer-motion";
+type QuizQuestion = {
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string;
+};
+
+type QuizAnswer = string | null;
+
+type QuizResult = {
+  score: number;
+  questions: QuizQuestion[];
+  answers: QuizAnswer[];
+};
 
 export default function Quiz() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<any>([]);
+  const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [showExplanation, setShowExplanation] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
 
@@ -64,7 +78,7 @@ export default function Quiz() {
     return () => clearInterval(timer);
   }, [quizData, timeLeft]);
 
-  const handleAnswer = (answer: any) => {
+  const handleAnswer = (answer: string) => {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = answer;
     console.log(answer);
@@ -85,8 +99,8 @@ export default function Quiz() {
     let correct = 0;
     console.log(answers);
     console.log(quizData);
-    answers.forEach((answer: string, index: number) => {
-      if (answer === quizData[index].correctAnswer) {
+    answers.forEach((answer, index) => {
+      if (answer !== null && answer === quizData[index].correctAnswer) {
         correct++;
       }
       console.log(correct);
@@ -99,8 +113,12 @@ export default function Quiz() {
     try {
       await saveQuizResultFn(quizData, answers, score);
       toast.success("Quiz completed successfully!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save quiz results");
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to save quiz results");
+      }
     }
   };
 
@@ -128,7 +146,7 @@ export default function Quiz() {
               Generating your personalized quiz...
             </h3>
             <p className="text-sm text-muted-foreground">
-              We're creating questions tailored to your industry
+              We&apos;re creating questions tailored to your industry
             </p>
           </div>
           <BarLoader color="hsl(var(--primary))" width={200} />
@@ -243,10 +261,10 @@ export default function Quiz() {
 
             <RadioGroup
               onValueChange={handleAnswer}
-              value={answers[currentQuestion]}
+              value={answers[currentQuestion] ?? undefined}
               className="space-y-3"
             >
-              {question.options.map((option: any, index: number) => (
+              {question.options.map((option: string, index: number) => (
                 <div
                   key={index}
                   className={`flex items-center space-x-2 p-3 rounded-lg border transition-colors ${

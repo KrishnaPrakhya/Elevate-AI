@@ -23,9 +23,22 @@ import {
 import { ArrowUpRight, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface ChartDataPoint {
+  date: string;
+  score: number;
+}
+
+import { TooltipProps } from "recharts";
+import {
+  NameType,
+  ValueType,
+} from "recharts/types/component/DefaultTooltipContent";
+
+type CustomTooltipProps = TooltipProps<ValueType, NameType>;
+
 // This is a client component, so it cannot be async
 function PerformanceChart(props: assessmentsProps) {
-  const [chartData, setChartData] = useState<any>([]);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const { assessments } = props;
 
   useEffect(() => {
@@ -41,8 +54,10 @@ function PerformanceChart(props: assessmentsProps) {
   // Calculate average score
   const averageScore =
     chartData.length > 0
-      ? chartData.reduce((sum: number, item: any) => sum + item.score, 0) /
-        chartData.length
+      ? chartData.reduce(
+          (sum: number, item: ChartDataPoint) => sum + item.score,
+          0
+        ) / chartData.length
       : 0;
 
   return (
@@ -114,18 +129,16 @@ function PerformanceChart(props: assessmentsProps) {
                 tickFormatter={(value) => `${value}%`}
               />
               <Tooltip
-                content={({
-                  active,
-                  payload,
-                }: {
-                  active?: boolean;
-                  payload?: any[];
-                }) => {
-                  if (active && payload?.length) {
+                content={({ active, payload }: CustomTooltipProps) => {
+                  if (active && payload && payload.length > 0) {
                     return (
                       <div className="bg-background border rounded-lg p-3 shadow-lg">
                         <p className="text-sm font-medium">
-                          Score: {payload[0].value.toFixed(1)}%
+                          Score:{" "}
+                          {typeof payload[0]?.value === "number"
+                            ? payload[0].value.toFixed(1)
+                            : "0"}
+                          %
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {payload[0].payload.date}

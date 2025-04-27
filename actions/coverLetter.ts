@@ -199,7 +199,7 @@ export async function improveWithAICoverLetter(content: ImproveProps) {
         throw new Error("Failed to improve content")
       }
     },
-    CACHE_TTL.LONG, // Cache AI improvements for longer since they're expensive
+    CACHE_TTL.LONG,
   )
 }
 

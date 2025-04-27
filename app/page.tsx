@@ -17,7 +17,6 @@ import {
   BarChart,
   Users,
   Briefcase,
-  AwardIcon,
   Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,13 +31,13 @@ import { motion } from "framer-motion";
 import { redirect } from "next/navigation";
 
 export default function Home() {
-  const [scrolled, setScrolled] = useState(false);
+  const [scroll, setScrolled] = useState(false);
   const isMobile = useMobile();
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
   const sectionVideoRef = useRef<HTMLDivElement>(null);
-
+  console.log(scroll);
   const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     ref.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -914,8 +913,9 @@ export default function Home() {
                   14-Day Money-Back Guarantee
                 </h3>
                 <p className="text-muted-foreground">
-                  Try Career AI risk-free. If you're not completely satisfied
-                  within 14 days, we'll refund your payment. No questions asked.
+                  Try Career AI risk-free. If you&apos;re not completely
+                  satisfied within 14 days, we&apos;ll refund your payment. No
+                  questions asked.
                 </p>
               </div>
             </motion.div>

@@ -1,8 +1,8 @@
-import Link from "next/link"
-import { ArrowLeft, Brain, Lightbulb } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Quiz from "../_components/Quiz"
-import { PageHeader } from "@/components/page-header"
+import Link from "next/link";
+import { ArrowLeft, Brain, Lightbulb } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Quiz from "../_components/Quiz";
+import { PageHeader } from "@/components/page-header";
 
 export default function MockInterviewPage() {
   return (
@@ -10,7 +10,10 @@ export default function MockInterviewPage() {
       <div>
         <div>
           <Link href="/interview">
-            <Button variant="ghost" className="group gap-2 pl-0 hover:bg-transparent">
+            <Button
+              variant="ghost"
+              className="group gap-2 pl-0 hover:bg-transparent"
+            >
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
               <span className="text-muted-foreground group-hover:text-foreground transition-colors">
                 Back to Interview Preparation
@@ -53,7 +56,7 @@ export default function MockInterviewPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-amber-500 font-bold">•</span>
-                  <p>Take your time - this isn't a speed test</p>
+                  <p>Take your time - this isn&apos;t a speed test</p>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-amber-500 font-bold">•</span>
@@ -70,14 +73,14 @@ export default function MockInterviewPage() {
                 <h3 className="text-xl font-bold">Did You Know?</h3>
               </div>
               <p className="text-sm text-muted-foreground">
-                Candidates who practice with mock interviews are 3x more likely to receive job offers. Our AI analyzes
-                your answers to provide personalized improvement tips.
+                Candidates who practice with mock interviews are 3x more likely
+                to receive job offers. Our AI analyzes your answers to provide
+                personalized improvement tips.
               </p>
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
-

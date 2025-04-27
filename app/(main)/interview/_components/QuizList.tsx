@@ -28,12 +28,23 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
+type QuizResult = {
+  id: string;
+  quizScore: number;
+  createdAt: string | Date;
+  improvementTip?: string;
+  questions?: {
+    question: string;
+    correctAnswer: string;
+    userAnswer: string;
+    explanation: string;
+  }[];
+};
 
 function QuizList(assessments: assessmentsProps) {
   const assessmentsReview = assessments.assessments;
   const router = useRouter();
-  const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
-
+  const [selectedQuiz, setSelectedQuiz] = useState<QuizResult | null>(null);
   return (
     <Card className="overflow-hidden border-t-4 border-t-purple-500 transition-all hover:shadow-md">
       <CardHeader className="pb-2">
@@ -89,7 +100,12 @@ function QuizList(assessments: assessmentsProps) {
                 transition={{ duration: 0.3, delay: index * 0.1 }}
               >
                 <Card
-                  onClick={() => setSelectedQuiz(item)}
+                  onClick={() =>
+                    setSelectedQuiz({
+                      ...item,
+                      improvementTip: item.improvementTip ?? undefined,
+                    })
+                  }
                   className="cursor-pointer transition-all hover:shadow-md hover:border-purple-500/30 group"
                 >
                   <div className="p-4 md:p-6">
@@ -170,11 +186,23 @@ function QuizList(assessments: assessmentsProps) {
               Detailed breakdown of your quiz performance
             </DialogDescription>
           </DialogHeader>
-          <QuizResult
-            result={selectedQuiz}
-            onStartNew={() => router.push("/interview/mockQuiz")}
-            hideStartNew
-          />
+          {selectedQuiz && (
+            <QuizResult
+              result={{
+                ...selectedQuiz,
+                questions:
+                  selectedQuiz?.questions?.map((q) => ({
+                    question: q.question,
+                    isCorrect: q.correctAnswer === q.userAnswer,
+                    userAnswer: q.userAnswer,
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation,
+                  })) || [],
+              }}
+              onStartNew={() => router.push("/interview/mockQuiz")}
+              hideStartNew
+            />
+          )}
         </DialogContent>
       </Dialog>
     </Card>

@@ -59,7 +59,7 @@ export async function getResume() {
     }
   })
   if(!user) throw new Error("User Not Found");
-  getCachedData(
+  return getCachedData(
     `resume:${user.id}`,
     async()=>{
       return await db.resume.findUnique({

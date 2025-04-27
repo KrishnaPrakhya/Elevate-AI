@@ -20,7 +20,7 @@ interface CoverLetterScoreCardProps {
       score: number;
       feedback: string;
     }[];
-    suggestions: any[];
+    suggestions: string[];
   };
 }
 

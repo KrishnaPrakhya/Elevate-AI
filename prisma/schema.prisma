@@ -29,6 +29,7 @@ model User {
   assessments     Assessments[]
   resume          Resume?
   coverLetter     CoverLetter[]
+  ChatMessage     ChatMessage[]
 }
 
 model Resume {
@@ -85,10 +86,40 @@ model IndustryInsight {
 
   recommendedSkills String[]
 
-  lastUpdated DateTime @default(now())
-  nextUpdated DateTime
+  lastUpdated            DateTime                 @default(now())
+  nextUpdated            DateTime
+  IndustryInsightHistory IndustryInsightHistory[]
+  ChatMessage            ChatMessage[]
 
   @@index([industry])
+}
+
+model IndustryInsightHistory {
+  id                String          @id @default(cuid())
+  industryInsightId String
+  industryInsight   IndustryInsight @relation(fields: [industryInsightId], references: [id])
+  salaryRanges      Json[]
+  growthRate        Float
+  demandLevel       DemandLevel
+  topSkills         String[]
+  marketOutLook     MarketOutLook
+  keyTrends         String[]
+  recommendedSkills String[]
+  updatedAt         DateTime        @default(now())
+
+  @@index([industryInsightId, updatedAt])
+}
+
+model ChatMessage {
+  messageId         String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
+  content           String
+  createdAt         DateTime         @default(now())
+  IndustryInsight   IndustryInsight? @relation(fields: [industryInsightId], references: [id])
+  industryInsightId String?
+
+  @@index([userId])
 }
 
 enum DemandLevel {

@@ -29,12 +29,19 @@ interface QuizResultProps {
       question: string;
       isCorrect: boolean;
       userAnswer: string;
-      answer?: string;
+      correctAnswer: string;
       explanation: string;
     }[];
   };
   hideStartNew?: boolean;
   onStartNew?: () => void;
+}
+interface QuizQuestionResult {
+  question: string;
+  isCorrect: boolean;
+  userAnswer: string;
+  correctAnswer: string;
+  explanation: string;
 }
 
 export default function QuizResult({
@@ -196,7 +203,7 @@ export default function QuizResult({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {result.questions.map((q: any, index: number) => (
+            {result.questions.map((q: QuizQuestionResult, index: number) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 10 }}

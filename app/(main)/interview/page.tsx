@@ -3,16 +3,48 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import PerformanceChart from "./_components/PerformanceChart";
 import QuizList from "./_components/QuizList";
-import StatsCards from "./_components/stats-cards";
+import StatsCards, { assessmentsProps } from "./_components/stats-cards";
 import { ArrowRight, Brain, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  userAnswer: string;
+  explanation: string;
+  isCorrect: boolean;
+}
 
-type Props = {};
+export interface Assessment {
+  id: string;
+  userId: string;
+  quizScore: number;
+  questions: QuizQuestion[];
+  category: string;
+  improvementTip?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+async function Page() {
+  const rawData = await getAssessments();
 
-// This is a server component, so it can be async
-async function Page(props: Props) {
-  const {} = props;
-  const assessments = await getAssessments();
+  // Transform the raw data to ensure correct typing
+  const transformedData = rawData.map((assessment) => ({
+    ...assessment,
+    questions: assessment.questions
+      .filter((q): q is Partial<QuizQuestion> => q !== null)
+      .map((q) => ({
+        id: q.id ?? "",
+        question: q.question ?? "",
+        options: q.options ?? [],
+        correctAnswer: q.correctAnswer ?? "",
+        userAnswer: q.userAnswer ?? "",
+        explanation: q.explanation ?? "",
+        isCorrect: q.isCorrect ?? false,
+      })),
+  }));
+  const assessments: assessmentsProps = { assessments: transformedData };
 
   return (
     <div className="container mx-auto py-8 space-y-8">
@@ -43,12 +75,12 @@ async function Page(props: Props) {
       </div>
 
       <div>
-        <StatsCards assessments={assessments} />
+        <StatsCards assessments={assessments.assessments} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-          <PerformanceChart assessments={assessments} />
+          <PerformanceChart assessments={assessments.assessments} />
         </div>
 
         <div className="flex flex-col justify-center">
@@ -83,7 +115,7 @@ async function Page(props: Props) {
       </div>
 
       <div>
-        <QuizList assessments={assessments} />
+        <QuizList assessments={assessments.assessments} />
       </div>
     </div>
   );

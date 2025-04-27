@@ -1,8 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI,GenerativeModel } from "@google/generative-ai";
 import { db } from "../prisma";
 import { inngest } from "./client";
-
-let model:any;
+let model: GenerativeModel;
 
 if(process.env.GEMINI_API_KEY){
 
@@ -43,7 +42,8 @@ export const getIndustryInsights=inngest.createFunction(
       const res=await step.ai.wrap("gemini",async(p)=>{
           return await model.generateContent(p);
       },prompt)
-      const text=res.response.candidates[0].content.parts[0].text || "";
+      const part = res.response.candidates?.[0]?.content?.parts?.[0];
+      const text = part && 'text' in part ? part.text : "";
       const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
       const insights=JSON.parse(cleanedText);
       await step.run(`Update ${industry} insights`,async ()=>{

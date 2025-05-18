@@ -54,6 +54,8 @@ import { JobDescriptionMatcher } from "./job-description-matcher";
 import MDEditor from "@uiw/react-md-editor";
 import { AiSuggestionCard } from "./ai-suggestions-card";
 import { coverLetterProps } from "../page";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas-pro";
 
 const formSchema = z.object({
   jobTitle: z.string().min(1, "Job title is required"),
@@ -250,7 +252,43 @@ export default function CoverLetterEditor({
   const generatePDF = async () => {
     setIsGenerating(true);
     try {
-      // PDF generation logic would go here
+      const element = document.getElementById("cover-letter-pdf");
+      if (!element) throw new Error("cover-letter PDF element not found");
+
+      // Define PDF dimensions (A4 = 210 x 297 mm)
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      // Use html2canvas with no scaling (or lower scale)
+      const canvas = await html2canvas(element, {
+        scale: 2, // try with scale: 1 or 1.5
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgWidth = pdfWidth;
+      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      // Ensure it fits on one page (you can add multipage logic later if needed)
+      const y = 0;
+      if (imgHeight > pdfHeight) {
+        // If image height is more than page, shrink to fit height instead
+        const scaledWidth = (pdfHeight * imgProps.width) / imgProps.height;
+        pdf.addImage(
+          imgData,
+          "PNG",
+          (pdfWidth - scaledWidth) / 2,
+          0,
+          scaledWidth,
+          pdfHeight
+        );
+      } else {
+        pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
+      }
+
+      pdf.save("cover-letter.pdf");
       toast.success("PDF generated successfully!");
     } catch (error) {
       toast.error("Failed to generate PDF");
@@ -496,6 +534,14 @@ export default function CoverLetterEditor({
               </Button>
             </CardFooter>
           </Card>
+          <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+            <div id="cover-letter-pdf">
+              <MDEditor.Markdown
+                source={coverLetterContent}
+                style={{ background: "white", color: "black" }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6">

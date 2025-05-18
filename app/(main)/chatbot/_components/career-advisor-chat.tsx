@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-
+import axios from "axios";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,6 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import JobSearchForm from "./job-search-form";
 import CareerPlanGenerator from "./career-plan-generator";
 
 interface Message {
@@ -69,9 +68,9 @@ export default function CareerAdvisorChat({
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [activeView, setActiveView] = useState<
-    "chat" | "job" | "plan" | "profile"
-  >("chat");
+  const [activeView, setActiveView] = useState<"chat" | "plan" | "profile">(
+    "chat"
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -104,22 +103,21 @@ export default function CareerAdvisorChat({
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-          clerkUserId: userProfile.clerkUserId,
-        }),
+      const backendUrl = process.env.NEXT_PUBLIC_FLASK_BACKEND_URL;
+      if (!backendUrl) {
+        throw new Error("FLASK_BACKEND_URL environment variable is not set");
+      }
+      console.log(backendUrl + "api/chat");
+      const response = await axios.post((backendUrl + "api/chat") as string, {
+        message: userMessage.content,
+        clerkUserId: userProfile.clerkUserId,
       });
-
-      if (!response.ok) {
+      console.log(response);
+      if (!response.data) {
         throw new Error("Failed to get response from career advisor");
       }
 
-      const data = await response.json();
+      const data = await response.data;
 
       const categoryKeywords = {
         job: [
@@ -179,14 +177,8 @@ export default function CareerAdvisorChat({
       setMessages((prev) => [...prev, assistantMessage]);
 
       // If the response has a specific category, suggest switching to that tool
-      if (category === "job") {
-        toast.info("Would you like to use the Job Search tool?", {
-          action: {
-            label: "Open",
-            onClick: () => setActiveView("job"),
-          },
-        });
-      } else if (category === "schedule") {
+
+      if (category === "schedule") {
         toast.info("Would you like to create a Career Plan?", {
           action: {
             label: "Open",
@@ -265,7 +257,6 @@ export default function CareerAdvisorChat({
           )}
           <h2 className="text-2xl font-bold">
             {activeView === "chat" && "Career Advisor"}
-            {activeView === "job" && "Job Search"}
             {activeView === "plan" && "Career Plan"}
             {activeView === "profile" && "Profile Analysis"}
           </h2>
@@ -274,7 +265,9 @@ export default function CareerAdvisorChat({
         <div className="flex gap-2">
           <Tabs
             value={activeView}
-            onValueChange={(v) => setActiveView(v as any)}
+            onValueChange={(v) =>
+              setActiveView(v as "chat" | "plan" | "profile")
+            }
             className="hidden md:block"
           >
             <TabsList>
@@ -282,10 +275,7 @@ export default function CareerAdvisorChat({
                 <MessageSquare className="h-4 w-4" />
                 <span>Chat</span>
               </TabsTrigger>
-              <TabsTrigger value="job" className="flex items-center gap-1">
-                <Briefcase className="h-4 w-4" />
-                <span>Jobs</span>
-              </TabsTrigger>
+
               <TabsTrigger value="plan" className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
                 <span>Plan</span>
@@ -301,13 +291,7 @@ export default function CareerAdvisorChat({
             >
               <MessageSquare className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setActiveView("job")}
-            >
-              <Briefcase className="h-4 w-4" />
-            </Button>
+
             <Button
               variant="outline"
               size="icon"
@@ -375,7 +359,7 @@ export default function CareerAdvisorChat({
                           <ReactMarkdown
                             className="prose dark:prose-invert prose-sm max-w-none"
                             components={{
-                              a: ({ node, ...props }) => (
+                              a: ({ ...props }) => (
                                 <a
                                   {...props}
                                   className="text-primary hover:underline"
@@ -383,34 +367,34 @@ export default function CareerAdvisorChat({
                                   rel="noopener noreferrer"
                                 />
                               ),
-                              ul: ({ node, ...props }) => (
+                              ul: ({ ...props }) => (
                                 <ul
                                   {...props}
                                   className="list-disc pl-6 my-2"
                                 />
                               ),
-                              ol: ({ node, ...props }) => (
+                              ol: ({ ...props }) => (
                                 <ol
                                   {...props}
                                   className="list-decimal pl-6 my-2"
                                 />
                               ),
-                              li: ({ node, ...props }) => (
+                              li: ({ ...props }) => (
                                 <li {...props} className="my-1" />
                               ),
-                              h3: ({ node, ...props }) => (
+                              h3: ({ ...props }) => (
                                 <h3
                                   {...props}
                                   className="text-base font-semibold mt-4 mb-2"
                                 />
                               ),
-                              h4: ({ node, ...props }) => (
+                              h4: ({ ...props }) => (
                                 <h4
                                   {...props}
                                   className="text-sm font-semibold mt-3 mb-1"
                                 />
                               ),
-                              p: ({ node, ...props }) => (
+                              p: ({ ...props }) => (
                                 <p {...props} className="my-2" />
                               ),
                             }}
@@ -428,8 +412,6 @@ export default function CareerAdvisorChat({
                             variant="outline"
                             className="text-xs flex items-center gap-1"
                             onClick={() => {
-                              if (message.category === "job")
-                                setActiveView("job");
                               if (message.category === "schedule")
                                 setActiveView("plan");
                               if (message.category === "analysis")
@@ -550,9 +532,6 @@ export default function CareerAdvisorChat({
       )}
 
       {/* Job Search View */}
-      {activeView === "job" && (
-        <JobSearchForm onBack={() => setActiveView("chat")} />
-      )}
 
       {/* Career Plan View */}
       {activeView === "plan" && (

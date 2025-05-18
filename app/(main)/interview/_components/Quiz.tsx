@@ -24,6 +24,7 @@ import {
   Timer,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+
 import { motion, AnimatePresence } from "framer-motion";
 type QuizQuestion = {
   question: string;
@@ -45,7 +46,7 @@ export default function Quiz() {
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [showExplanation, setShowExplanation] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
-
+  
   const {
     loading: generatingQuiz,
     fn: generateQuizFn,

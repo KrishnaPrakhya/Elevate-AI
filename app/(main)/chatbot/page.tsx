@@ -4,8 +4,25 @@ import { getUser } from "@/actions/user";
 import CareerAdvisorChat from "./_components/career-advisor-chat";
 import { PageHeader } from "@/components/page-header";
 
+interface ResumeProps {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+  content: string;
+  atsScore: number | null;
+  feedback: string | null;
+}
 export default async function CareerAdvisorPage() {
-  const resume: any = await getResume();
+  const resume: ResumeProps = (await getResume()) || {
+    id: "",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    userId: "",
+    content: "",
+    atsScore: null,
+    feedback: null,
+  };
   const coverLetters = await getCoverLetters();
   const user = await getUser();
 

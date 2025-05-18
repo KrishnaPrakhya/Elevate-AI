@@ -14,13 +14,14 @@ export function CoverLetterPreview({
 }: CoverLetterPreviewProps) {
   return (
     <div className={cn("p-8", getTemplateStyles(template))}>
-      <MDEditor.Markdown
-        source={content}
-        style={{
-          background: "transparent",
-          fontFamily: getTemplateFontFamily(template),
-        }}
-      />
+      <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+        <div id="cover-letter-pdf">
+          <MDEditor.Markdown
+            source={content}
+            style={{ background: "white", color: "black" }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -41,22 +42,6 @@ function getTemplateStyles(template: string): string {
       return "bg-white font-sans border-l-4 border-green-500";
     default:
       return "bg-white font-sans";
-  }
-}
-
-function getTemplateFontFamily(template: string): string {
-  switch (template) {
-    case "professional":
-    case "executive":
-      return "'Georgia', 'Times New Roman', serif";
-    case "modern":
-    case "creative":
-    case "entry-level":
-      return "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    case "technical":
-      return "'Courier New', monospace";
-    default:
-      return "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   }
 }
 

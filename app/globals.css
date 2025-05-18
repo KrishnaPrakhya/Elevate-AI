@@ -24,6 +24,21 @@
     --ring: 240 5.9% 10%;
     --radius: 0.625rem;
   }
+  #resume-pdf {
+    padding-top: 50px;
+    padding-left: 50px;
+    padding-right: 50px;
+
+  width: 1000px;  /* ~210mm @ 96 DPI */
+  height: 1000px; /* ~297mm @ 96 DPI */
+}
+  #cover-letter-pdf {
+  padding-top: 100px;
+  padding-left: 50px;
+    padding-right: 50px;
+  width: 1000px;  /* ~210mm @ 96 DPI */
+  height: 1000px; /* ~297mm @ 96 DPI */
+}
 
   .dark {
     --background: 240 10% 3.9%;

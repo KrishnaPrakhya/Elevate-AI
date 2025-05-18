@@ -5,14 +5,12 @@ import {
   improveWithAI,
   tailorToJob,
 } from "@/actions/resume";
-import { resumeSchema } from "@/app/lib/schema";
 import useFetch from "@/hooks/use-fetch";
 import { useUser } from "@clerk/nextjs";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import html2pdf from "html2pdf.js/dist/html2pdf.min";
 import {
   AlertTriangle,
   Download,
@@ -65,13 +63,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ResumePreview } from "./resume-preview";
 import { ResumeScoreCard } from "./resume-score-card";
-import { AiSuggestionCard } from "./ai-suggestions-card";
 import { ResumeTemplateSelector } from "./resume-template-selector";
 import { JobDescriptionMatcher } from "./job-description-matcher";
+import { resumeSchema } from "@/app/lib/schema";
+import { AiSuggestionCard } from "./ai-suggestions-card";
+import html2canvas from "html2canvas-pro";
+import jsPDF from "jspdf";
 
 interface Props {
   initialContent: string;
 }
+
 interface ContactInfo {
   email: string;
   mobile?: string;
@@ -83,10 +85,11 @@ interface ResumeEntry {
   title: string;
   company: string;
   startDate: string;
-  endDate?: string | undefined;
+  endDate?: string;
   current?: boolean;
   description: string;
 }
+
 interface ResumeFormValues {
   contactInfo: ContactInfo;
   summary: string;
@@ -104,18 +107,20 @@ interface AISuggestion {
   reason: string;
   index?: number;
 }
+
 interface ResumeScore {
   overall: number;
   sections: {
-    [key: string]: number;
-  };
+    name: string;
+    score: number;
+    feedback: string;
+  }[];
   suggestions: AISuggestion[];
 }
 
-function ResumeBuilder(props: Props) {
-  const { initialContent } = props;
+function ResumeBuilder({ initialContent }: Props) {
   const [activeTab, setActiveTab] = useState<string>("edit");
-  const [previewContent, setPreviewContent] = useState(initialContent);
+  const [previewContent, setPreviewContent] = useState(initialContent || "");
   const { user } = useUser();
   const [resumeMode, setResumeMode] = useState<"preview" | "edit">("preview");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("modern");
@@ -125,6 +130,7 @@ function ResumeBuilder(props: Props) {
   const [jobDescription, setJobDescription] = useState("");
   const [showJobMatcher, setShowJobMatcher] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+
   const {
     control,
     register,
@@ -137,7 +143,7 @@ function ResumeBuilder(props: Props) {
     defaultValues: {
       contactInfo: {
         email: "",
-        mobile: "", // Ensure mobile is always a string
+        mobile: "",
         linkedin: "",
         twitter: "",
       },
@@ -172,20 +178,319 @@ function ResumeBuilder(props: Props) {
 
   const formValues = watch();
 
+  // Parse entries from markdown content
+  const parseEntries = useCallback((sectionContent: string): ResumeEntry[] => {
+    const entries: ResumeEntry[] = [];
+    const entryRegex =
+      /### (.*?) at (.*?)\s*\n\n\*\*(.*?)\*\*\s*\n\n([\s\S]*?)(?=\n\n###|$)/g;
+
+    let match;
+    while ((match = entryRegex.exec(sectionContent)) !== null) {
+      const title = match[1];
+      const company = match[2];
+      const dateRange = match[3];
+      const description = match[4];
+
+      const startEndMatch = dateRange.match(/(.*?) - (.*)/m);
+      if (startEndMatch) {
+        const startDate = startEndMatch[1];
+        const endDate = startEndMatch[2] || "";
+        const current = endDate === "Present";
+
+        entries.push({
+          title,
+          company,
+          startDate,
+          endDate: current ? "" : endDate,
+          current,
+          description,
+        });
+      }
+    }
+
+    return entries;
+  }, []);
+
+  // Parse initial content from markdown
+  const parseInitialContent = useCallback(
+    (content: string) => {
+      try {
+        // Parse contact information
+        const contactSection = content.match(
+          /## <div align="center">(.*?)<\/div>[\s\S]*?<div align="center">([\s\S]*?)<\/div>/m
+        );
+        const summarySection = content.match(
+          /## Professional Summary\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
+        );
+        const skillsSection = content.match(
+          /## Skills\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
+        );
+        const experienceSection = content.match(
+          /## Work Experience\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
+        );
+        const educationSection = content.match(
+          /## Education\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
+        );
+        const projectsSection = content.match(
+          /## Projects\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
+        );
+
+        // Parse contact info
+        if (contactSection) {
+          // const name = contactSection[1];
+          const contactInfo = contactSection[2];
+
+          const email = contactInfo.match(/📧 (.*?)(?=\s\||$)/m);
+          const mobile = contactInfo.match(/📱 (.*?)(?=\s\||$)/m);
+          const linkedin = contactInfo.match(/💼 \[LinkedIn\]$$(.*?)$$/m);
+          const twitter = contactInfo.match(/🐦 \[Twitter\]$$(.*?)$$/m);
+
+          setValue("contactInfo.email", email ? email[1] : "");
+          setValue("contactInfo.mobile", mobile ? mobile[1] : "");
+          setValue("contactInfo.linkedin", linkedin ? linkedin[1] : "");
+          setValue("contactInfo.twitter", twitter ? twitter[1] : "");
+        }
+
+        // Set summary and skills
+        if (summarySection) setValue("summary", summarySection[1]);
+        if (skillsSection) setValue("skills", skillsSection[1]);
+
+        // Parse experience entries
+        if (experienceSection) {
+          const experienceEntries = parseEntries(experienceSection[1]);
+          setValue("experience", experienceEntries);
+        }
+
+        // Parse education entries
+        if (educationSection) {
+          const educationEntries = parseEntries(educationSection[1]);
+          setValue("education", educationEntries);
+        }
+
+        // Parse project entries
+        if (projectsSection) {
+          const projectEntries = parseEntries(projectsSection[1]);
+          setValue("projects", projectEntries);
+        }
+      } catch (error) {
+        console.error("Error parsing resume content:", error);
+        toast.error("Error parsing resume content");
+      }
+    },
+    [setValue, parseEntries]
+  );
+
+  // Generate contact markdown
+  const getContactMarkdown = useCallback(() => {
+    const { contactInfo } = formValues;
+    const parts = [];
+    if (contactInfo.email) parts.push(`📧 ${contactInfo.email}`);
+    if (contactInfo.mobile) parts.push(`📱 ${contactInfo.mobile}`);
+    if (contactInfo.linkedin)
+      parts.push(`💼 [LinkedIn](${contactInfo.linkedin})`);
+    if (contactInfo.twitter) parts.push(`🐦 [Twitter](${contactInfo.twitter})`);
+
+    return parts.length > 0
+      ? `## <div align="center">${user?.fullName || "Your Name"}</div>
+        \n\n<div align="center">\n\n${parts.join(" | ")}\n\n</div>`
+      : "";
+  }, [formValues, user?.fullName]);
+
+  // Convert entries to markdown
+  const entriesToMarkdown = useCallback(
+    (entries: ResumeEntry[], sectionTitle: string): string => {
+      if (!entries || entries.length === 0) return "";
+
+      const formatDate = (date: string | undefined) =>
+        date ? date : "Present";
+
+      const markdownEntries = entries.map((entry) => {
+        const { title, company, startDate, endDate, current, description } =
+          entry;
+        const dateRange = `${formatDate(startDate)} - ${
+          current ? "Present" : formatDate(endDate)
+        }`;
+        return `### ${title} at ${company}\n\n**${dateRange}**\n\n${description}`;
+      });
+
+      return `## ${sectionTitle}\n\n${markdownEntries.join("\n\n")}`;
+    },
+    []
+  );
+
+  // Combine all content into markdown
+  const getCombinedContent = useCallback(() => {
+    const { summary, skills, experience, education, projects } = formValues;
+    return [
+      getContactMarkdown(),
+      summary && `## Professional Summary\n\n${summary}`,
+      skills && `## Skills\n\n${skills}`,
+      entriesToMarkdown(experience, "Work Experience"),
+      entriesToMarkdown(education, "Education"),
+      entriesToMarkdown(projects, "Projects"),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }, [formValues, getContactMarkdown, entriesToMarkdown]);
+
+  // Generate PDF
+  const generatePDF = async () => {
+    setIsGenerating(true);
+
+    try {
+      const element = document.getElementById("resume-pdf");
+      if (!element) throw new Error("Resume PDF element not found");
+
+      // Define PDF dimensions (A4 = 210 x 297 mm)
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      // Use html2canvas with no scaling (or lower scale)
+      const canvas = await html2canvas(element, {
+        scale: 2, // try with scale: 1 or 1.5
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgWidth = pdfWidth;
+      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      // Ensure it fits on one page (you can add multipage logic later if needed)
+      const y = 0;
+      if (imgHeight > pdfHeight) {
+        // If image height is more than page, shrink to fit height instead
+        const scaledWidth = (pdfHeight * imgProps.width) / imgProps.height;
+        pdf.addImage(
+          imgData,
+          "PNG",
+          (pdfWidth - scaledWidth) / 2,
+          0,
+          scaledWidth,
+          pdfHeight
+        );
+      } else {
+        pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
+      }
+
+      pdf.save("resume.pdf");
+      toast.success("PDF generated successfully!");
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Save resume
+  const onSubmit = async () => {
+    try {
+      const formattedContent = previewContent
+        .replace(/\n/g, "\n")
+        .replace(/\n\s*\n/g, "\n\n")
+        .trim();
+
+      await saveResumeFn(formattedContent);
+    } catch (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to save resume");
+    }
+  };
+
+  // Analyze resume
+  const analyzeCurrentResume = async () => {
+    try {
+      await analyzeResumeFn(previewContent);
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast.error("Failed to analyze resume");
+    }
+  };
+
+  // Tailor resume to job
+  const tailorResumeToJob = async () => {
+    if (!jobDescription) {
+      toast.error("Please enter a job description");
+      return;
+    }
+
+    try {
+      await tailorToJobFn({
+        resumeContent: previewContent,
+        jobDescription,
+      });
+    } catch (error) {
+      console.error("Tailoring error:", error);
+      toast.error("Failed to tailor resume");
+    }
+  };
+
+  // Apply AI suggestion
+  const applySuggestion = (suggestion: AISuggestion) => {
+    if (suggestion.type === "summary") {
+      setValue("summary", suggestion.content);
+    } else if (suggestion.type === "skills") {
+      setValue("skills", suggestion.content);
+    } else if (
+      suggestion.type === "experience" &&
+      suggestion.index !== undefined
+    ) {
+      const currentExperience = [...formValues.experience];
+      if (currentExperience[suggestion.index]) {
+        currentExperience[suggestion.index].description = suggestion.content;
+        setValue("experience", currentExperience);
+      }
+    }
+
+    // Remove the suggestion from the list
+    setAiSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+    toast.success("Suggestion applied!");
+  };
+
+  // Enhance with AI
+  const enhanceWithAI = async (type: string, content: string) => {
+    if (!content) {
+      toast.error(`Please enter ${type} first`);
+      return;
+    }
+
+    try {
+      const improved = await improveWithAI({
+        type,
+        current: content,
+      });
+
+      if (improved) {
+        setValue(type as keyof ResumeFormValues, improved);
+        toast.success(
+          `${type.charAt(0).toUpperCase() + type.slice(1)} improved!`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(`Failed to improve ${type}`);
+    }
+  };
+
+  // Initialize form with content
   useEffect(() => {
     if (initialContent) {
       setActiveTab("preview");
       parseInitialContent(initialContent);
     }
-  }, [initialContent]);
+  }, [initialContent, parseInitialContent]);
 
+  // Update preview content when form changes
   useEffect(() => {
     if (activeTab === "edit") {
       const newContent = getCombinedContent();
-      setPreviewContent(newContent ? newContent : initialContent);
+      setPreviewContent(newContent || initialContent || "");
     }
-  }, [formValues, activeTab]);
+  }, [formValues, activeTab, getCombinedContent, initialContent]);
 
+  // Handle save result
   useEffect(() => {
     if (saveResult && !isSaving) {
       toast.success("Resume saved successfully!");
@@ -195,6 +500,7 @@ function ResumeBuilder(props: Props) {
     }
   }, [saveResult, saveError, isSaving]);
 
+  // Handle analyze result
   useEffect(() => {
     if (analyzeResult && !isAnalyzing) {
       setResumeScore(analyzeResult);
@@ -209,6 +515,7 @@ function ResumeBuilder(props: Props) {
     }
   }, [analyzeResult, analyzeError, isAnalyzing]);
 
+  // Handle tailor result
   useEffect(() => {
     if (tailorResult && !isTailoring) {
       // Update form values with tailored content
@@ -231,210 +538,18 @@ function ResumeBuilder(props: Props) {
     if (tailorError) {
       toast.error(tailorError.message || "Failed to tailor resume");
     }
-  }, [tailorResult, tailorError, isTailoring]);
+  }, [tailorResult, tailorError, isTailoring, formValues.experience, setValue]);
 
-  const parseInitialContent = (content: string) => {
-    try {
-      const contactSection = content.match(
-        /## <div align="center">(.*?)<\/div>[\s\S]*?<div align="center">([\s\S]*?)<\/div>/m
-      );
-      const summarySection = content.match(
-        /## Professional Summary\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
-      );
-      const skillsSection = content.match(
-        /## Skills\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
-      );
-      const experienceSection = content.match(
-        /## Work Experience\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
-      );
-      const educationSection = content.match(
-        /## Education\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
-      );
-      const projectsSection = content.match(
-        /## Projects\s*\n\n([\s\S]*?)(?=\n\n##|$)/m
-      );
+  // Format resume score for the score card
+  const formattedResumeScore = useMemo(() => {
+    if (!resumeScore) return null;
 
-      // Parse contact info
-      if (contactSection) {
-        const contactInfo = contactSection[2];
-
-        const email = contactInfo.match(/📧 (.*?)(?=\s\||$)/m);
-        const mobile = contactInfo.match(/📱 (.*?)(?=\s\||$)/m);
-        const linkedin = contactInfo.match(/💼 \[LinkedIn\]$$(.*?)$$/m);
-        const twitter = contactInfo.match(/🐦 \[Twitter\]$$(.*?)$$/m);
-
-        setValue("contactInfo.email", email ? email[1] : "");
-        setValue("contactInfo.mobile", mobile ? mobile[1] : "");
-        setValue("contactInfo.linkedin", linkedin ? linkedin[1] : "");
-        setValue("contactInfo.twitter", twitter ? twitter[1] : "");
-      }
-
-      // Set summary and skills
-      if (summarySection) setValue("summary", summarySection[1]);
-      if (skillsSection) setValue("skills", skillsSection[1]);
-
-      // Parse experience entries
-      if (experienceSection) {
-        const experienceEntries = parseEntries(experienceSection[1]);
-        setValue("experience", experienceEntries);
-      }
-
-      // Parse education entries
-      if (educationSection) {
-        const educationEntries = parseEntries(educationSection[1]);
-        setValue("education", educationEntries);
-      }
-
-      // Parse project entries
-      if (projectsSection) {
-        const projectEntries = parseEntries(projectsSection[1]);
-        setValue("projects", projectEntries);
-      }
-    } catch (error) {
-      console.error("Error parsing resume content:", error);
-    }
-  };
-
-  const parseEntries = (sectionContent: string) => {
-    const entries = [];
-    const entryRegex =
-      /### (.*?) at (.*?)\s*\n\n\*\*(.*?)\*\*\s*\n\n([\s\S]*?)(?=\n\n###|$)/g;
-
-    let match;
-    while ((match = entryRegex.exec(sectionContent)) !== null) {
-      const title = match[1];
-      const company = match[2];
-      const dateRange = match[3];
-      const description = match[4];
-
-      const startEndMatch = dateRange.match(/(.*?) - (.*)/m);
-      if (startEndMatch) {
-        const startDate = startEndMatch[1];
-        const endDate = startEndMatch[2] || ""; // Ensure endDate is always a string
-        const current = endDate === "Present";
-
-        entries.push({
-          title,
-          company,
-          startDate,
-          endDate: current ? "" : endDate,
-          current,
-          description,
-        });
-      }
-    }
-
-    return entries;
-  };
-
-  const getContactMarkdown = () => {
-    const { contactInfo } = formValues;
-    const parts = [];
-    if (contactInfo.email) parts.push(`📧 ${contactInfo.email}`);
-    if (contactInfo.mobile) parts.push(`📱 ${contactInfo.mobile}`);
-    if (contactInfo.linkedin)
-      parts.push(`💼 [LinkedIn](${contactInfo.linkedin})`);
-    if (contactInfo.twitter) parts.push(`🐦 [Twitter](${contactInfo.twitter})`);
-
-    return parts.length > 0
-      ? `## <div align="center">${user?.fullName}</div>
-        \n\n<div align="center">\n\n${parts.join(" | ")}\n\n</div>`
-      : "";
-  };
-
-  const getCombinedContent = () => {
-    const { summary, skills, experience, education, projects } = formValues;
-    return [
-      getContactMarkdown(),
-      summary && `## Professional Summary\n\n${summary}`,
-      skills && `## Skills\n\n${skills}`,
-      entriesToMarkdown(experience, "Work Experience"),
-      entriesToMarkdown(education, "Education"),
-      entriesToMarkdown(projects, "Projects"),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-  };
-
-  const generatePDF = async () => {
-    setIsGenerating(true);
-    try {
-      const element = document.getElementById("resume-pdf");
-      const opt = {
-        margin: [15, 15],
-        filename: `${user?.fullName || "resume"}_${selectedTemplate}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      };
-
-      await html2pdf().set(opt).from(element).save();
-      toast.success("PDF generated successfully!");
-    } catch (error) {
-      console.error("PDF generation error:", error);
-      toast.error("Failed to generate PDF");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const onSubmit = async () => {
-    try {
-      const formattedContent = previewContent
-        .replace(/\n/g, "\n")
-        .replace(/\n\s*\n/g, "\n\n")
-        .trim();
-
-      await saveResumeFn(formattedContent);
-    } catch (error) {
-      console.error("Save error:", error);
-    }
-  };
-
-  const analyzeCurrentResume = async () => {
-    try {
-      await analyzeResumeFn(previewContent);
-    } catch (error) {
-      console.error("Analysis error:", error);
-    }
-  };
-
-  const tailorResumeToJob = async () => {
-    if (!jobDescription) {
-      toast.error("Please enter a job description");
-      return;
-    }
-
-    try {
-      await tailorToJobFn({
-        resumeContent: previewContent,
-        jobDescription,
-      });
-    } catch (error) {
-      console.error("Tailoring error:", error);
-    }
-  };
-
-  const applySuggestion = (suggestion: AISuggestion) => {
-    if (suggestion.type === "summary") {
-      setValue("summary", suggestion.content);
-    } else if (suggestion.type === "skills") {
-      setValue("skills", suggestion.content);
-    } else if (
-      suggestion.type === "experience" &&
-      suggestion.index !== undefined
-    ) {
-      const currentExperience = [...formValues.experience];
-      if (currentExperience[suggestion.index]) {
-        currentExperience[suggestion.index].description = suggestion.content;
-        setValue("experience", currentExperience);
-      }
-    }
-
-    // Remove the suggestion from the list
-    setAiSuggestions(aiSuggestions.filter((s) => s.id !== suggestion.id));
-    toast.success("Suggestion applied!");
-  };
+    return {
+      overall: resumeScore.overall,
+      sections: resumeScore.sections,
+      suggestions: resumeScore.suggestions,
+    };
+  }, [resumeScore]);
 
   return (
     <div data-color-mode="light" className="space-y-6">
@@ -605,25 +720,9 @@ function ResumeBuilder(props: Props) {
                           variant="ghost"
                           size="sm"
                           className="ml-auto gap-1"
-                          onClick={() => {
-                            const currentSummary = watch("summary");
-                            if (!currentSummary) {
-                              toast.error("Please enter a summary first");
-                              return;
-                            }
-                            improveWithAI({
-                              type: "summary",
-                              current: currentSummary,
-                            })
-                              .then((improved) => {
-                                if (improved) setValue("summary", improved);
-                                toast.success("Summary improved!");
-                              })
-                              .catch((err) => {
-                                console.log(err);
-                                toast.error("Failed to improve summary");
-                              });
-                          }}
+                          onClick={() =>
+                            enhanceWithAI("summary", watch("summary"))
+                          }
                         >
                           <Wand2 className="h-4 w-4" />
                           <span>Enhance with AI</span>
@@ -659,25 +758,9 @@ function ResumeBuilder(props: Props) {
                           variant="ghost"
                           size="sm"
                           className="ml-auto gap-1"
-                          onClick={() => {
-                            const currentSkills = watch("skills");
-                            if (!currentSkills) {
-                              toast.error("Please enter skills first");
-                              return;
-                            }
-                            improveWithAI({
-                              type: "skills",
-                              current: currentSkills,
-                            })
-                              .then((improved) => {
-                                if (improved) setValue("skills", improved);
-                                toast.success("Skills improved!");
-                              })
-                              .catch((err) => {
-                                console.log(err);
-                                toast.error("Failed to improve skills");
-                              });
-                          }}
+                          onClick={() =>
+                            enhanceWithAI("skills", watch("skills"))
+                          }
                         >
                           <Wand2 className="h-4 w-4" />
                           <span>Enhance with AI</span>
@@ -904,11 +987,11 @@ function ResumeBuilder(props: Props) {
           </Card>
 
           {/* Hidden element for PDF generation */}
-          <div className="hidden">
+          <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
             <div id="resume-pdf">
-              <ResumePreview
-                content={previewContent}
-                template={selectedTemplate}
+              <MDEditor.Markdown
+                source={previewContent}
+                style={{ background: "white", color: "black" }}
               />
             </div>
           </div>
@@ -916,18 +999,11 @@ function ResumeBuilder(props: Props) {
 
         <div className="space-y-6">
           {/* Resume Score Card */}
-          {resumeScore ? (
+          {formattedResumeScore ? (
             <ResumeScoreCard
               score={{
-                ...resumeScore,
-                sections: Object.entries(resumeScore.sections).map(
-                  ([name, score]) => ({
-                    name,
-                    score,
-                    feedback: "", // Add appropriate feedback if available
-                  })
-                ),
-                suggestions: resumeScore.suggestions.map(
+                ...formattedResumeScore,
+                suggestions: formattedResumeScore.suggestions.map(
                   (suggestion) => suggestion.content
                 ),
               }}
@@ -1137,25 +1213,6 @@ function ResumeBuilder(props: Props) {
       </Dialog>
     </div>
   );
-}
-
-function entriesToMarkdown(
-  entries: ResumeEntry[],
-  sectionTitle: string
-): string {
-  if (!entries || entries.length === 0) return "";
-
-  const formatDate = (date: string | undefined) => (date ? date : "Present");
-
-  const markdownEntries = entries.map((entry) => {
-    const { title, company, startDate, endDate, current, description } = entry;
-    const dateRange = `${formatDate(startDate)} - ${
-      current ? "Present" : formatDate(endDate)
-    }`;
-    return `### ${title} at ${company}\n\n**${dateRange}**\n\n${description}`;
-  });
-
-  return `## ${sectionTitle}\n\n${markdownEntries.join("\n\n")}`;
 }
 
 export default ResumeBuilder;

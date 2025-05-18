@@ -29,7 +29,7 @@ export async function saveResume(content:string) {
 try {
   const resume=await db.resume.upsert({
     where:{
-      id:user.id
+      userId:user.id
     },
     update:{
       content

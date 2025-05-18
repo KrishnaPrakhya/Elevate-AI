@@ -3,14 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  CheckCircle,
-  X,
-  BookOpen,
-  Brain,
-  Sparkles,
-  Lightbulb,
-} from "lucide-react";
+import { CheckCircle, X, BookOpen, Brain } from "lucide-react";
 import Confetti from "react-confetti";
 import { useWindowSize } from "@/hooks/use-window-size";
 import { generateTopicContent, generateTopicQuiz } from "@/actions/topicQuiz";
@@ -57,13 +50,6 @@ interface QuizFormProps {
 //     "Neural Networks",
 //   ],
 // };
-
-const topicIcons = {
-  Java: <Lightbulb className="w-6 h-6 text-orange-500" />,
-  Python: <Sparkles className="w-6 h-6 text-blue-500" />,
-  JavaScript: <Brain className="w-6 h-6 text-yellow-500" />,
-  "Data Science": <BookOpen className="w-6 h-6 text-purple-500" />,
-};
 
 export default function QuizForm({
   setQuizData,

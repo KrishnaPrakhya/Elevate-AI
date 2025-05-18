@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle,
@@ -35,77 +35,8 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
   const { width, height } = useWindowSize();
   const [feedbackMessage, setFeedbackMessage] = useState("");
 
-  if (!quizData || quizData.length === 0) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-2xl mx-auto p-8 bg-white rounded-2xl shadow-xl text-center"
-      >
-        <h2 className="text-2xl font-bold mb-4 text-red-600">
-          Error Loading Quiz
-        </h2>
-        <p className="text-lg text-gray-700">
-          No questions available. Please try again.
-        </p>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setQuizStarted(false)}
-          className="mt-6 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-xl hover:from-blue-600 hover:to-purple-700 transition shadow-md"
-        >
-          Go Back
-        </motion.button>
-      </motion.div>
-    );
-  }
-
-  const currentQuestion = quizData[currentQuestionIndex];
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (!quizEnded && !showExplanation) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev > 0) {
-            return prev - 1;
-          } else {
-            clearInterval(timer);
-            handleAnswer();
-            return 0;
-          }
-        });
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [timeLeft, quizEnded, showExplanation]);
-
-  // Play sound effect based on answer correctness
-  const playSound = (correct: boolean) => {
-    const audio = new Audio(
-      correct ? "/sounds/correct.mp3" : "/sounds/incorrect.mp3"
-    );
-    audio.volume = 0.5;
-    audio.play().catch((e) => console.log("Audio play failed:", e));
-  };
-
   const handleOptionSelect = (option: string) => {
     setSelectedOption(option);
-  };
-
-  const handleAnswer = () => {
-    const isCorrect = selectedOption === currentQuestion.correctAnswer;
-
-    if (isCorrect) {
-      setScore((prev) => ({ ...prev, correct: prev.correct + 1 }));
-      setFeedbackMessage("Great job! That's correct!");
-      playSound(true);
-    } else {
-      setScore((prev) => ({ ...prev, wrong: prev.wrong + 1 }));
-      setFeedbackMessage("Not quite right. Let's learn why.");
-      playSound(false);
-    }
-    setShowExplanation(true);
   };
 
   const handleNextQuestion = () => {
@@ -137,6 +68,9 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
     setShowExplanation(false);
     setFeedbackMessage("");
   };
+  const currentQuestion = quizData[currentQuestionIndex];
+
+  // Play sound effect based on answer correctness
 
   // Calculate progress percentage
   const progressPercentage =
@@ -144,6 +78,62 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
 
   // Calculate time percentage for the timer
   const timePercentage = (timeLeft / 30) * 100;
+
+  const handleAnswer = useCallback(() => {
+    const isCorrect = selectedOption === currentQuestion.correctAnswer;
+
+    if (isCorrect) {
+      setScore((prev) => ({ ...prev, correct: prev.correct + 1 }));
+      setFeedbackMessage("Great job! That's correct!");
+    } else {
+      setScore((prev) => ({ ...prev, wrong: prev.wrong + 1 }));
+      setFeedbackMessage("Not quite right. Let's learn why.");
+    }
+    setShowExplanation(true);
+  }, [selectedOption, currentQuestion]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (!quizEnded && !showExplanation) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev > 0) {
+            return prev - 1;
+          } else {
+            clearInterval(timer);
+            handleAnswer();
+            return 0;
+          }
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [timeLeft, quizEnded, showExplanation, handleAnswer]);
+
+  if (!quizData || quizData.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-2xl mx-auto p-8 bg-white rounded-2xl shadow-xl text-center"
+      >
+        <h2 className="text-2xl font-bold mb-4 text-red-600">
+          Error Loading Quiz
+        </h2>
+        <p className="text-lg text-gray-700">
+          No questions available. Please try again.
+        </p>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setQuizStarted(false)}
+          className="mt-6 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-xl hover:from-blue-600 hover:to-purple-700 transition shadow-md"
+        >
+          Go Back
+        </motion.button>
+      </motion.div>
+    );
+  }
 
   // Calculate score percentage
   const scorePercentage =
@@ -321,6 +311,7 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                   url: window.location.href,
                 });
               } catch (err) {
+                console.log(err);
                 alert("Sharing not supported on this browser");
               }
             }}

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { variantProps } from "./feature-card";
+import Image from "next/image";
 
 interface TestimonialCardProps {
   quote: string;
@@ -40,7 +41,9 @@ export default function TestimonialCard({
         <p className="italic text-muted-foreground mb-4">&quot;{quote}&quot;</p>
       </div>
       <div className="flex items-center gap-4">
-        <img
+        <Image
+          height={12}
+          width={100}
           alt={name}
           className="rounded-full h-12 w-12 object-cover border-2 border-primary/10 group-hover:border-primary/20 transition-colors"
           src={avatarSrc || "/placeholder.svg"}
@@ -51,7 +54,9 @@ export default function TestimonialCard({
         </div>
         {company && (
           <div className="ml-auto">
-            <img
+            <Image
+              height={6}
+              width={100}
               alt={company}
               className="h-6 object-contain"
               src={companySrc || "/placeholder.svg"}

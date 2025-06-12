@@ -118,11 +118,3 @@ async def chat_endpoint(request_data: ChatRequest):
     # Routes to appropriate agents
     # Returns AI-generated responses
 ```
-
-## 📝 License
-
-[Your License Here]
-
----
-
-For more information or to contribute, please visit [Your Repository Link]

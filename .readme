@@ -17,7 +17,6 @@ ElevateAI is a sophisticated career development platform that leverages AI agent
 The platform implements a sophisticated multi-agent system using LangGraph, featuring:
 
 1. **Supervisor Agent**
-
    - Analyzes user intent and orchestrates workflow
    - Routes requests to specialized agents
    - Manages conversation state and context
@@ -68,7 +67,6 @@ Uses SQLAlchemy with async support for efficient data management:
 ## 💡 Intelligent Features
 
 ### Document Analysis
-
 ```python
 async def improve_document(input_data: DocumentInput, doc_type: str = "resume"):
     # AI-powered document improvement
@@ -76,7 +74,6 @@ async def improve_document(input_data: DocumentInput, doc_type: str = "resume"):
 ```
 
 ### Career Guidance
-
 ```python
 async def provide_career_advice(input_data: CareerAdviceInput):
     # Personalized career path recommendations
@@ -88,13 +85,11 @@ async def provide_career_advice(input_data: CareerAdviceInput):
 
 1. Clone the repository
 2. Install dependencies:
-
 ```bash
 pip install -r requirements.txt
 ```
 
 3. Set up environment variables:
-
 ```bash
 GEMINI_API_KEY=your_api_key
 TAVILY_API_KEY=your_api_key
@@ -102,7 +97,6 @@ DATABASE_URL=your_db_url
 ```
 
 4. Run the application:
-
 ```bash
 python server/app.py
 ```
@@ -110,7 +104,6 @@ python server/app.py
 ## 🌐 API Endpoints
 
 ### Chat Endpoint
-
 ```python
 @app.post('/api/chat')
 async def chat_endpoint(request_data: ChatRequest):

@@ -16,6 +16,9 @@
 # next.js
 /.next/
 /out/
+#voice bot 
+/app/(main)/voicebot
+/app/api/token
 
 # production
 /build

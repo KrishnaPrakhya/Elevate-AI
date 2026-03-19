@@ -103,18 +103,15 @@ export default function CareerAdvisorChat({
     setIsLoading(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_FLASK_BACKEND_URL;
+      const backendUrl = process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
       if (!backendUrl) {
         throw new Error("FLASK_BACKEND_URL environment variable is not set");
       }
       console.log(backendUrl + "api/chat");
-      const response = await axios.post(
-        (backendUrl + "api/chat") as string,
-        {
-          message: userMessage.content,
-          clerkUserId: userProfile.clerkUserId,
-        }
-      );
+      const response = await axios.post((backendUrl + "api/chat") as string, {
+        message: userMessage.content,
+        clerkUserId: userProfile.clerkUserId,
+      });
       console.log(response);
       if (!response.data) {
         throw new Error("Failed to get response from career advisor");

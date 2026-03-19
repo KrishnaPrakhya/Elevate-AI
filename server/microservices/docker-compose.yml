@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  # -------------------
+  #  CORE SERVICES
+  # -------------------
+  user-service:
+    build: ./services/user-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./services/user-service/app:/app
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db_user:5432/user_db
+    depends_on:
+      - db_user
+
+  document-service:
+    build: ./services/document-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./services/document-service/app:/app
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db_doc:5432/document_db
+    depends_on:
+      - db_doc
+
+  chat-orchestrator:
+    build: ./services/chat-orchestrator
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./services/chat-orchestrator/app:/app
+    ports:
+      - "8000:8000" # This is our main entry point
+    environment:
+      - USER_SERVICE_URL=http://user-service:8000
+      - DOCUMENT_SERVICE_URL=http://document-service:8000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - user-service
+      - document-service
+      - rabbitmq
+
+  agent-worker:
+    build: ./services/agent-worker
+    command: python /app/worker.py # This service doesn't run a web server
+    volumes:
+      - ./services/agent-worker/app:/app
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    depends_on:
+      - rabbitmq
+
+  # -------------------
+  #  INFRASTRUCTURE
+  # -------------------
+  db_user:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_db
+    volumes:
+      - pg_user_data:/var/lib/postgresql/data
+
+  db_doc:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: document_db
+    volumes:
+      - pg_doc_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.9-management-alpine
+    ports:
+      - "5672:5672" # For services to connect
+      - "15672:15672" # For web management UI
+
+volumes:
+  pg_user_data:
+  pg_doc_data:

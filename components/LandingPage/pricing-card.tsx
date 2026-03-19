@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { variantProps } from "./feature-card";
+import Link from "next/link";
 
 interface PricingCardProps {
   title: string;
@@ -13,6 +14,7 @@ interface PricingCardProps {
   description: string;
   features: string[];
   buttonText: string;
+  buttonHref?: string;
   popular?: boolean;
   variants?: variantProps;
 }
@@ -24,6 +26,7 @@ export default function PricingCard({
   description,
   features,
   buttonText,
+  buttonHref = "/sign-up",
   popular = false,
   variants,
 }: PricingCardProps) {
@@ -62,6 +65,7 @@ export default function PricingCard({
         ))}
       </ul>
       <Button
+        asChild
         className={cn(
           "mt-auto group relative overflow-hidden",
           popular
@@ -71,15 +75,17 @@ export default function PricingCard({
         variant={popular ? "default" : "outline"}
         size="lg"
       >
-        <span className="relative z-10">{buttonText}</span>
-        <span
-          className={cn(
-            "absolute inset-0 transition-colors duration-300",
-            popular
-              ? "bg-primary/0 group-hover:bg-primary/10"
-              : "bg-background/0 group-hover:bg-primary/5"
-          )}
-        ></span>
+        <Link href={buttonHref}>
+          <span className="relative z-10">{buttonText}</span>
+          <span
+            className={cn(
+              "absolute inset-0 transition-colors duration-300",
+              popular
+                ? "bg-primary/0 group-hover:bg-primary/10"
+                : "bg-background/0 group-hover:bg-primary/5"
+            )}
+          ></span>
+        </Link>
       </Button>
     </motion.div>
   );

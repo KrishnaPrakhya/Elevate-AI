@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import {
@@ -11,6 +11,8 @@ import {
   StarsIcon,
   BriefcaseBusiness,
   Sparkles,
+  User,
+  LogOut,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -19,11 +21,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./theme-toggle";
 import { checkUser } from "@/lib/checkUser";
 
 async function Header() {
-  await checkUser();
+  const user = await checkUser();
   return (
     <header className="fixed top-0 w-full z-50 backdrop-blur-md border-b border-border/40">
       <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/95 to-background/80"></div>
@@ -196,16 +199,40 @@ async function Header() {
           </SignedOut>
 
           <SignedIn>
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-9 h-9 border-2 border-primary/20",
-                  userButtonPopoverCard: "shadow-lg",
-                  userPreviewMainIdentifier: "font-semibold",
-                },
-              }}
-              afterSignOutUrl="/"
-            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <div className="cursor-pointer">
+                  <Avatar className="h-9 w-9 border-2 border-primary/20">
+                    <AvatarImage src={user?.imageUrl || ""} alt={user?.name || ""} />
+                    <AvatarFallback>
+                      <User className="h-4 w-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 shadow-lg">
+                <DropdownMenuItem className="flex flex-col items-start gap-1 p-2">
+                  <span className="font-semibold text-sm">{user?.name}</span>
+                  <span className="text-xs text-muted-foreground truncate w-full">{user?.email}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/profile" className="flex items-center gap-2 cursor-pointer w-full">
+                    <User className="h-4 w-4" />
+                    <span>Profile Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <SignOutButton redirectUrl="/">
+                    <button className="flex items-center w-full gap-2 cursor-pointer text-destructive">
+                      <LogOut className="h-4 w-4" />
+                      <span>Log out</span>
+                    </button>
+                  </SignOutButton>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SignedIn>
         </div>
       </div>

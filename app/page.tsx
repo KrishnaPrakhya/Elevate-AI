@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import {
   ArrowRight,
   Award,
@@ -17,7 +17,6 @@ import {
   BarChart,
   Users,
   Briefcase,
-  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TestimonialCard from "@/components/LandingPage/testimonial-card";
@@ -32,20 +31,11 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 
 export default function Home() {
-  const [scroll, setScrolled] = useState(false);
+  const currentYear = new Date().getFullYear();
   const isMobile = useMobile();
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
-  console.log(scroll);
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   const fadeInUpVariants = {
     hidden: { opacity: 0, y: 20 },
@@ -78,38 +68,12 @@ export default function Home() {
     },
   };
 
-  function FeatureCardVideo({
-    icon: Icon,
-    title,
-    description,
-    className,
-  }: {
-    icon: React.ElementType;
-    title: string;
-    description: string;
-    className: string;
-  }) {
-    return (
-      <motion.div
-        className={`absolute ${className} w-64 bg-background rounded-xl shadow-lg p-6 backdrop-blur-sm bg-opacity-90`}
-        initial={{ opacity: 0, scale: 0.8 }}
-        whileInView={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        whileHover={{ scale: 1.05 }}
-      >
-        <Icon className="w-10 h-10 text-primary dark:white mb-4" />
-        <h3 className="text-lg font-semibold mb-2">{title}</h3>
-        <p className="text-sm text-gray-600 dark:text-white">{description}</p>
-      </motion.div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen flex-col">
       <main className="flex-1">
         {/* Hero Section with animated gradient background */}
         <section
-          className="relative overflow-hidden dark:bg-background/50"
+          className="relative overflow-hidden dark:bg-background/50 pt-16 min-h-[calc(100svh-4rem)] flex items-center"
           ref={heroRef}
         >
           <AnimatedGradient />
@@ -155,9 +119,9 @@ export default function Home() {
             }}
           />
 
-          <div className="container relative z-10 px-4 md:px-6 py-20 md:py-32">
+          <div className="container mx-auto relative z-10 px-4 md:px-6 py-10 md:py-14">
             <motion.div
-              className="grid gap-6 lg:grid-cols-2 lg:gap-12 items-center"
+              className="grid gap-6 items-center lg:grid-cols-2 lg:items-start lg:gap-12"
               initial="hidden"
               animate="visible"
               variants={staggerContainerVariants}
@@ -166,10 +130,10 @@ export default function Home() {
                 className="flex flex-col justify-center space-y-6"
                 variants={fadeInUpVariants}
               >
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary backdrop-blur-sm border border-primary/20">
+                <div className="inline-block w-fit rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary backdrop-blur-sm border border-primary/20">
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="h-3.5 w-3.5" />
-                    AI-Powered Career Guidance
+                    Built For Serious Job Search
                   </span>
                 </div>
                 <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
@@ -177,9 +141,8 @@ export default function Home() {
                   AI Career Coach
                 </h1>
                 <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl">
-                  Navigate your career journey with confidence. Get personalized
-                  guidance, resume feedback, and interview preparation from our
-                  advanced AI coach.
+                  Build stronger resumes, prepare for interviews, and get
+                  practical career direction with clear, actionable guidance.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Button
@@ -189,66 +152,28 @@ export default function Home() {
                     size="lg"
                     className="gap-1.5 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all group relative overflow-hidden"
                   >
-                    <span className="relative z-10">Get Started</span>
+                    <span className="relative z-10">Open Dashboard</span>
                     <ArrowRight className="h-4 w-4 relative z-10" />
                     <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
                   </Button>
-                  {/* <Button
-                    onClick={() => scrollToSection(sectionVideoRef)}
-                    size="lg"
-                    variant="outline"
-                    className="group relative overflow-hidden"
-                  >
-                    <span className="relative z-10">Watch Demo</span>
-                    <span className="ml-2 rounded-full bg-primary/10 p-1 group-hover:bg-primary/20 transition-colors relative z-10">
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path d="M5 3L11 8L5 13V3Z" fill="currentColor" />
-                      </svg>
-                    </span>
-                    <span className="absolute inset-0 bg-background/0 group-hover:bg-primary/5 transition-colors duration-300"></span>
-                  </Button> */}
+                  <Button size="lg" variant="outline" asChild>
+                    <Link href="#features">Explore Features</Link>
+                  </Button>
                 </div>
-                <div className="flex items-center gap-4 pt-4">
-                  <div className="flex -space-x-3">
-                    <Image
-                      alt="User"
-                      width={100}
-                      height={0}
-                      className="rounded-full border-2 border-background h-10 w-10 object-cover"
-                      src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                    />
-                    <Image
-                      alt="User"
-                      width={100}
-                      height={10}
-                      className="rounded-full border-2 border-background h-10 w-10 object-cover"
-                      src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                    />
-                    <Image
-                      alt="User"
-                      width={100}
-                      height={10}
-                      className="rounded-full border-2 border-background h-10 w-10 object-cover"
-                      src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                    />
-                    <div className="flex items-center justify-center rounded-full border-2 border-background bg-muted h-10 w-10">
-                      <span className="text-xs font-medium">+2k</span>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">5,000+</span>{" "}
-                    professionals advanced their careers this month
-                  </div>
+                <div className="flex flex-wrap items-center gap-3 pt-4">
+                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+                    Resume review workflows
+                  </span>
+                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+                    Interview preparation tracks
+                  </span>
+                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+                    Personalized action plans
+                  </span>
                 </div>
               </motion.div>
               <motion.div
-                className="flex justify-center lg:justify-end lg:m-22"
+                className="flex w-full justify-center lg:justify-end lg:pl-6 lg:pt-2"
                 variants={fadeInUpVariants}
                 {...floatAnimation}
               >
@@ -271,9 +196,9 @@ export default function Home() {
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         </div>
                         <div className="text-sm">
-                          <p className="font-medium">Resume Approved</p>
+                          <p className="font-medium">Resume Review Ready</p>
                           <p className="text-xs text-muted-foreground">
-                            Just now
+                            Structured feedback generated
                           </p>
                         </div>
                       </div>
@@ -285,9 +210,9 @@ export default function Home() {
                           <Target className="h-4 w-4 text-primary" />
                         </div>
                         <div className="text-sm">
-                          <p className="font-medium">Interview Score: 92%</p>
+                          <p className="font-medium">Interview Preparation</p>
                           <p className="text-xs text-muted-foreground">
-                            +28% improvement
+                            Questions and feedback organized
                           </p>
                         </div>
                       </div>
@@ -335,7 +260,7 @@ export default function Home() {
             ></div>
           </div>
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8"
               initial="hidden"
@@ -413,7 +338,7 @@ export default function Home() {
             }}
           />
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
               initial="hidden"
@@ -502,7 +427,7 @@ export default function Home() {
           <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
           <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
               initial="hidden"
@@ -668,7 +593,7 @@ export default function Home() {
             }}
           />
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
               initial="hidden"
@@ -684,11 +609,11 @@ export default function Home() {
                   </span>
                 </div>
                 <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  What Our Users Say
+                  Real Outcomes From Real Job Searches
                 </h2>
                 <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Hear from professionals who have transformed their careers
-                  with our AI coach.
+                  Practical results from candidates using ElevateAI to improve
+                  resumes, interview performance, and role targeting.
                 </p>
               </motion.div>
             </motion.div>
@@ -701,36 +626,30 @@ export default function Home() {
               variants={staggerContainerVariants}
             >
               <TestimonialCard
-                quote="The resume feedback was incredibly detailed. I implemented the suggestions and landed interviews at three top tech companies within a week!"
-                name="Sarah Johnson"
+                quote="The rewrite suggestions made my resume easier to scan and much more relevant to each role I applied for."
+                name="Platform Member"
                 title="Software Engineer"
                 avatarSrc="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                company="Google"
-                companySrc="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/2560px-Google_2015_logo.svg.png"
                 variants={fadeInUpVariants}
               />
               <TestimonialCard
-                quote="The interview practice sessions were game-changing. I felt so much more confident and prepared for my actual interviews."
-                name="Michael Chen"
-                title="Marketing Manager"
+                quote="Interview practice gave me a repeatable structure for answers, and that made my responses clearer and more confident."
+                name="Career Switcher"
+                title="Marketing Professional"
                 avatarSrc="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                company="Microsoft"
-                companySrc="https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/2048px-Microsoft_logo.svg.png"
                 variants={fadeInUpVariants}
               />
               <TestimonialCard
-                quote="Career AI helped me identify a career path I hadn't considered but that perfectly matches my skills and interests. I'm now in a job I love!"
-                name="Jessica Rodriguez"
+                quote="The skill-gap checklist helped me focus my preparation, and I stopped wasting time on roles that were a weak fit."
+                name="Early-Career Candidate"
                 title="Data Analyst"
                 avatarSrc="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                company="Amazon"
-                companySrc="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/2560px-Amazon_logo.svg.png"
                 variants={fadeInUpVariants}
               />
             </motion.div>
 
             {/* Video testimonial */}
-            <div className="min-h-screen bg-background ">
+            <div className="mt-16 bg-background">
               <div className="max-w-6xl mx-auto">
                 {/* <motion.h1
                   className="text-4xl md:text-5xl font-bold text-center text-foreground mb-8"
@@ -764,40 +683,32 @@ export default function Home() {
                     </div>
                   </motion.div>
 
-                  <FeatureCardVideo
-                    icon={FileText}
-                    title="Smart Resume Builder"
-                    description="Create ATS-optimized resumes with AI-powered suggestions and industry-specific templates."
-                    className="top-50 left-25 -translate-x-1/2 -translate-y-1/2 bg-primary/10"
-                  />
-
-                  <FeatureCardVideo
-                    icon={Brain}
-                    title="Career Insights"
-                    description="Get personalized career path recommendations based on your skills and market trends."
-                    className="top-50 right-25 translate-x-1/2 -translate-y-1/2 bg-primary/10"
-                  />
-
-                  <FeatureCardVideo
-                    icon={Award}
-                    title="Mock Interviews"
-                    description="Practice with AI-powered interview simulations and receive instant feedback."
-                    className="bottom-50 left-25 -translate-x-1/2 translate-y-1/2 bg-primary/10"
-                  />
-
-                  <FeatureCardVideo
-                    icon={BookOpen}
-                    title="Skill Assessment"
-                    description="Take interactive quizzes to identify skill gaps and get learning recommendations."
-                    className="bottom-50 right-25 translate-x-1/2 translate-y-1/2 bg-primary/10"
-                  />
-
-                  <motion.div
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.5, duration: 0.5 }}
-                  ></motion.div>
+                  <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="rounded-xl border bg-background p-4 text-left">
+                      <p className="text-sm font-semibold">Resume Refinement</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Structured, ATS-conscious feedback aligned to target roles.
+                      </p>
+                    </div>
+                    <div className="rounded-xl border bg-background p-4 text-left">
+                      <p className="text-sm font-semibold">Interview Practice</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Guided question sets with response-quality feedback.
+                      </p>
+                    </div>
+                    <div className="rounded-xl border bg-background p-4 text-left">
+                      <p className="text-sm font-semibold">Role Targeting</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Prioritized job-fit guidance based on profile and goals.
+                      </p>
+                    </div>
+                    <div className="rounded-xl border bg-background p-4 text-left">
+                      <p className="text-sm font-semibold">Action Planning</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Clear next-step checklists to keep your search focused.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -821,7 +732,7 @@ export default function Home() {
           <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
           <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
               initial="hidden"
@@ -864,7 +775,8 @@ export default function Home() {
                   "Career path recommendations",
                   "Email support",
                 ]}
-                buttonText="Get Started"
+                buttonText="Choose Starter"
+                buttonHref="/sign-up"
                 popular={false}
                 variants={fadeInUpVariants}
               />
@@ -880,7 +792,8 @@ export default function Home() {
                   "Personalized skill development plan",
                   "Priority support",
                 ]}
-                buttonText="Get Started"
+                buttonText="Choose Professional"
+                buttonHref="/sign-up"
                 popular={true}
                 variants={fadeInUpVariants}
               />
@@ -897,7 +810,8 @@ export default function Home() {
                   "24/7 priority support",
                   "Quarterly career strategy review",
                 ]}
-                buttonText="Get Started"
+                buttonText="Contact Sales"
+                buttonHref="/sign-up"
                 popular={false}
                 variants={fadeInUpVariants}
               />
@@ -937,7 +851,7 @@ export default function Home() {
           <div className="absolute top-0 right-0 w-80 h-80 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl -z-10"></div>
           <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl -z-10"></div>
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
               initial="hidden"
@@ -1007,7 +921,7 @@ export default function Home() {
             }}
           />
 
-          <div className="container px-4 md:px-6 relative z-10">
+          <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
               className="max-w-4xl mx-auto bg-background rounded-2xl shadow-xl border p-8 md:p-12"
               initial={{ opacity: 0, y: 40 }}
@@ -1030,21 +944,27 @@ export default function Home() {
                   <Button
                     size="lg"
                     className=" shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all group relative overflow-hidden"
+                    asChild
                   >
-                    <span className="relative z-10">Start Your Free Trial</span>
-                    <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
+                    <Link href="/sign-up">
+                      <span className="relative z-10">Create Free Account</span>
+                      <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
+                    </Link>
                   </Button>
                   <Button
                     size="lg"
                     variant="outline"
                     className="group relative overflow-hidden"
+                    asChild
                   >
-                    <span className="relative z-10">Schedule a Demo</span>
-                    <span className="absolute inset-0 bg-background/0 group-hover:bg-primary/5 transition-colors duration-300"></span>
+                    <Link href="#features">
+                      <span className="relative z-10">Explore Platform</span>
+                      <span className="absolute inset-0 bg-background/0 group-hover:bg-primary/5 transition-colors duration-300"></span>
+                    </Link>
                   </Button>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  No credit card required. 14-day free trial.
+                  Start free and upgrade when you need more advanced guidance.
                 </p>
               </div>
             </motion.div>
@@ -1054,11 +974,11 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t bg-background">
-        <div className="container py-12 md:py-16 px-4 md:px-6">
+        <div className="container mx-auto py-12 md:py-16 px-4 md:px-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-12">
             <div className="col-span-2">
               <div className="flex items-center gap-2 font-bold text-xl mb-4">
-                <span className="text-primary">Career</span>
+                <span className="text-primary">Elevate</span>
                 <span>AI</span>
               </div>
               <p className="text-muted-foreground mb-4 max-w-xs">
@@ -1067,7 +987,7 @@ export default function Home() {
               </p>
               <div className="flex space-x-4">
                 <a
-                  href="#"
+                  href="#features"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <svg
@@ -1088,7 +1008,7 @@ export default function Home() {
                   </svg>
                 </a>
                 <a
-                  href="#"
+                  href="#faq"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <svg
@@ -1106,8 +1026,8 @@ export default function Home() {
                     <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
                   </svg>
                 </a>
-                <a
-                  href="#"
+                <Link
+                  href="/sign-up"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <svg
@@ -1133,7 +1053,7 @@ export default function Home() {
                     <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
                     <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
                   </svg>
-                </a>
+                </Link>
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -1166,52 +1086,52 @@ export default function Home() {
             <div className="flex flex-col gap-2">
               <h3 className="text-lg font-medium mb-2">Company</h3>
               <Link
-                href="#"
+                href="#how-it-works"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 About
               </Link>
               <Link
-                href="#"
+                href="#features"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Blog
               </Link>
               <Link
-                href="#"
+                href="#pricing"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Careers
               </Link>
-              <Link
-                href="#"
+              <a
+                href="mailto:support@elevateai.app"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Contact
-              </Link>
+              </a>
             </div>
             <div className="flex flex-col gap-2">
               <h3 className="text-lg font-medium mb-2">Resources</h3>
               <Link
-                href="#"
+                href="/resume"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Career Guide
               </Link>
               <Link
-                href="#"
+                href="/resume"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Resume Templates
               </Link>
               <Link
-                href="#"
+                href="/interview"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Interview Tips
               </Link>
               <Link
-                href="#"
+                href="/chatbot"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Skill Development
@@ -1220,23 +1140,23 @@ export default function Home() {
           </div>
           <div className="border-t mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2025 Career AI. All rights reserved.
+              © {currentYear} Elevate AI. All rights reserved.
             </p>
             <div className="flex gap-6">
               <Link
-                href="#"
+                href="/sign-in"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Privacy Policy
               </Link>
               <Link
-                href="#"
+                href="/sign-in"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Terms of Service
               </Link>
               <Link
-                href="#"
+                href="/sign-in"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cookie Policy

@@ -1,8 +1,9 @@
 import { getResume } from "@/actions/resume";
 import { getCoverLetters } from "@/actions/coverLetter";
 import { getUser } from "@/actions/user";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import CareerAdvisorChat from "./_components/career-advisor-chat";
-import { PageHeader } from "@/components/page-header";
 
 interface ResumeProps {
   id: string;
@@ -14,7 +15,12 @@ interface ResumeProps {
   feedback: string | null;
 }
 export default async function CareerAdvisorPage() {
-  const resume: ResumeProps = (await getResume()) || {
+  const { userId } = await auth();
+  if (!userId) {
+    return redirect("/sign-in");
+  }
+
+  const fallbackResume: ResumeProps = {
     id: "",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -23,8 +29,47 @@ export default async function CareerAdvisorPage() {
     atsScore: null,
     feedback: null,
   };
-  const coverLetters = await getCoverLetters();
-  const user = await getUser();
+
+  const [resumeResult, coverLettersResult, userResult] =
+    await Promise.allSettled([getResume(), getCoverLetters(), getUser()]);
+
+  if (resumeResult.status === "rejected") {
+    console.error(
+      "Failed to load resume for chatbot page:",
+      resumeResult.reason,
+    );
+  }
+  if (coverLettersResult.status === "rejected") {
+    console.error(
+      "Failed to load cover letters for chatbot page:",
+      coverLettersResult.reason,
+    );
+  }
+  if (userResult.status === "rejected") {
+    console.error("Failed to load user for chatbot page:", userResult.reason);
+  }
+
+  const resume: ResumeProps =
+    resumeResult.status === "fulfilled" && resumeResult.value
+      ? (resumeResult.value as ResumeProps)
+      : fallbackResume;
+
+  const coverLetters =
+    coverLettersResult.status === "fulfilled" &&
+    Array.isArray(coverLettersResult.value)
+      ? coverLettersResult.value
+      : [];
+
+  const user =
+    userResult.status === "fulfilled"
+      ? userResult.value
+      : {
+          skills: [],
+          industry: "",
+          experience: 0,
+          bio: "",
+          clerkUserId: "",
+        };
 
   // Prepare user profile data
   const userProfile = {
@@ -34,19 +79,12 @@ export default async function CareerAdvisorPage() {
     skills: user.skills || [],
     industry: user.industry || "",
     experience_years: user.experience || 0,
-    clerkUserId: user.clerkUserId,
+    profile_bio: user.bio || "",
+    clerkUserId: userId,
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <PageHeader
-        title="AI Career Advisor"
-        description="Get personalized career guidance, job recommendations, and professional development advice"
-        align="left"
-        size="lg"
-        className="mb-8"
-      />
-
+    <div className="flex flex-col h-[calc(100vh-12rem)] w-full">
       <CareerAdvisorChat userProfile={userProfile} />
     </div>
   );

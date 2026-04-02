@@ -1,0 +1,34 @@
+/ai-career-chatbot/
+├── docker-compose.yml
+├── .env
+│
+├── services/
+│   ├── user-service/
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── models.py
+│   │   │   └── database.py
+│   │   └── Dockerfile
+│   │
+│   ├── document-service/
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   └── models.py
+│   │   └── Dockerfile
+│   │
+│   ├── chat-orchestrator/
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── langgraph_logic.py
+│   │   │   ├── service_clients.py
+│   │   │   └── message_queue.py
+│   │   └── Dockerfile
+│   │
+│   └── agent-worker/
+│       ├── app/
+│       │   ├── worker.py
+│       │   ├── agent_functions.py
+│       │   └── message_queue.py
+│       └── Dockerfile
+│
+└── (shared-requirements.txt)  # Optional: for common dependencies

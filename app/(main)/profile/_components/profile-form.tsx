@@ -5,7 +5,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,9 +23,16 @@ import { toast } from "sonner";
 
 // Adapted simple profile schema. We omit separated industry/subIndustry since it was flattened
 const profileSchema = z.object({
-  industry: z.string({ required_error: "Please enter your industry focus" }).min(2, "Industry must be at least 2 characters"),
-  experience: z.preprocess((val) => Number.parseInt(String(val), 10), 
-              z.number().min(0, "Experience cannot be negative").max(50, "Experience cannot exceed 50 years")),
+  industry: z
+    .string({ required_error: "Please enter your industry focus" })
+    .min(2, "Industry must be at least 2 characters"),
+  experience: z.preprocess(
+    (val) => Number.parseInt(String(val), 10),
+    z
+      .number()
+      .min(0, "Experience cannot be negative")
+      .max(50, "Experience cannot exceed 50 years"),
+  ),
   bio: z.string().max(500).optional(),
   skills: z.string().transform((val) =>
     val
@@ -27,7 +40,7 @@ const profileSchema = z.object({
           .split(",")
           .map((skill) => skill.trim())
           .filter(Boolean)
-      : undefined
+      : undefined,
   ),
 });
 
@@ -94,17 +107,19 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
             Edit Profile
           </CardTitle>
           <CardDescription>
-            Update your core details so Elevate AI can provide better personalized advice.
+            Update your core details so Elevate AI can provide better
+            personalized advice.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            
             <div className="space-y-4">
               {/* Industry Text Input (Simpler alternative to dropdown to allow maintaining flattened values, or could just accept text) */}
               <div className="space-y-2">
-                <Label htmlFor="industry" className="text-sm font-semibold">Specialized Industry</Label>
+                <Label htmlFor="industry" className="text-sm font-semibold">
+                  Specialized Industry
+                </Label>
                 <Input
                   id="industry"
                   placeholder="e.g. tech-software-development"
@@ -112,15 +127,20 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                   className="bg-background"
                 />
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  Changing your industry might prompt AI cache regeneration for new market insights.
+                  Changing your industry might prompt AI cache regeneration for
+                  new market insights.
                 </p>
                 {errors.industry && (
-                  <p className="text-sm text-destructive">{errors.industry.message as React.ReactNode}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.industry.message as React.ReactNode}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="experience" className="text-sm font-semibold">Years of Experience</Label>
+                <Label htmlFor="experience" className="text-sm font-semibold">
+                  Years of Experience
+                </Label>
                 <Input
                   id="experience"
                   type="number"
@@ -131,12 +151,16 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                   className="bg-background"
                 />
                 {errors.experience && (
-                  <p className="text-sm text-destructive">{errors.experience.message as React.ReactNode}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.experience.message as React.ReactNode}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="skills" className="text-sm font-semibold">Core Skills</Label>
+                <Label htmlFor="skills" className="text-sm font-semibold">
+                  Core Skills
+                </Label>
                 <Input
                   id="skills"
                   placeholder="e.g. Python, React, System Design"
@@ -147,12 +171,16 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                   Separate each skill with a comma
                 </p>
                 {errors.skills && (
-                  <p className="text-sm text-destructive">{errors.skills.message as React.ReactNode}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.skills.message as React.ReactNode}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio" className="text-sm font-semibold">Professional Bio</Label>
+                <Label htmlFor="bio" className="text-sm font-semibold">
+                  Professional Bio
+                </Label>
                 <Textarea
                   id="bio"
                   placeholder="Tell us a little bit about your background and goals..."
@@ -160,12 +188,18 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                   {...register("bio")}
                 />
                 {errors.bio && (
-                  <p className="text-sm text-destructive">{errors.bio.message as React.ReactNode}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.bio.message as React.ReactNode}
+                  </p>
                 )}
               </div>
             </div>
 
-            <Button type="submit" disabled={updateLoading} className="w-full sm:w-auto">
+            <Button
+              type="submit"
+              disabled={updateLoading}
+              className="w-full sm:w-auto"
+            >
               {updateLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -193,19 +227,26 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                 <Briefcase className="h-3 w-3" />
                 Industry Focus
               </h4>
-              <p>Keep your industry aligned with your true target roles to get the best tailored insights and job matches.</p>
+              <p>
+                Keep your industry aligned with your true target roles to get
+                the best tailored insights and job matches.
+              </p>
             </div>
             <div className="space-y-2">
               <h4 className="font-semibold text-foreground flex items-center gap-2">
                 <FileText className="h-3 w-3" />
                 Your Bio
               </h4>
-              <p>Detailed bios help the Career Advisor pre-fill your career roadmap objectives automatically.</p>
+              <p>
+                Detailed bios help the Career Advisor pre-fill your career
+                roadmap objectives automatically.
+              </p>
             </div>
             <div className="space-y-2">
               <h4 className="font-semibold text-foreground">Account Info</h4>
               <p>
-                 Email and name are currently managed through your Clerk account settings.
+                Email and name are currently managed through your Clerk account
+                settings.
               </p>
             </div>
           </CardContent>

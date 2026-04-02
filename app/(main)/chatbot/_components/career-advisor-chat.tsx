@@ -5,11 +5,7 @@ import axios from "axios";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,7 +63,7 @@ export default function CareerAdvisorChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "plan" | "profile">(
-    "chat"
+    "chat",
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +102,7 @@ export default function CareerAdvisorChat({
         process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
       if (!backendUrl) {
         throw new Error(
-          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set"
+          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set",
         );
       }
       const baseUrl = backendUrl.endsWith("/")
@@ -150,14 +146,14 @@ export default function CareerAdvisorChat({
       if (
         data.response.toLowerCase().includes("job") &&
         categoryKeywords.job.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "job";
       } else if (
         data.response.toLowerCase().includes("plan") &&
         categoryKeywords.plan.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "schedule";
@@ -165,7 +161,7 @@ export default function CareerAdvisorChat({
         (data.response.toLowerCase().includes("resume") ||
           data.response.toLowerCase().includes("profile")) &&
         categoryKeywords.analysis.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "analysis";
@@ -326,7 +322,7 @@ export default function CareerAdvisorChat({
                     key={message.id}
                     className={cn(
                       "flex max-w-[92%] gap-3 md:max-w-[85%]",
-                      message.role === "user" ? "ml-auto" : "mr-auto"
+                      message.role === "user" ? "ml-auto" : "mr-auto",
                     )}
                   >
                     {message.role === "assistant" && (
@@ -343,7 +339,7 @@ export default function CareerAdvisorChat({
                           "rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed shadow-sm",
                           message.role === "user"
                             ? "bg-primary text-primary-foreground"
-                            : "border border-border/70 bg-muted/65"
+                            : "border border-border/70 bg-muted/65",
                         )}
                       >
                         {message.role === "assistant" ? (
@@ -426,7 +422,7 @@ export default function CareerAdvisorChat({
                                 hour: "2-digit",
                                 minute: "2-digit",
                                 hour12: true,
-                              }
+                              },
                             )}
                           </span>
                         </div>
@@ -440,7 +436,7 @@ export default function CareerAdvisorChat({
                               hour: "2-digit",
                               minute: "2-digit",
                               hour12: true,
-                            }
+                            },
                           )}
                         </span>
                       )}

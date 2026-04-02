@@ -2,9 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  CardContent,
-} from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -90,7 +88,7 @@ export default function CareerPlanGenerator({
         process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
       if (!backendUrl) {
         throw new Error(
-          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set"
+          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set",
         );
       }
       const baseUrl = backendUrl.endsWith("/")
@@ -214,7 +212,11 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                 <p className="text-sm font-medium">Profile Signals</p>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="hasResume" checked={!!userProfile.resume_content} disabled />
+                    <Checkbox
+                      id="hasResume"
+                      checked={!!userProfile.resume_content}
+                      disabled
+                    />
                     <Label htmlFor="hasResume" className="text-sm font-normal">
                       Resume available
                     </Label>
@@ -225,7 +227,10 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                       checked={!!userProfile.cover_letter_content}
                       disabled
                     />
-                    <Label htmlFor="hasCoverLetter" className="text-sm font-normal">
+                    <Label
+                      htmlFor="hasCoverLetter"
+                      className="text-sm font-normal"
+                    >
                       Cover letter available
                     </Label>
                   </div>
@@ -264,7 +269,11 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                   Practical
                 </Badge>
                 {plan && (
-                  <Button size="sm" variant="outline" onClick={() => setPlan(null)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPlan(null)}
+                  >
                     Regenerate
                   </Button>
                 )}
@@ -278,7 +287,9 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                     <p className="text-sm font-medium">What you will get</p>
                     <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                       <li>Week-by-week milestones with realistic workload</li>
-                      <li>Projects mapped to your target role and skill gaps</li>
+                      <li>
+                        Projects mapped to your target role and skill gaps
+                      </li>
                       <li>Interview prep cadence and application strategy</li>
                       <li>Measurable KPIs and weekly accountability checks</li>
                     </ul>
@@ -304,8 +315,12 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                           rel="noopener noreferrer"
                         />
                       ),
-                      ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-6" />,
-                      ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-6" />,
+                      ul: ({ ...props }) => (
+                        <ul {...props} className="my-2 list-disc pl-6" />
+                      ),
+                      ol: ({ ...props }) => (
+                        <ol {...props} className="my-2 list-decimal pl-6" />
+                      ),
                       li: ({ ...props }) => <li {...props} className="my-1" />,
                       table: ({ ...props }) => (
                         <div className="my-3 overflow-x-auto rounded-lg border border-border/70">
@@ -313,9 +328,17 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                         </div>
                       ),
                       th: ({ ...props }) => (
-                        <th {...props} className="bg-muted px-3 py-2 text-left font-semibold" />
+                        <th
+                          {...props}
+                          className="bg-muted px-3 py-2 text-left font-semibold"
+                        />
                       ),
-                      td: ({ ...props }) => <td {...props} className="border-t px-3 py-2 align-top" />,
+                      td: ({ ...props }) => (
+                        <td
+                          {...props}
+                          className="border-t px-3 py-2 align-top"
+                        />
+                      ),
                     }}
                   >
                     {plan}

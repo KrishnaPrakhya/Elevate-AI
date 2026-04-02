@@ -28,33 +28,37 @@ export default async function CareerAdvisorPage() {
     content: "",
     atsScore: null,
     feedback: null,
-  }
+  };
 
-  const [resumeResult, coverLettersResult, userResult] = await Promise.allSettled([
-    getResume(),
-    getCoverLetters(),
-    getUser(),
-  ])
+  const [resumeResult, coverLettersResult, userResult] =
+    await Promise.allSettled([getResume(), getCoverLetters(), getUser()]);
 
   if (resumeResult.status === "rejected") {
-    console.error("Failed to load resume for chatbot page:", resumeResult.reason)
+    console.error(
+      "Failed to load resume for chatbot page:",
+      resumeResult.reason,
+    );
   }
   if (coverLettersResult.status === "rejected") {
-    console.error("Failed to load cover letters for chatbot page:", coverLettersResult.reason)
+    console.error(
+      "Failed to load cover letters for chatbot page:",
+      coverLettersResult.reason,
+    );
   }
   if (userResult.status === "rejected") {
-    console.error("Failed to load user for chatbot page:", userResult.reason)
+    console.error("Failed to load user for chatbot page:", userResult.reason);
   }
 
   const resume: ResumeProps =
     resumeResult.status === "fulfilled" && resumeResult.value
       ? (resumeResult.value as ResumeProps)
-      : fallbackResume
+      : fallbackResume;
 
   const coverLetters =
-    coverLettersResult.status === "fulfilled" && Array.isArray(coverLettersResult.value)
+    coverLettersResult.status === "fulfilled" &&
+    Array.isArray(coverLettersResult.value)
       ? coverLettersResult.value
-      : []
+      : [];
 
   const user =
     userResult.status === "fulfilled"
@@ -65,7 +69,7 @@ export default async function CareerAdvisorPage() {
           experience: 0,
           bio: "",
           clerkUserId: "",
-        }
+        };
 
   // Prepare user profile data
   const userProfile = {

@@ -1,6 +1,8 @@
 import { getResume } from "@/actions/resume";
 import { getCoverLetters } from "@/actions/coverLetter";
 import { getUser } from "@/actions/user";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import CareerAdvisorChat from "./_components/career-advisor-chat";
 import { PageHeader } from "@/components/page-header";
 
@@ -14,6 +16,11 @@ interface ResumeProps {
   feedback: string | null;
 }
 export default async function CareerAdvisorPage() {
+  const { userId } = await auth();
+  if (!userId) {
+    return redirect("/sign-in");
+  }
+
   const fallbackResume: ResumeProps = {
     id: "",
     createdAt: new Date(),
@@ -68,7 +75,8 @@ export default async function CareerAdvisorPage() {
     skills: user.skills || [],
     industry: user.industry || "",
     experience_years: user.experience || 0,
-    clerkUserId: user.clerkUserId,
+    profile_bio: user.bio || "",
+    clerkUserId: userId,
   };
 
   return (

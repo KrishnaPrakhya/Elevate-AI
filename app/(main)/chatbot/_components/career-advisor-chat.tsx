@@ -50,6 +50,7 @@ interface CareerAdvisorChatProps {
     skills: string[];
     industry: string;
     experience_years: number;
+    profile_bio: string;
     clerkUserId: string;
   };
 }
@@ -103,12 +104,19 @@ export default function CareerAdvisorChat({
     setIsLoading(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
+      const backendUrl =
+        process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
       if (!backendUrl) {
-        throw new Error("FLASK_BACKEND_URL environment variable is not set");
+        throw new Error(
+          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set"
+        );
       }
-      console.log(backendUrl + "api/chat");
-      const response = await axios.post((backendUrl + "api/chat") as string, {
+      const baseUrl = backendUrl.endsWith("/")
+        ? backendUrl.slice(0, -1)
+        : backendUrl;
+
+      const response = await axios.post(`${baseUrl}/api/chat`, {
         message: userMessage.content,
         clerkUserId: userProfile.clerkUserId,
       });
@@ -242,7 +250,7 @@ export default function CareerAdvisorChat({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-6xl mx-auto">
+    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[560px] max-w-6xl flex-col">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {activeView !== "chat" && (
@@ -312,7 +320,7 @@ export default function CareerAdvisorChat({
 
       {/* Chat View */}
       {activeView === "chat" && (
-        <Card className="flex-1 flex flex-col">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm">
           <CardHeader className="pb-2 border-b">
             <div className="flex items-center gap-3">
               <Avatar className="h-10 w-10 bg-primary/10">
@@ -327,14 +335,14 @@ export default function CareerAdvisorChat({
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-hidden p-0">
-            <ScrollArea className="h-[calc(100%-8rem)] px-4">
-              <div className="space-y-4 py-4">
+          <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+            <ScrollArea className="h-full">
+              <div className="space-y-4 px-4 py-5 md:px-6">
                 {messages.map((message) => (
                   <div
                     key={message.id}
                     className={cn(
-                      "flex gap-3 max-w-[85%]",
+                      "flex max-w-[92%] gap-3 md:max-w-[85%]",
                       message.role === "user" ? "ml-auto" : "mr-auto"
                     )}
                   >
@@ -349,20 +357,20 @@ export default function CareerAdvisorChat({
                     <div className="flex flex-col gap-1">
                       <div
                         className={cn(
-                          "rounded-lg p-3",
+                          "rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed shadow-sm",
                           message.role === "user"
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted"
+                            : "border border-border/70 bg-muted/65"
                         )}
                       >
                         {message.role === "assistant" ? (
                           <ReactMarkdown
-                            className="prose dark:prose-invert prose-sm max-w-none"
+                            className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-headings:mt-3 prose-headings:mb-2 prose-ul:my-2 prose-ol:my-2"
                             components={{
                               a: ({ ...props }) => (
                                 <a
                                   {...props}
-                                  className="text-primary hover:underline"
+                                  className="font-medium text-primary underline-offset-4 hover:underline"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 />
@@ -466,13 +474,13 @@ export default function CareerAdvisorChat({
                 ))}
 
                 {isLoading && (
-                  <div className="flex gap-3 max-w-[85%] mr-auto">
+                  <div className="mr-auto flex max-w-[85%] gap-3">
                     <Avatar className="h-8 w-8 mt-1">
                       <AvatarFallback className="bg-primary/10 text-primary">
                         <Bot className="h-5 w-5" />
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex items-center gap-2 rounded-lg p-3 bg-muted">
+                    <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-muted/65 px-4 py-3">
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       <span className="text-sm">Thinking...</span>
                     </div>
@@ -484,7 +492,7 @@ export default function CareerAdvisorChat({
             </ScrollArea>
           </CardContent>
 
-          <CardFooter className="border-t p-4 flex flex-col gap-3">
+          <CardFooter className="flex flex-col gap-3 border-t bg-card/60 p-4 backdrop-blur-sm">
             <div className="flex flex-wrap gap-2 w-full">
               {suggestedQuestions.map((question, index) => (
                 <Button
@@ -535,10 +543,9 @@ export default function CareerAdvisorChat({
 
       {/* Career Plan View */}
       {activeView === "plan" && (
-        <CareerPlanGenerator
-          onBack={() => setActiveView("chat")}
-          userProfile={userProfile}
-        />
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm">
+          <CareerPlanGenerator userProfile={userProfile} />
+        </Card>
       )}
     </div>
   );

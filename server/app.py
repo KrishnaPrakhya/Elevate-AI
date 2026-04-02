@@ -15,9 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool 
 
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, ARRAY, inspect, create_engine
@@ -201,11 +199,29 @@ if not secret_key:
 
 genai.configure(api_key=secret_key)
 try:
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", google_api_key=secret_key)
+    gemini_model = genai.GenerativeModel("gemini-2.5-flash-lite")
     logger.info("Google Generative AI initialized.")
 except Exception as e:
     logger.error(f"Failed to initialize Google Generative AI: {e}")
     raise RuntimeError(f"Failed to initialize Google Generative AI: {e}")
+
+
+async def invoke_sync(runnable: Any, payload: dict[str, Any]) -> Any:
+    """Run sync LangChain/Tavily invocations in a worker thread to avoid asyncio loop conflicts."""
+    return await asyncio.to_thread(runnable.invoke, payload)
+
+
+async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, Any]) -> str:
+    """Render a chat prompt template and call Gemini synchronously in a worker thread."""
+    messages = prompt.format_messages(**payload)
+    prompt_text = "\n\n".join(
+        f"{message.type.upper()}: {message.content}" for message in messages
+    )
+    response = await asyncio.to_thread(gemini_model.generate_content, prompt_text)
+    output = getattr(response, "text", None)
+    if not output:
+        raise RuntimeError("Gemini returned an empty response")
+    return str(output).strip()
 
 
 # Validate Tavily API Key
@@ -285,10 +301,7 @@ Industry: {industry}
             ("system", system_template),
             ("user", user_template)
         ])
-        chain = prompt | llm | StrOutputParser()
-
-        # Provide all expected variables to .ainvoke
-        return await chain.ainvoke({
+        return await invoke_prompt_template(prompt, {
             "doc_type_name": doc_type_name_val,
             "analysis_target": analysis_target_val,
             "primary_focus": primary_focus_val,
@@ -314,21 +327,48 @@ async def search_job_opportunities(input_data: JobSearchInput) -> str:
 
         search_tool = TavilySearchResults(max_results=5)
         # Ensure the input to .ainvoke is a dictionary
-        search_results = await search_tool.ainvoke({"query": f"job listings for {query}"})
+        search_results = await invoke_sync(search_tool, {"query": f"active job listings for {query}"})
 
-        formatted_results = "Relevant job opportunities:\\n\\n"
-        if isinstance(search_results, list): # Tavily often returns a list of dicts
+        curated_results: list[dict[str, str]] = []
+        if isinstance(search_results, list):
             for i, result in enumerate(search_results, 1):
-                if isinstance(result, dict):
-                    formatted_results += f"{i}. Source: {result.get('url', 'N/A')}\\n   Summary: {str(result.get('content', ''))[:200]}...\\n\\n"
-                else:
-                    formatted_results += f"{i}. Malformed result: {str(result)[:200]}...\\n\\n"
-        elif isinstance(search_results, str): # Fallback if it's just a string
-             formatted_results += search_results
-        else:
-            formatted_results += "No results or unexpected format."
+                if not isinstance(result, dict):
+                    continue
 
+                url = str(result.get("url") or "").strip()
+                if not url:
+                    continue
 
+                title = str(result.get("title") or f"Opportunity {i}").strip()
+                summary = str(result.get("content", "")).replace("\n", " ").strip()
+                if len(summary) > 260:
+                    summary = summary[:257].rstrip() + "..."
+
+                curated_results.append({
+                    "title": title,
+                    "url": url,
+                    "summary": summary,
+                })
+
+        if not curated_results:
+            return (
+                "## Matching Job Opportunities\n\n"
+                "I could not find high-confidence job links right now. "
+                "Try a more specific query like `Python ML engineer remote India`."
+            )
+
+        formatted_results = "## Matching Job Opportunities\n\n"
+        for i, item in enumerate(curated_results, 1):
+            formatted_results += f"{i}. [{item['title']}]({item['url']})\n"
+            if item["summary"]:
+                formatted_results += f"   - Why it matches: {item['summary']}\n"
+            formatted_results += "\n"
+
+        formatted_results += (
+            "### Next Steps\n"
+            "- Tailor your resume to the top 2 roles above using role-specific keywords.\n"
+            "- Apply to 3-5 roles, then follow up within 5 business days."
+        )
         return formatted_results
     except Exception as e:
         logger.error(f"Error in search_job_opportunities: {str(e)}")
@@ -353,8 +393,7 @@ async def provide_career_advice(input_data: CareerAdviceInput) -> str:
             Years of experience: {experience_years}
             Career goals: {career_goals}""")
         ])
-        chain = prompt | llm | StrOutputParser()
-        return await chain.ainvoke({
+        return await invoke_prompt_template(prompt, {
             "current_role": input_data.current_role or "Not specified",
             "target_role": input_data.target_role or "Not specified",
             "industry": input_data.industry or "Not specified",
@@ -372,25 +411,67 @@ async def generate_preparation_schedule(input_data: PrepScheduleInput) -> str:
         current_date = datetime.datetime.now()
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a career preparation expert.
-            Create a detailed, week-by-week preparation schedule for the user.
-            Include:
-            1. Learning resources (courses, books, websites)
-            2. Skill-building activities
-            3. Resume and cover letter tasks
-            4. Networking activities
-            5. Interview preparation
-            6. Application strategy
-            Include dates starting from {current_date_str} for {timeline_weeks_val} weeks."""), # Renamed for clarity
+            ("system", """You are a world-class career strategist and execution coach.
+Create a realistic, high-detail plan that is practical for someone balancing normal life constraints.
+
+Output requirements:
+1. Return clean markdown only.
+2. Be specific and actionable, not generic advice.
+3. Use this exact structure:
+
+## Career Plan Overview
+- Target role
+- Timeline
+- Weekly workload assumption
+- Primary success criteria
+
+## Skill Gap Priorities
+- 4-6 priority gaps and why they matter for the role
+
+## Week-by-Week Execution Plan
+For each week include:
+- Objective
+- 3-5 concrete tasks
+- Deliverable for the week
+- Time budget split
+- Interview/application action
+
+## Portfolio / Project Plan
+- 1 major project and 1 mini project with milestones and expected outcomes
+
+## Networking and Job Search Engine
+- Weekly outreach targets
+- Referral strategy
+- Application quality checklist
+
+## Interview Prep Track
+- Technical prep
+- Behavioral prep
+- Mock interview cadence
+
+## Metrics Dashboard
+- Leading indicators (weekly)
+- Lagging indicators (monthly)
+
+## Risk Mitigation
+- Top 3 likely blockers and contingency plans
+
+## 48-Hour Kickoff
+- Exact actions to take in the next 48 hours
+
+Important:
+- Keep recommendations realistic for the given timeline.
+- If timeline is short, prioritize high-impact activities and clearly state trade-offs.
+- When possible, include concrete examples and resource suggestions with links."""),
             ("user", """Target role: {target_role}
             Timeline: {timeline_weeks_val} weeks
             Current skills: {current_skills}
             Skills to develop: {skills_to_develop}
             Has resume: {has_resume}
-            Has cover_letter: {has_cover_letter}""")
+            Has cover_letter: {has_cover_letter}
+            Current date: {current_date_str}""")
         ])
-        chain = prompt | llm | StrOutputParser()
-        return await chain.ainvoke({
+        return await invoke_prompt_template(prompt, {
             "target_role": input_data.target_role,
             "timeline_weeks_val": timeline_weeks, # Use renamed var
             "current_skills": ", ".join(input_data.current_skills) if input_data.current_skills else "Not specified",
@@ -418,8 +499,7 @@ async def generate_interview_questions(input_data: InterviewQuestionsInput) -> s
             Industry: {industry}
             Skills: {skills}""")
         ])
-        chain = prompt | llm | StrOutputParser()
-        return await chain.ainvoke({
+        return await invoke_prompt_template(prompt, {
             "target_role": input_data.target_role,
             "industry": input_data.industry or "Not specified",
             "skills": ", ".join(input_data.skills) if input_data.skills else "Not specified"
@@ -438,7 +518,19 @@ class AgentState(TypedDict):
 
 # Intent Detection (Async)
 async def detect_intent(user_message: str) -> str:
-    if llm is None:
+    message = user_message.lower().strip()
+
+    # Fast keyword routing avoids unnecessary LLM calls and works during model quota limits.
+    if any(k in message for k in ["job", "jobs", "openings", "hiring", "opportunity"]):
+        return "job_search"
+    if any(k in message for k in ["interview", "questions", "mock interview"]):
+        return "interview_preparation"
+    if any(k in message for k in ["plan", "roadmap", "schedule", "timeline"]):
+        return "preparation_schedule"
+    if any(k in message for k in ["resume", "cv", "cover letter", "improve my resume"]):
+        return "document_improvement"
+
+    if gemini_model is None:
         logger.error("LLM not initialized. Defaulting to career_advice intent.")
         return "career_advice"
 
@@ -453,9 +545,8 @@ async def detect_intent(user_message: str) -> str:
             Return only the intent name."""),
             ("user", "{user_message_val}") # Renamed for clarity
         ])
-        chain = prompt | llm | StrOutputParser()
         # Ensure the output is stripped and lowercased
-        result = await chain.ainvoke({"user_message_val": user_message})
+        result = await invoke_prompt_template(prompt, {"user_message_val": user_message})
         return str(result).lower().strip()
     except Exception as e:
         logger.error(f"Error in detect_intent: {str(e)}")
@@ -514,8 +605,7 @@ async def document_improver(state: AgentState) -> AgentState:
             User message: {user_query_for_extraction}"""
             
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
-            extract_chain = extract_prompt | llm | StrOutputParser()
-            extracted_str = await extract_chain.ainvoke({"user_query_for_extraction": latest_message_content})
+            extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
             
             try:
                 extracted_data = json.loads(extracted_str)
@@ -549,40 +639,22 @@ async def job_searcher(state: AgentState) -> AgentState:
         latest_message_content = state["messages"][-1]["content"]
         latest_message_lower = latest_message_content.lower()
         
-        # LLM call to extract structured info
-        extraction_prompt_text = """From the user's message, extract the following for a job search:
-        - keywords: A list of job titles or skills.
-        - location: The preferred job location.
-        - industry: The preferred industry.
-        - remote: true if remote is specified, otherwise false.
-        Return this as a JSON string. If a field is not mentioned, use null or an empty list for keywords.
-        User message: {user_query_for_extraction}"""
-        
-        extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
-        extract_chain = extract_prompt | llm | StrOutputParser()
-        extracted_str = await extract_chain.ainvoke({"user_query_for_extraction": latest_message_content})
-        
         extracted_keywords = []
         extracted_location = None
         extracted_industry = None
-        search_remote = "remote" in latest_message_lower # Default from simple check
+        search_remote = "remote" in latest_message_lower
 
-        try:
-            extracted_data = json.loads(extracted_str)
-            extracted_keywords = extracted_data.get("keywords", [])
-            extracted_location = extracted_data.get("location")
-            extracted_industry = extracted_data.get("industry")
-            # LLM's remote decision can override simple check if more nuanced
-            if extracted_data.get("remote") is not None:
-                 search_remote = extracted_data.get("remote")
-        except json.JSONDecodeError:
-            logger.warning(f"Could not parse JSON for job search details: {extracted_str}")
-            # Fallback to simple parsing if LLM fails
-            if "find jobs for" in latest_message_lower:
-                 kw_part = latest_message_lower.split("find jobs for", 1)[-1].split(" in ")[0]
-                 extracted_keywords = [kw.strip() for kw in kw_part.split(",")]
-            if " in " in latest_message_lower:
-                 extracted_location = latest_message_lower.split(" in ",1)[-1].strip().split(" ")[0]
+        # Lightweight parser for common patterns without depending on LLM extraction.
+        if "find jobs for" in latest_message_lower:
+            kw_part = latest_message_lower.split("find jobs for", 1)[-1].split(" in ")[0]
+            extracted_keywords = [kw.strip() for kw in kw_part.split(",") if kw.strip()]
+
+        if " in " in latest_message_lower:
+            extracted_location = latest_message_content.split(" in ", 1)[-1].strip()
+
+        for token in ["python", "tensorflow", "pytorch", "ml", "ai", "data science", "backend", "full stack"]:
+            if token in latest_message_lower and token not in extracted_keywords:
+                extracted_keywords.append(token)
 
 
         final_keywords = extracted_keywords if extracted_keywords else user_profile.get("skills", [])[:5]
@@ -626,8 +698,7 @@ async def career_advisor(state: AgentState) -> AgentState:
             User message: {user_query_for_extraction}"""
             
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
-            extract_chain = extract_prompt | llm | StrOutputParser()
-            extracted_str = await extract_chain.ainvoke({"user_query_for_extraction": latest_message_content})
+            extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
             
             try:
                 extracted_data = json.loads(extracted_str)
@@ -676,8 +747,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
             User message: {user_query_for_extraction}"""
             
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
-            extract_chain = extract_prompt | llm | StrOutputParser()
-            extracted_str = await extract_chain.ainvoke({"user_query_for_extraction": latest_message_content})
+            extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
             
             try:
                 extracted_data = json.loads(extracted_str)
@@ -727,8 +797,7 @@ async def interview_preparer(state: AgentState) -> AgentState:
             User message: {user_query_for_extraction}"""
             
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
-            extract_chain = extract_prompt | llm | StrOutputParser()
-            extracted_str = await extract_chain.ainvoke({"user_query_for_extraction": latest_message_content})
+            extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
             
             try:
                 extracted_data = json.loads(extracted_str)

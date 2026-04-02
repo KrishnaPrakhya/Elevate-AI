@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -14,14 +14,6 @@ import { User, Briefcase, FileText, Loader2, Sparkles } from "lucide-react";
 import useFetch from "@/hooks/use-fetch";
 import { updateUser } from "@/actions/user";
 import { toast } from "sonner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 
 // Adapted simple profile schema. We omit separated industry/subIndustry since it was flattened
 const profileSchema = z.object({
@@ -41,12 +33,6 @@ const profileSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
-interface Industries {
-  id: string;
-  name: string;
-  subIndustries: string[];
-}
-
 interface ProfileFormProps {
   initialUser: {
     industry?: string | null;
@@ -56,10 +42,9 @@ interface ProfileFormProps {
     name?: string | null;
     email?: string | null;
   };
-  industries: Industries[];
 }
 
-export default function ProfileForm({ initialUser, industries }: ProfileFormProps) {
+export default function ProfileForm({ initialUser }: ProfileFormProps) {
   const router = useRouter();
 
   // Attempt to nicely pre-format skills array to a comma separated string
@@ -69,8 +54,6 @@ export default function ProfileForm({ initialUser, industries }: ProfileFormProp
     register,
     handleSubmit,
     formState: { errors },
-    setValue,
-    watch,
   } = useForm({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -87,7 +70,7 @@ export default function ProfileForm({ initialUser, industries }: ProfileFormProp
     data: updateResult,
   } = useFetch(updateUser);
 
-  const onSubmit = async (values: any) => {
+  const onSubmit = async (values: ProfileFormValues) => {
     try {
       await updateUserFn(values);
     } catch (error) {

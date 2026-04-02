@@ -8,10 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   CardFooter,
-  CardDescription,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";

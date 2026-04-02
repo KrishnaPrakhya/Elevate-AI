@@ -4,7 +4,6 @@ import { getUser } from "@/actions/user";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import CareerAdvisorChat from "./_components/career-advisor-chat";
-import { PageHeader } from "@/components/page-header";
 
 interface ResumeProps {
   id: string;

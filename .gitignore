@@ -14,7 +14,7 @@ venv*
 /server/venv
 # testing
 /coverage
-
+/CLAUDE.md
 # next.js
 /.next/
 /out/

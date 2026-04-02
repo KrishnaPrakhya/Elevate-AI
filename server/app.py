@@ -201,7 +201,7 @@ if not secret_key:
 
 genai.configure(api_key=secret_key)
 try:
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=secret_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", google_api_key=secret_key)
     logger.info("Google Generative AI initialized.")
 except Exception as e:
     logger.error(f"Failed to initialize Google Generative AI: {e}")

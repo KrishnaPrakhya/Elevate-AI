@@ -64,6 +64,7 @@ export default async function CareerAdvisorPage() {
           skills: [],
           industry: "",
           experience: 0,
+          bio: "",
           clerkUserId: "",
         }
 
@@ -80,15 +81,7 @@ export default async function CareerAdvisorPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <PageHeader
-        title="AI Career Advisor"
-        description="Get personalized career guidance, job recommendations, and professional development advice"
-        align="left"
-        size="lg"
-        className="mb-8"
-      />
-
+    <div className="flex flex-col h-[calc(100vh-12rem)] w-full">
       <CareerAdvisorChat userProfile={userProfile} />
     </div>
   );

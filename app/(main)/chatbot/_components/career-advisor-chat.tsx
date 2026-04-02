@@ -250,8 +250,8 @@ export default function CareerAdvisorChat({
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[560px] max-w-6xl flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className="mx-auto flex h-full min-h-[560px] w-full max-w-6xl flex-col bg-background">
+      <div className="flex items-center justify-between mb-4 px-4 py-2">
         <div className="flex items-center gap-2">
           {activeView !== "chat" && (
             <Button
@@ -320,21 +320,7 @@ export default function CareerAdvisorChat({
 
       {/* Chat View */}
       {activeView === "chat" && (
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm">
-          <CardHeader className="pb-2 border-b">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10 bg-primary/10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  <Bot className="h-6 w-6" />
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <CardTitle>Career Advisor</CardTitle>
-                <CardDescription>AI-powered career guidance</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-
+        <Card className="flex h-full flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
           <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
             <ScrollArea className="h-full">
               <div className="space-y-4 px-4 py-5 md:px-6">
@@ -543,7 +529,7 @@ export default function CareerAdvisorChat({
 
       {/* Career Plan View */}
       {activeView === "plan" && (
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm">
+        <Card className="flex h-full flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
           <CareerPlanGenerator userProfile={userProfile} />
         </Card>
       )}

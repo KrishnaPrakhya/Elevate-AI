@@ -4,9 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,17 +136,7 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-primary" />
-          Career Plan Studio
-        </CardTitle>
-        <CardDescription>
-          Build a practical roadmap with milestones, projects, and interview goals
-        </CardDescription>
-      </CardHeader>
-
+    <div className="flex h-full min-h-0 flex-col mt-4">
       <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-6 lg:overflow-hidden">
         <div className="grid min-h-full gap-4 lg:h-full lg:min-h-0 lg:grid-cols-[340px_1fr]">
           <div className="rounded-xl border border-border/70 bg-muted/30 p-4 lg:h-full lg:overflow-y-auto">

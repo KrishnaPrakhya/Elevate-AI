@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { SignedIn, SignedOut, SignInButton, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "./ui/button";
@@ -24,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./theme-toggle";
 import { checkUser } from "@/lib/checkUser";
+import { BookOpen, Trophy, Flame, Users } from "lucide-react";
 
 async function Header() {
   const user = await checkUser();
@@ -65,7 +65,7 @@ async function Header() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-3">
                   <StarsIcon className="h-4 w-4" />
-                  <span>Growth Tools</span>
+                  <span>Career Tools</span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-70" />
                 </Button>
               </DropdownMenuTrigger>
@@ -104,13 +104,75 @@ async function Header() {
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <BriefcaseBusiness className="h-4 w-4 text-primary" />
-                    <span>Agentic Chatbot</span>
-                    <Badge
-                      variant="outline"
-                      className="ml-auto text-xs py-0 h-5"
-                    >
-                      New
-                    </Badge>
+                    <span>AI Career Advisor</span>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2 px-3">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Academy</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span>Dashboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/paths"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <GraduationCap className="h-4 w-4 text-primary" />
+                    <span>Learning Paths</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/streak"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    <span>Streak & Goals</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/achievements"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Trophy className="h-4 w-4 text-yellow-500" />
+                    <span>Achievements</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/leaderboard"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4 text-primary" />
+                    <span>Leaderboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/cohorts"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4 text-primary" />
+                    <span>Cohorts</span>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -134,7 +196,7 @@ async function Header() {
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <LayoutDashboard className="h-4 w-4 text-primary" />
-                    <span>Industry Insights</span>
+                    <span>Dashboard</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -168,17 +230,21 @@ async function Header() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link
-                    href="/career-advisor"
+                    href="/chatbot"
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <BriefcaseBusiness className="h-4 w-4 text-primary" />
-                    <span>Career Advisor</span>
-                    <Badge
-                      variant="outline"
-                      className="ml-auto text-xs py-0 h-5"
-                    >
-                      New
-                    </Badge>
+                    <span>AI Career Advisor</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span>Academy</span>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>

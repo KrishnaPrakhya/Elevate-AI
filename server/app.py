@@ -7,14 +7,14 @@ import uuid
 from typing import Any, Literal, TypedDict, List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode # Added for URL manipulation
 
-import google.generativeai as genai
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.concurrency import run_in_threadpool 
+from fastapi.concurrency import run_in_threadpool
 
 from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
@@ -192,18 +192,26 @@ def init_db():
 
 
 # Initialize LLM
-secret_key = os.getenv("GEMINI_API_KEY")
-if not secret_key:
-    logger.error("GEMINI_API_KEY not found.")
-    raise RuntimeError("Missing GEMINI_API_KEY environment variable")
+ollama_api_key = os.getenv("OLLAMA_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1")
+if not ollama_api_key:
+    logger.error("OLLAMA_API_KEY not found.")
+    raise RuntimeError("Missing OLLAMA_API_KEY environment variable")
 
-genai.configure(api_key=secret_key)
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(
+    model="minimax-m2.7",
+    openai_api_key=ollama_api_key,
+    base_url=ollama_base_url,
+)
+logger.info(f"Ollama Cloud LLM initialized. Base URL: {ollama_base_url}, Key prefix: {ollama_api_key[:4]}...")
+
+# Test the LLM connection
 try:
-    gemini_model = genai.GenerativeModel("gemini-2.5-flash-lite")
-    logger.info("Google Generative AI initialized.")
+    test_result = llm.invoke("Say 'hello' in one word")
+    logger.info(f"LLM test successful: {test_result.content}")
 except Exception as e:
-    logger.error(f"Failed to initialize Google Generative AI: {e}")
-    raise RuntimeError(f"Failed to initialize Google Generative AI: {e}")
+    logger.error(f"LLM test failed: {e}")
 
 
 async def invoke_sync(runnable: Any, payload: dict[str, Any]) -> Any:
@@ -212,16 +220,14 @@ async def invoke_sync(runnable: Any, payload: dict[str, Any]) -> Any:
 
 
 async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, Any]) -> str:
-    """Render a chat prompt template and call Gemini synchronously in a worker thread."""
-    messages = prompt.format_messages(**payload)
-    prompt_text = "\n\n".join(
-        f"{message.type.upper()}: {message.content}" for message in messages
-    )
-    response = await asyncio.to_thread(gemini_model.generate_content, prompt_text)
-    output = getattr(response, "text", None)
-    if not output:
-        raise RuntimeError("Gemini returned an empty response")
-    return str(output).strip()
+    """Render a chat prompt template and call Ollama synchronously in a worker thread."""
+    try:
+        chain = prompt | llm | StrOutputParser()
+        result = await invoke_sync(chain, payload)
+        return str(result).strip()
+    except Exception as e:
+        logger.error(f"invoke_prompt_template error: {e}")
+        raise
 
 
 # Validate Tavily API Key
@@ -529,10 +535,6 @@ async def detect_intent(user_message: str) -> str:
         return "preparation_schedule"
     if any(k in message for k in ["resume", "cv", "cover letter", "improve my resume"]):
         return "document_improvement"
-
-    if gemini_model is None:
-        logger.error("LLM not initialized. Defaulting to career_advice intent.")
-        return "career_advice"
 
     try:
         prompt = ChatPromptTemplate.from_messages([

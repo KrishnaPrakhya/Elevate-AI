@@ -80,6 +80,112 @@ export async function updateUser(data: UpdateUserData) {
         }
       });
 
+      // Create email preference for academy features
+      await tx.emailPreference.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id }
+      });
+
+      // Create streak record for the user
+      await tx.streak.upsert({
+        where: { userId: user.id },
+        update: {},
+        create: { userId: user.id }
+      });
+
+      // Auto-enroll user in industry-specific learning path (if available)
+      const industryPath = await tx.learningPath.findFirst({
+        where: {
+          isPublished: true,
+          OR: [
+            { industry: data.industry },
+            { title: { contains: data.industry, mode: "insensitive" } }
+          ]
+        }
+      });
+
+      if (industryPath) {
+        // Get first module and lesson
+        const modules = await tx.module.findMany({
+          where: { learningPathId: industryPath.id },
+          orderBy: { order: "asc" },
+          take: 1,
+          include: {
+            lessons: {
+              orderBy: { order: "asc" },
+              take: 1
+            }
+          }
+        });
+
+        const firstModule = modules[0];
+        const firstLesson = firstModule?.lessons[0];
+
+        // Create enrollment if not already enrolled
+        await tx.enrollment.upsert({
+          where: {
+            userId_learningPathId: {
+              userId: user.id,
+              learningPathId: industryPath.id
+            }
+          },
+          update: {},
+          create: {
+            userId: user.id,
+            learningPathId: industryPath.id,
+            currentModuleId: firstModule?.id,
+            currentLessonId: firstLesson?.id,
+            lastAccessedAt: new Date()
+          }
+        });
+      }
+
+      // Auto-enroll in "Career Acceleration Program" if exists
+      const careerPath = await tx.learningPath.findFirst({
+        where: {
+          isPublished: true,
+          OR: [
+            { title: { contains: "career", mode: "insensitive" } },
+            { title: { contains: "acceleration", mode: "insensitive" } }
+          ]
+        }
+      });
+
+      if (careerPath) {
+        const modules = await tx.module.findMany({
+          where: { learningPathId: careerPath.id },
+          orderBy: { order: "asc" },
+          take: 1,
+          include: {
+            lessons: {
+              orderBy: { order: "asc" },
+              take: 1
+            }
+          }
+        });
+
+        const firstModule = modules[0];
+        const firstLesson = firstModule?.lessons[0];
+
+        await tx.enrollment.upsert({
+          where: {
+            userId_learningPathId: {
+              userId: user.id,
+              learningPathId: careerPath.id
+            }
+          },
+          update: {},
+          create: {
+            userId: user.id,
+            learningPathId: careerPath.id,
+            currentModuleId: firstModule?.id,
+            currentLessonId: firstLesson?.id,
+            lastAccessedAt: new Date()
+          }
+        });
+      }
+
       return { updatedUser, industryInsight };
     }, {
       timeout: 10000

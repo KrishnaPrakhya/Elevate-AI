@@ -21,8 +21,9 @@ import { Briefcase, Code, FileText, Loader2, Sparkles } from "lucide-react";
 import { onBoardingSchema } from "@/app/lib/schema";
 import { PageHeader } from "@/components/page-header";
 import useFetch from "@/hooks/use-fetch";
-import { updateUser } from "@/actions/user";
+import { completeOnboardingWithAI } from "@/actions/onboarding";
 import { toast } from "sonner";
+import AcademyOnboardingCard from "./academy-onboarding-card";
 
 interface Industries {
   id: string;
@@ -63,13 +64,23 @@ function OnboardingForm(props: Props) {
     loading: updateLoading,
     fn: updateUserFn,
     data: updateResult,
-  } = useFetch(updateUser);
+  } = useFetch(completeOnboardingWithAI);
   const onSubmit = async (values: OnboardingFormValues) => {
     try {
       const formattedIndustry = `${values.industry}-${values.subIndustry
         .toLowerCase()
         .replace(/ /g, "-")}`;
-      await updateUserFn({ ...values, industry: formattedIndustry });
+      await updateUserFn({
+        ...values,
+        industry: formattedIndustry,
+        experience: String(values.experience),
+        bio: values.bio || "",
+        skills: values.skills || [],
+        careerGoals: [],
+        targetRole: "",
+        availableHoursPerWeek: 8,
+        learningTimeline: "3 months",
+      });
     } catch (error) {
       console.log("Onboarding error", error);
     }
@@ -77,7 +88,7 @@ function OnboardingForm(props: Props) {
 
   useEffect(() => {
     if (updateResult?.success && !updateLoading) {
-      toast.success("Profile completed Successfully");
+      toast.success("Profile completed! AI has generated your personalized career plan");
       router.push("/dashboard");
     }
   }, [updateResult, updateLoading, router]);
@@ -126,6 +137,8 @@ function OnboardingForm(props: Props) {
             align="center"
             size="md"
           />
+
+          <AcademyOnboardingCard />
 
           <motion.form
             onSubmit={handleSubmit(onSubmit)}

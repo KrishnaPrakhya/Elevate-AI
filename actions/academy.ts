@@ -6,6 +6,8 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import OpenAI from "openai";
 import { inngest } from "@/lib/inngest/client";
+import { getCachedData, CACHE_TTL } from "@/lib/redis";
+import { redis } from "@/lib/redis";
 
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
@@ -27,37 +29,47 @@ export async function getLearningPaths(industry?: string) {
     ? { isPublished: true, OR: [{ industry: null }, { industry }] }
     : { isPublished: true };
 
-  return db.learningPath.findMany({
-    where,
-    include: {
-      modules: {
-        orderBy: { order: "asc" },
+  return getCachedData(
+    `academy:learningPaths:${industry || "all"}`,
+    () =>
+      db.learningPath.findMany({
+        where,
         include: {
-          lessons: { orderBy: { order: "asc" } },
+          modules: {
+            orderBy: { order: "asc" },
+            include: {
+              lessons: { orderBy: { order: "asc" } },
+            },
+          },
+          _count: { select: { enrollments: true } },
         },
-      },
-      _count: { select: { enrollments: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+        orderBy: { createdAt: "desc" },
+      }),
+    CACHE_TTL.MEDIUM
+  );
 }
 
 export async function getLearningPath(id: string) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  return db.learningPath.findUnique({
-    where: { id },
-    include: {
-      modules: {
-        orderBy: { order: "asc" },
+  return getCachedData(
+    `academy:learningPath:${id}`,
+    () =>
+      db.learningPath.findUnique({
+        where: { id },
         include: {
-          lessons: { orderBy: { order: "asc" } },
-          assignments: true,
+          modules: {
+            orderBy: { order: "asc" },
+            include: {
+              lessons: { orderBy: { order: "asc" } },
+              assignments: true,
+            },
+          },
         },
-      },
-    },
-  });
+      }),
+    CACHE_TTL.MEDIUM
+  );
 }
 
 export async function enrollInPath(learningPathId: string) {
@@ -114,22 +126,27 @@ export async function getUserEnrollments() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  return db.enrollment.findMany({
-    where: { userId: user.id },
-    include: {
-      learningPath: {
+  return getCachedData(
+    `academy:userEnrollments:${user.id}`,
+    () =>
+      db.enrollment.findMany({
+        where: { userId: user.id },
         include: {
-          modules: {
-            orderBy: { order: "asc" },
+          learningPath: {
             include: {
-              lessons: { orderBy: { order: "asc" } },
+              modules: {
+                orderBy: { order: "asc" },
+                include: {
+                  lessons: { orderBy: { order: "asc" } },
+                },
+              },
             },
           },
         },
-      },
-    },
-    orderBy: { lastAccessedAt: "desc" },
-  });
+        orderBy: { lastAccessedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 // ============================================
@@ -174,10 +191,114 @@ export async function updateLessonProgress(
       name: "academy/lesson-completed",
       data: { userId, enrollmentId, lessonId },
     });
+
+    // Sync academy progress back to career plan
+    await syncAcademyProgressToCareerPlan(userId, enrollmentId, lessonId);
   }
 
   revalidatePath("/academy");
   return progress;
+}
+
+// ============================================
+// SYNC ACADEMY PROGRESS TO CAREER PLAN
+// ============================================
+
+async function syncAcademyProgressToCareerPlan(
+  userId: string,
+  enrollmentId: string,
+  lessonId: string
+) {
+  try {
+    // Get the lesson details
+    const enrollment = await db.enrollment.findUnique({
+      where: { id: enrollmentId },
+      include: {
+        learningPath: true,
+        lessonProgress: {
+          where: { status: "COMPLETED" },
+          include: { lesson: true },
+        },
+      },
+    });
+
+    if (!enrollment) return;
+
+    // Get user's active career plan
+    const activePlanKey = `career-planner:active:${userId}`;
+    const activePlan = await redis.get<{
+      targetRole: string;
+      planDetails?: {
+        topGaps?: { skill: string; importance: number }[];
+        weeklyPlan?: { week: number; focus: string; goals: string[] }[];
+      };
+    }>(activePlanKey);
+
+    if (!activePlan) return;
+
+    // Calculate overall academy progress
+    const totalLessons = enrollment.learningPath.modules
+      ? await db.lesson.count({
+          where: {
+            module: {
+              learningPathId: enrollment.learningPathId,
+            },
+          },
+        })
+      : 0;
+
+    const completedLessons = enrollment.lessonProgress.length;
+    const completionRate = totalLessons > 0 ? completedLessons / totalLessons : 0;
+
+    // Update career plan with progress metadata
+    const updatedPlan = {
+      ...activePlan,
+      academyProgress: {
+        enrollmentId,
+        learningPathId: enrollment.learningPathId,
+        learningPathTitle: enrollment.learningPath.title,
+        completedLessons,
+        totalLessons,
+        completionRate: Math.round(completionRate * 100),
+        lastCompletedAt: new Date().toISOString(),
+      },
+      progressUpdatedAt: new Date().toISOString(),
+    };
+
+    // Store updated plan back in Redis
+    await redis.set(activePlanKey, updatedPlan, { ex: 7 * 24 * 60 * 60 }); // 7 days
+
+    // If completion rate is high (>80%), mark related skill gaps as "improving"
+    if (completionRate > 0.8) {
+      // Find skill gaps that match this learning path topics
+      const pathTitle = enrollment.learningPath.title.toLowerCase();
+      const updatedGaps = activePlan.planDetails?.topGaps?.map((gap) => ({
+        ...gap,
+        status:
+          gap.skill.toLowerCase().includes(pathTitle) ||
+          pathTitle.includes(gap.skill.toLowerCase())
+            ? "improving"
+            : gap.status || "pending",
+      }));
+
+      if (updatedGaps) {
+        await redis.set(
+          activePlanKey,
+          {
+            ...updatedPlan,
+            planDetails: {
+              ...activePlan.planDetails,
+              topGaps: updatedGaps,
+            },
+          },
+          { ex: 7 * 24 * 60 * 60 }
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing academy progress to career plan:", error);
+    // Don't throw - this is a sync operation, shouldn't block the main flow
+  }
 }
 
 async function updateEnrollmentProgress(enrollmentId: string) {
@@ -218,10 +339,15 @@ async function updateEnrollmentProgress(enrollmentId: string) {
 }
 
 export async function getLessonProgress(enrollmentId: string) {
-  return db.lessonProgress.findMany({
-    where: { enrollmentId },
-    include: { lesson: true },
-  });
+  return getCachedData(
+    `academy:lessonProgress:${enrollmentId}`,
+    () =>
+      db.lessonProgress.findMany({
+        where: { enrollmentId },
+        include: { lesson: true },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 // ============================================
@@ -238,9 +364,16 @@ export async function getTodayGoal() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  return db.dailyGoal.findUnique({
-    where: { userId_date: { userId: user.id, date: today } },
-  });
+  const dayKey = today.toISOString().split("T")[0];
+
+  return getCachedData(
+    `academy:todayGoal:${user.id}:${dayKey}`,
+    () =>
+      db.dailyGoal.findUnique({
+        where: { userId_date: { userId: user.id, date: today } },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 export async function updateDailyGoal(data: {
@@ -331,7 +464,11 @@ export async function getUserStreak() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  return db.streak.findUnique({ where: { userId: user.id } });
+  return getCachedData(
+    `academy:userStreak:${user.id}`,
+    () => db.streak.findUnique({ where: { userId: user.id } }),
+    CACHE_TTL.SHORT
+  );
 }
 
 // ============================================
@@ -342,10 +479,15 @@ export async function getAssignment(id: string) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  return db.assignment.findUnique({
-    where: { id },
-    include: { submissions: { orderBy: { submittedAt: "desc" } } },
-  });
+  return getCachedData(
+    `academy:assignment:${id}`,
+    () =>
+      db.assignment.findUnique({
+        where: { id },
+        include: { submissions: { orderBy: { submittedAt: "desc" } } },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 export async function submitAssignment(
@@ -427,11 +569,16 @@ export async function getUserSubmissions() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  return db.submission.findMany({
-    where: { userId: user.id },
-    include: { assignment: true },
-    orderBy: { submittedAt: "desc" },
-  });
+  return getCachedData(
+    `academy:userSubmissions:${user.id}`,
+    () =>
+      db.submission.findMany({
+        where: { userId: user.id },
+        include: { assignment: true },
+        orderBy: { submittedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 // ============================================
@@ -439,10 +586,15 @@ export async function getUserSubmissions() {
 // ============================================
 
 export async function getAchievements() {
-  return db.achievement.findMany({
-    where: { isActive: true },
-    orderBy: { points: "desc" },
-  });
+  return getCachedData(
+    "academy:achievements:active",
+    () =>
+      db.achievement.findMany({
+        where: { isActive: true },
+        orderBy: { points: "desc" },
+      }),
+    CACHE_TTL.MEDIUM
+  );
 }
 
 export async function getUserAchievements() {
@@ -452,11 +604,16 @@ export async function getUserAchievements() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  return db.userAchievement.findMany({
-    where: { userId: user.id },
-    include: { achievement: true },
-    orderBy: { earnedAt: "desc" },
-  });
+  return getCachedData(
+    `academy:userAchievements:${user.id}`,
+    () =>
+      db.userAchievement.findMany({
+        where: { userId: user.id },
+        include: { achievement: true },
+        orderBy: { earnedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 export async function checkAndAwardAchievements(userId: string, type: string) {
@@ -533,18 +690,23 @@ export async function getLeaderboard(
       break;
   }
 
-  const leaderboard = await db.leaderboard.findFirst({
-    where: {
-      type,
-      startDate: { gte: startDate },
-    },
-    include: {
-      entries: {
-        orderBy: { rank: "asc" },
-        take: 50,
-      },
-    },
-  });
+  const leaderboard = await getCachedData(
+    `academy:leaderboard:${type}`,
+    () =>
+      db.leaderboard.findFirst({
+        where: {
+          type,
+          startDate: { gte: startDate },
+        },
+        include: {
+          entries: {
+            orderBy: { rank: "asc" },
+            take: 50,
+          },
+        },
+      }),
+    CACHE_TTL.SHORT
+  );
 
   return leaderboard;
 }
@@ -554,14 +716,19 @@ export async function getLeaderboard(
 // ============================================
 
 export async function getCohorts() {
-  return db.cohort.findMany({
-    where: { isActive: true },
-    include: {
-      members: { take: 5 },
-      _count: { select: { members: true } },
-    },
-    orderBy: { startsAt: "asc" },
-  });
+  return getCachedData(
+    "academy:cohorts:active",
+    () =>
+      db.cohort.findMany({
+        where: { isActive: true },
+        include: {
+          members: { take: 5 },
+          _count: { select: { members: true } },
+        },
+        orderBy: { startsAt: "asc" },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 export async function joinCohort(cohortId: string) {
@@ -599,16 +766,21 @@ export async function getUserCohort() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  const membership = await db.cohortMember.findFirst({
-    where: { userId: user.id },
-    include: {
-      cohort: {
+  const membership = await getCachedData(
+    `academy:userCohort:${user.id}`,
+    () =>
+      db.cohortMember.findFirst({
+        where: { userId: user.id },
         include: {
-          members: { include: { user: true } },
+          cohort: {
+            include: {
+              members: { include: { user: true } },
+            },
+          },
         },
-      },
-    },
-  });
+      }),
+    CACHE_TTL.SHORT
+  );
 
   return membership?.cohort || null;
 }
@@ -645,10 +817,15 @@ export async function scheduleMentorshipSession(
 }
 
 export async function getMentors() {
-  return db.mentor.findMany({
-    where: { isAvailable: true },
-    orderBy: { rating: "desc" },
-  });
+  return getCachedData(
+    "academy:mentors:available",
+    () =>
+      db.mentor.findMany({
+        where: { isAvailable: true },
+        orderBy: { rating: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
 }
 
 // ============================================
@@ -662,59 +839,69 @@ export async function getAcademyDashboard() {
   const user = await db.user.findUnique({ where: { clerkUserId: userId } });
   if (!user) throw new Error("User not found");
 
-  const [enrollments, streak, todayGoal, achievements, submissions] = await Promise.all([
-    db.enrollment.findMany({
-      where: { userId: user.id },
-      include: {
-        learningPath: {
-          include: { modules: { include: { lessons: true } } },
+  // Cache key based on user ID and date (for daily refresh)
+  const today = new Date().toISOString().split("T")[0];
+  const cacheKey = `academy:dashboard:${user.id}:${today}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
+      const [enrollments, streak, todayGoal, achievements, submissions] = await Promise.all([
+        db.enrollment.findMany({
+          where: { userId: user.id },
+          include: {
+            learningPath: {
+              include: { modules: { include: { lessons: true } } },
+            },
+          },
+        }),
+        db.streak.findUnique({ where: { userId: user.id } }),
+        db.dailyGoal.findUnique({
+          where: { userId_date: { userId: user.id, date: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        }),
+        db.userAchievement.findMany({
+          where: { userId: user.id },
+          include: { achievement: true },
+        }),
+        db.submission.findMany({
+          where: { userId: user.id },
+          include: { assignment: true },
+          orderBy: { submittedAt: "desc" },
+          take: 5,
+        }),
+      ]);
+
+      // Calculate stats
+      const totalLessonsCompleted = await db.lessonProgress.count({
+        where: {
+          enrollment: { userId: user.id },
+          status: "COMPLETED",
         },
-      },
-    }),
-    db.streak.findUnique({ where: { userId: user.id } }),
-    db.dailyGoal.findUnique({
-      where: { userId_date: { userId: user.id, date: new Date(new Date().setHours(0, 0, 0, 0)) } },
-    }),
-    db.userAchievement.findMany({
-      where: { userId: user.id },
-      include: { achievement: true },
-    }),
-    db.submission.findMany({
-      where: { userId: user.id },
-      include: { assignment: true },
-      orderBy: { submittedAt: "desc" },
-      take: 5,
-    }),
-  ]);
+      });
 
-  // Calculate stats
-  const totalLessonsCompleted = await db.lessonProgress.count({
-    where: {
-      enrollment: { userId: user.id },
-      status: "COMPLETED",
+      const totalAssignmentsCompleted = submissions.filter((s) => s.score !== null).length;
+      const totalPoints = achievements.reduce((acc, ua) => acc + ua.achievement.points, 0);
+
+      return {
+        enrollments,
+        streak,
+        todayGoal,
+        achievements,
+        recentSubmissions: submissions,
+        stats: {
+          totalLessonsCompleted,
+          totalAssignmentsCompleted,
+          totalPoints,
+          currentStreak: streak?.currentStreak || 0,
+          longestStreak: streak?.longestStreak || 0,
+          weeklyGoalProgress: todayGoal
+            ? (todayGoal.actualMinutes / todayGoal.targetMinutes) * 100
+            : 0,
+        },
+      };
     },
-  });
-
-  const totalAssignmentsCompleted = submissions.filter((s) => s.score !== null).length;
-  const totalPoints = achievements.reduce((acc, ua) => acc + ua.achievement.points, 0);
-
-  return {
-    enrollments,
-    streak,
-    todayGoal,
-    achievements,
-    recentSubmissions: submissions,
-    stats: {
-      totalLessonsCompleted,
-      totalAssignmentsCompleted,
-      totalPoints,
-      currentStreak: streak?.currentStreak || 0,
-      longestStreak: streak?.longestStreak || 0,
-      weeklyGoalProgress: todayGoal
-        ? (todayGoal.actualMinutes / todayGoal.targetMinutes) * 100
-        : 0,
-    },
-  };
+    CACHE_TTL.SHORT // Cache for 5 minutes - data updates frequently
+  );
 }
 
 // ============================================
@@ -745,48 +932,72 @@ export async function getPersonalizedRecommendations() {
 
   if (!user) throw new Error("User not found");
 
-  // Get incomplete enrollments
-  const inProgressEnrollments = user.enrollments.filter((e) => e.progress < 100);
+  // Cache key for recommendations
+  const cacheKey = `academy:recommendations:${user.id}:${user.industry}`;
 
-  // Get available paths not enrolled in
-  const enrolledPathIds = user.enrollments.map((e) => e.learningPathId);
-  const recommendedPaths = await db.learningPath.findMany({
-    where: {
-      isPublished: true,
-      id: { notIn: enrolledPathIds },
-      OR: [{ industry: user.industry }, { industry: null }],
-    },
-    take: 3,
-  });
+  return getCachedData(
+    cacheKey,
+    async () => {
+      const activePlan = await redis.get<{
+        targetRole?: string;
+        planDetails?: { recommendedPaths?: { id: string }[]; topGaps?: { skill: string }[] };
+      }>(`career-planner:active:${user.id}`).catch(() => null);
 
-  // Get next lessons to complete
-  const nextLessons = inProgressEnrollments.map((enrollment) => {
-    const path = enrollment.learningPath;
-    const currentModule = path.modules.find((m) => m.id === enrollment.currentModuleId);
-    const currentLesson = currentModule?.lessons.find((l) => l.id === enrollment.currentLessonId);
-    return { enrollment, currentModule, currentLesson };
-  });
+      // Get incomplete enrollments
+      const inProgressEnrollments = user.enrollments.filter((e) => e.progress < 100);
 
-  // Generate AI tips based on user's industry and progress
-  let aiTip = "";
-  if (model && user.industryInsight) {
-    try {
-      const prompt = `Based on a ${user.industry} professional with ${user.experience} years of experience,
-        who has completed ${user.enrollments.reduce((acc, e) => acc + e.progress, 0) / user.enrollments.length || 0}% average progress,
-        generate a single, actionable learning tip. Keep it under 2 sentences.`;
-      const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
-        messages: [{ role: "user", content: prompt }],
+      // Get available paths not enrolled in
+      const enrolledPathIds = user.enrollments.map((e) => e.learningPathId);
+      const recommendedPaths = await db.learningPath.findMany({
+        where: {
+          isPublished: true,
+          id: { notIn: enrolledPathIds },
+          OR: [{ industry: user.industry }, { industry: null }],
+        },
+        take: 3,
       });
-      aiTip = result.choices[0]?.message?.content?.trim() || "";
-    } catch (e) {
-      console.error("Error generating AI tip:", e);
-    }
-  }
 
-  return {
-    recommendedPaths,
-    nextLessons,
-    aiTip,
-  };
+      // Promote paths aligned to the active career plan.
+      const planPathIds = activePlan?.planDetails?.recommendedPaths?.map((p) => p.id) || [];
+      const prioritizedRecommendedPaths = recommendedPaths.sort((a, b) => {
+        const aScore = planPathIds.includes(a.id) ? 1 : 0;
+        const bScore = planPathIds.includes(b.id) ? 1 : 0;
+        return bScore - aScore;
+      });
+
+      // Get next lessons to complete
+      const nextLessons = inProgressEnrollments.map((enrollment) => {
+        const path = enrollment.learningPath;
+        const currentModule = path.modules.find((m) => m.id === enrollment.currentModuleId);
+        const currentLesson = currentModule?.lessons.find((l) => l.id === enrollment.currentLessonId);
+        return { enrollment, currentModule, currentLesson };
+      });
+
+      // Generate AI tips based on user's industry and progress
+      let aiTip = "";
+      if (model && user.industryInsight) {
+        try {
+          const planGapText = activePlan?.planDetails?.topGaps?.map((g) => g.skill).join(", ") || "none";
+          const prompt = `Based on a ${user.industry} professional with ${user.experience} years of experience,
+            who has completed ${user.enrollments.reduce((acc, e) => acc + e.progress, 0) / user.enrollments.length || 0}% average progress,
+            and active plan gaps: ${planGapText},
+            generate a single, actionable learning tip. Keep it under 2 sentences.`;
+          const result = await model.chat.completions.create({
+            model: "gpt-oss:20b-cloud",
+            messages: [{ role: "user", content: prompt }],
+          });
+          aiTip = result.choices[0]?.message?.content?.trim() || "";
+        } catch (e) {
+          console.error("Error generating AI tip:", e);
+        }
+      }
+
+      return {
+        recommendedPaths: prioritizedRecommendedPaths,
+        nextLessons,
+        aiTip,
+      };
+    },
+    CACHE_TTL.MEDIUM // Cache for 1 hour
+  );
 }

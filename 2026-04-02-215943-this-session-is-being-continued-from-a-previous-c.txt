@@ -1,5 +1,5 @@
  ▐▛███▜▌   Claude Code v2.1.90
-▝▜█████▛▘  minimax-m2.7:cloud · API Usage Billing
+▝▜█████▛▘  gpt-oss:20b-cloud:cloud · API Usage Billing
   ▘▘ ▝▝    D:\elevate-ai
 
 ✻ Conversation compacted (ctrl+o for history)
@@ -35,7 +35,7 @@ ollama cloud now everywhere i will be using ollama cloud api for all ai
 features in my application                                                      
 
 ❯ /model                                                                        
-  ⎿  Set model to minimax-m2.7:cloud[1m]
+  ⎿  Set model to gpt-oss:20b-cloud:cloud[1m]
 
 ❯ hey now i want you to do a major task , replace gemini api call               
 with to ollama cloud now everywhere i will be using ollama cloud api            

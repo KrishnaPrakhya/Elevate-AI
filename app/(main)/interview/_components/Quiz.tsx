@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Lightbulb,
   Timer,
+  Target,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
@@ -46,12 +47,30 @@ export default function Quiz() {
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [showExplanation, setShowExplanation] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
-  
+  const [weakTopics, setWeakTopics] = useState<string[]>([]);
+
+  // Fetch weak topics from career plan on mount
+  useEffect(() => {
+    async function loadWeakTopics() {
+      try {
+        const response = await fetch("/api/career-planner");
+        if (response.ok) {
+          const data = await response.json();
+          const gaps = data.activePlan?.planDetails?.topGaps?.map((g: { skill: string }) => g.skill) || [];
+          setWeakTopics(gaps.slice(0, 5));
+        }
+      } catch (error) {
+        console.error("Failed to load weak topics:", error);
+      }
+    }
+    loadWeakTopics();
+  }, []);
+
   const {
     loading: generatingQuiz,
     fn: generateQuizFn,
     data: quizData,
-  } = useFetch(generateQuiz);
+  } = useFetch(() => generateQuiz(undefined, weakTopics.length > 0 ? weakTopics : undefined));
 
   const {
     loading: savingResult,
@@ -175,6 +194,25 @@ export default function Quiz() {
             This quiz contains 10 questions specific to your industry and
             skills. Take your time and choose the best answer for each question.
           </p>
+
+          {weakTopics.length > 0 && (
+            <div className="mb-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="flex items-center gap-2 mb-3">
+                <Target className="h-4 w-4 text-primary" />
+                <p className="font-medium text-sm">Focus Areas from Your Career Plan</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {weakTopics.map((topic, idx) => (
+                  <span
+                    key={idx}
+                    className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20"
+                  >
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4 mb-6">
             <div className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10">

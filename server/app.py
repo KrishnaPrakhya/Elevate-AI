@@ -200,7 +200,7 @@ if not ollama_api_key:
 
 from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(
-    model="minimax-m2.7",
+    model="gpt-oss:20b-cloud",
     openai_api_key=ollama_api_key,
     base_url=ollama_base_url,
 )

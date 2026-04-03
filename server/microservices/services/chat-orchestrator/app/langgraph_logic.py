@@ -8,7 +8,7 @@ ollama_api_key = os.getenv("OLLAMA_API_KEY", os.getenv("OPENAI_API_KEY", ""))
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1")
 
 llm = ChatOpenAI(
-    model="minimax-m2.7",
+    model="gpt-oss:20b-cloud",
     openai_api_key=ollama_api_key,
     base_url=ollama_base_url,
 )

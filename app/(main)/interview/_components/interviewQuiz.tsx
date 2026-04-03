@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { getAssessments } from "@/actions/interview";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -6,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import StatsCards, { assessmentsProps } from "./stats-cards";
 import PerformanceChart from "./PerformanceChart";
 import QuizList from "./QuizList";
+import { InterviewSkeleton } from "@/components/loaders/skeleton-loader";
 
 export interface QuizQuestion {
   id: string;
@@ -27,25 +31,45 @@ export interface Assessment {
   createdAt: Date;
   updatedAt: Date;
 }
-async function InterviewQuiz() {
-  const rawData = await getAssessments();
 
-  // Transform the raw data to ensure correct typing
-  const transformedData = rawData.map((assessment) => ({
-    ...assessment,
-    questions: assessment.questions
-      .filter((q): q is Partial<QuizQuestion> => q !== null)
-      .map((q) => ({
-        id: q.id ?? "",
-        question: q.question ?? "",
-        options: q.options ?? [],
-        correctAnswer: q.correctAnswer ?? "",
-        userAnswer: q.userAnswer ?? "",
-        explanation: q.explanation ?? "",
-        isCorrect: q.isCorrect ?? false,
-      })),
-  }));
-  const assessments: assessmentsProps = { assessments: transformedData };
+function InterviewQuiz() {
+  const [assessments, setAssessments] = useState<assessmentsProps | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAssessments()
+      .then((rawData) => {
+        const transformedData = rawData.map((assessment) => ({
+          ...assessment,
+          questions: assessment.questions
+            .filter((q): q is Partial<QuizQuestion> => q !== null)
+            .map((q) => ({
+              id: q.id ?? "",
+              question: q.question ?? "",
+              options: q.options ?? [],
+              correctAnswer: q.correctAnswer ?? "",
+              userAnswer: q.userAnswer ?? "",
+              explanation: q.explanation ?? "",
+              isCorrect: q.isCorrect ?? false,
+            })),
+        }));
+        setAssessments({ assessments: transformedData });
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <InterviewSkeleton />;
+  }
+
+  if (!assessments) {
+    return (
+      <div className="container mx-auto py-8 text-center text-muted-foreground">
+        Failed to load assessments
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8 space-y-8">

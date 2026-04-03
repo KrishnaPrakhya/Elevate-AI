@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { BrainCircuit, Send, Play, CheckCircle2, ArrowLeft } from "lucide-react";
+import { BrainCircuit, Send, CheckCircle2, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function SimulationPage() {
-  const params = useParams();
   const router = useRouter();
   const [messages, setMessages] = useState<{role: 'ai' | 'user', content: string}[]>([
     {

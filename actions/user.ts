@@ -17,11 +17,16 @@ export async function getUser() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: {
-      clerkUserId: userId
-    }
-  });
+  const user = await getCachedData(
+    `user:profile:${userId}`,
+    () =>
+      db.user.findUnique({
+        where: {
+          clerkUserId: userId
+        }
+      }),
+    CACHE_TTL.SHORT
+  );
 
   if (!user) throw new Error("User Not Found");
   return user;
@@ -191,6 +196,8 @@ export async function updateUser(data: UpdateUserData) {
       timeout: 10000
     });
     await invalidateCachePattern(`*:${user.id}*`)
+    await invalidateCachePattern(`user:*:${userId}`)
+    await invalidateCachePattern(`dashboard:*:${user.id}`)
     revalidatePath("/dashboard")
     return {success:true,...result};
   } catch (error) {
@@ -204,14 +211,19 @@ export async function getOnboardingStatus(){
   const {userId}=await auth();
   if(!userId) throw new Error("Unauthorized");
   try {
-    const user=await db.user.findUnique({
-      where:{
-        clerkUserId:userId
-      },
-      select:{
-        industry:true
-      }
-    })
+    const user=await getCachedData(
+      `user:onboarding:${userId}`,
+      () =>
+        db.user.findUnique({
+          where:{
+            clerkUserId:userId
+          },
+          select:{
+            industry:true
+          }
+        }),
+      CACHE_TTL.SHORT
+    )
     const isOnBoardingStatus=user?.industry?true:false
     return {isOnBoardingStatus}
   } catch (error) {

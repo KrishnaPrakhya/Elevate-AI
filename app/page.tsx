@@ -687,11 +687,14 @@ export default function Home() {
                     <div className="rounded-xl border bg-background p-4 text-left">
                       <p className="text-sm font-semibold">Resume Refinement</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Structured, ATS-conscious feedback aligned to target roles.
+                        Structured, ATS-conscious feedback aligned to target
+                        roles.
                       </p>
                     </div>
                     <div className="rounded-xl border bg-background p-4 text-left">
-                      <p className="text-sm font-semibold">Interview Practice</p>
+                      <p className="text-sm font-semibold">
+                        Interview Practice
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Guided question sets with response-quality feedback.
                       </p>

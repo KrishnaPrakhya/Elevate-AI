@@ -38,8 +38,8 @@ export default function StreakPage() {
           getUserStreak(),
           getTodayGoal(),
         ]);
-        setStreak(streakData);
-        setTodayGoal(goalData);
+        setStreak(streakData as Streak | null);
+        setTodayGoal(goalData as DailyGoal | null);
       } catch (error) {
         console.error("Error loading streak data:", error);
       } finally {

@@ -128,8 +128,8 @@ export const sendDailyDigest = inngest.createFunction(
               lessons: yesterdayGoal.lessonsCompleted,
               assignments: yesterdayGoal.assignmentsCompleted,
             }
-          : null,
-        todayRecommendation: await getAIRecommendation(user),
+          : undefined,
+        todayRecommendation: await getAIRecommendation({ industry: user.industry, experience: user.experience, streak: user.streak || undefined }),
         activePaths: user.enrollments.slice(0, 3),
       });
 
@@ -296,13 +296,14 @@ export const sendStreakReminders = inngest.createFunction(
       `;
 
       await step.run(`Send streak reminder to ${user.email}`, async () => {
+        const streakDays = user.streak?.currentStreak || 0;
         await db.sentEmail.create({
           data: {
             preferenceId: emailPref.id,
             type: "STREAK_REMINDER",
-            subject: `Don't Lose Your ${user.streak.currentStreak}-Day Streak!`,
+            subject: `Don't Lose Your ${streakDays}-Day Streak!`,
             body,
-            metadata: { userId: user.id, streakDays: user.streak.currentStreak },
+            metadata: { userId: user.id, streakDays },
           },
         });
 
@@ -310,7 +311,7 @@ export const sendStreakReminders = inngest.createFunction(
           await resend.emails.send({
             from: "ElevateAI Academy <academy@elevateai.com>",
             to: user.email,
-            subject: `Don't Lose Your ${user.streak.currentStreak}-Day Streak!`,
+            subject: `Don't Lose Your ${streakDays}-Day Streak!`,
             html: body,
           });
         }
@@ -556,7 +557,6 @@ export const sendLeaderboardUpdates = inngest.createFunction(
           entries: {
             orderBy: { rank: "asc" },
             take: 10,
-            include: { user: true },
           },
         },
       });
@@ -606,7 +606,6 @@ export const sendLeaderboardUpdates = inngest.createFunction(
             entries: {
               orderBy: { rank: "asc" },
               take: 10,
-              include: { user: true },
             },
           },
         });
@@ -618,21 +617,24 @@ export const sendLeaderboardUpdates = inngest.createFunction(
     // Notify top performers
     const topUsers = leaderboard.entries.slice(0, 3);
     for (const entry of topUsers) {
-      const emailPref = await step.run(`Fetch email pref for rank ${entry.rank}`, async () =>
-        db.emailPreference.findUnique({ where: { userId: entry.userId } })
+      const [emailPref, user] = await step.run(`Fetch email pref and user for rank ${entry.rank}`, async () =>
+        Promise.all([
+          db.emailPreference.findUnique({ where: { userId: entry.userId } }),
+          db.user.findUnique({ where: { id: entry.userId } }),
+        ])
       );
 
-      if (!emailPref?.leaderboardUpdates) continue;
+      if (!emailPref?.leaderboardUpdates || !user) continue;
 
       const body = `
         <h1>🏆 Top Performer This Week!</h1>
-        <p>Congratulations ${entry.user.name || entry.user.email.split("@")[0]}!</p>
+        <p>Congratulations ${user.name || user.email.split("@")[0]}!</p>
         <p>You finished <strong>#${entry.rank}</strong> on the weekly leaderboard with <strong>${entry.points} points</strong>!</p>
         <p>Keep up the great work!</p>
         <p><a href="${process.env.NEXT_PUBLIC_APP_URL}/academy/leaderboard">View Full Rankings</a></p>
       `;
 
-      await step.run(`Send leaderboard email to ${entry.user.email}`, async () => {
+      await step.run(`Send leaderboard email to ${user.email}`, async () => {
         await db.sentEmail.create({
           data: {
             preferenceId: emailPref.id,
@@ -646,7 +648,7 @@ export const sendLeaderboardUpdates = inngest.createFunction(
         if (resend) {
           await resend.emails.send({
             from: "ElevateAI Academy <academy@elevateai.com>",
-            to: entry.user.email,
+            to: user.email,
             subject: `🏆 You Ranked #${entry.rank} This Week!`,
             html: body,
           });
@@ -700,7 +702,13 @@ async function getUserRank(userId: string): Promise<number> {
   return rank;
 }
 
-function generateDailyDigestEmail(data: { userName: string; streak: number; yesterdayProgress?: { minutes: number; target: number; lessons: number; assignments: number } }): string {
+function generateDailyDigestEmail(data: {
+  userName: string;
+  streak: number;
+  yesterdayProgress?: { minutes: number; target: number; lessons: number; assignments: number } | null;
+  todayRecommendation?: string;
+  activePaths?: { learningPath: { title: string }; progress: number }[];
+}): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #4F46E5;">Good Morning, ${data.userName}! ☀️</h1>
@@ -709,7 +717,7 @@ function generateDailyDigestEmail(data: { userName: string; streak: number; yest
         🔥 You're on a <strong>${data.streak}-day streak</strong>! Keep it going!
       </div>` : ""}
 
-      ${data.yesterdayProgress ? `
+      ${data.yesterdayProgress && data.yesterdayProgress.minutes !== null ? `
       <h2 style="color: #374151;">Yesterday's Progress</h2>
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0;">
         <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; text-align: center;">
@@ -727,10 +735,12 @@ function generateDailyDigestEmail(data: { userName: string; streak: number; yest
       </div>
       ` : ""}
 
+      ${data.todayRecommendation ? `
       <h2 style="color: #374151;">Today's Recommendation</h2>
       <p style="background: #EEF2FF; padding: 15px; border-radius: 8px; font-style: italic;">
         "${data.todayRecommendation}"
       </p>
+      ` : ""}
 
       ${data.activePaths && data.activePaths.length > 0 ? `
       <h2 style="color: #374151;">Continue Learning</h2>
@@ -754,7 +764,18 @@ function generateDailyDigestEmail(data: { userName: string; streak: number; yest
   `;
 }
 
-function generateWeeklyProgressEmail(data: { weekStats: { minutes: number; lessons: number; assignments: number }; userName: string; streak: number; rank: number }): string {
+function generateWeeklyProgressEmail(data: {
+  weekStats: {
+    totalMinutes: number;
+    daysActive: number;
+    lessonsCompleted: number;
+    assignmentsCompleted: number;
+    achievementsEarned: number;
+  };
+  userName: string;
+  streak: number;
+  rank: number;
+}): string {
   const { weekStats, userName, streak, rank } = data;
 
   return `

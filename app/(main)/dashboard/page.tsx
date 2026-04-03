@@ -113,12 +113,14 @@ function DashboardPage() {
           salaryRanges: (
             rawInsights.salaryRanges as unknown as SalaryRange[]
           ).filter(Boolean),
+          demandLevel: rawInsights.demandLevel as "HIGH" | "MEDIUM" | "LOW",
+          marketOutLook: rawInsights.marketOutLook as "POSITIVE" | "NEUTRAL" | "NEGATIVE",
         };
 
         if (!isMounted) return;
 
         setData({
-          rawInsights: insights,
+          rawInsights: insights as unknown as DashboardInsights,
           academyData,
           learningSummary,
           user,

@@ -8,7 +8,8 @@
       "Bash(.venv/Scripts/python -c \"from langchain_core.output_parsers import StrOutputParser; from langchain_core.prompts import ChatPromptTemplate; print\\('Imports OK'\\)\")",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(ls:*)"
     ]
   }
 }

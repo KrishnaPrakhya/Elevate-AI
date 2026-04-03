@@ -1008,7 +1008,7 @@ function ResumeBuilder({ initialContent }: Props) {
                 ),
               }}
               userId={user?.id}
-              industry={user?.industry}
+              industry={undefined}
               currentSkills={formValues.skills ? formValues.skills.split(",").map(s => s.trim()).filter(Boolean) : []}
             />
           ) : (

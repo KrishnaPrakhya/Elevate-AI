@@ -214,7 +214,15 @@ async function syncAcademyProgressToCareerPlan(
     const enrollment = await db.enrollment.findUnique({
       where: { id: enrollmentId },
       include: {
-        learningPath: true,
+        learningPath: {
+          include: {
+            modules: {
+              include: {
+                lessons: true,
+              },
+            },
+          },
+        },
         lessonProgress: {
           where: { status: "COMPLETED" },
           include: { lesson: true },
@@ -274,11 +282,12 @@ async function syncAcademyProgressToCareerPlan(
       const pathTitle = enrollment.learningPath.title.toLowerCase();
       const updatedGaps = activePlan.planDetails?.topGaps?.map((gap) => ({
         ...gap,
-        status:
+        status: (
           gap.skill.toLowerCase().includes(pathTitle) ||
           pathTitle.includes(gap.skill.toLowerCase())
             ? "improving"
-            : gap.status || "pending",
+            : "pending"
+        ) as "improving" | "pending",
       }));
 
       if (updatedGaps) {

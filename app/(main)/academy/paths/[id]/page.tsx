@@ -65,11 +65,11 @@ export default function PathDetailPage() {
           getLearningPath(params.id as string),
           getUserEnrollments(),
         ]);
-        setPath(pathData);
+        setPath(pathData as LearningPath | null);
         const userEnrollment = enrollmentsData.find(
           (e) => e.learningPathId === params.id
         );
-        setEnrollment(userEnrollment || null);
+        setEnrollment((userEnrollment as Enrollment | null) || null);
       } catch (error) {
         console.error("Error loading path:", error);
       } finally {

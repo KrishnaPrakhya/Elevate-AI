@@ -11,7 +11,8 @@ interface LeaderboardEntry {
   id: string;
   rank: number;
   points: number;
-  user: {
+  userId: string;
+  user?: {
     name: string | null;
     email: string;
     imageUrl: string | null;
@@ -22,8 +23,8 @@ interface Leaderboard {
   id: string;
   type: string;
   period: string;
-  startDate: string;
-  endDate: string;
+  startDate: Date | string;
+  endDate: Date | string;
   entries: LeaderboardEntry[];
 }
 
@@ -42,9 +43,9 @@ export default function LeaderboardPage() {
           getLeaderboard("MONTHLY"),
           getLeaderboard("ALL_TIME"),
         ]);
-        setWeekly(weeklyData);
-        setMonthly(monthlyData);
-        setAllTime(allTimeData);
+        setWeekly(weeklyData as Leaderboard | null);
+        setMonthly(monthlyData as Leaderboard | null);
+        setAllTime(allTimeData as Leaderboard | null);
       } catch (error) {
         console.error("Error loading leaderboard:", error);
       } finally {
@@ -144,21 +145,21 @@ export default function LeaderboardPage() {
                 <Medal className="w-12 h-12 text-gray-400" />
               </div>
               <div className="relative w-16 h-16 mx-auto bg-gray-200 rounded-full mb-2 overflow-hidden">
-                {currentLeaderboard.entries[1].user.imageUrl ? (
+                {currentLeaderboard.entries[1].user?.imageUrl ? (
                   <Image
                     src={currentLeaderboard.entries[1].user.imageUrl}
-                    alt={currentLeaderboard.entries[1].user.name || "User"}
+                    alt={currentLeaderboard.entries[1].user?.name || "User"}
                     fill
                     sizes="64px"
                     className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
-                    {currentLeaderboard.entries[1].user.name?.[0] || currentLeaderboard.entries[1].user.email[0]}
+                    {currentLeaderboard.entries[1].user?.name?.[0] || currentLeaderboard.entries[1].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[1].user.name || "Anonymous"}</p>
+              <p className="font-semibold">{currentLeaderboard.entries[1].user?.name || "Anonymous"}</p>
               <p className="text-2xl font-bold text-gray-600">{currentLeaderboard.entries[1].points} pts</p>
               <Badge className="mt-2">#2</Badge>
             </CardContent>
@@ -171,21 +172,21 @@ export default function LeaderboardPage() {
                 <Trophy className="w-16 h-16 text-yellow-500" />
               </div>
               <div className="relative w-20 h-20 mx-auto bg-yellow-100 rounded-full mb-2 overflow-hidden border-4 border-yellow-300">
-                {currentLeaderboard.entries[0].user.imageUrl ? (
+                {currentLeaderboard.entries[0].user?.imageUrl ? (
                   <Image
                     src={currentLeaderboard.entries[0].user.imageUrl}
-                    alt={currentLeaderboard.entries[0].user.name || "User"}
+                    alt={currentLeaderboard.entries[0].user?.name || "User"}
                     fill
                     sizes="80px"
                     className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-yellow-600 font-bold text-xl">
-                    {currentLeaderboard.entries[0].user.name?.[0] || currentLeaderboard.entries[0].user.email[0]}
+                    {currentLeaderboard.entries[0].user?.name?.[0] || currentLeaderboard.entries[0].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[0].user.name || "Anonymous"}</p>
+              <p className="font-semibold">{currentLeaderboard.entries[0].user?.name || "Anonymous"}</p>
               <p className="text-3xl font-bold text-yellow-600">{currentLeaderboard.entries[0].points} pts</p>
               <Badge className="mt-2 bg-yellow-500">#1</Badge>
             </CardContent>
@@ -198,21 +199,21 @@ export default function LeaderboardPage() {
                 <Award className="w-12 h-12 text-amber-600" />
               </div>
               <div className="relative w-16 h-16 mx-auto bg-amber-100 rounded-full mb-2 overflow-hidden">
-                {currentLeaderboard.entries[2].user.imageUrl ? (
+                {currentLeaderboard.entries[2].user?.imageUrl ? (
                   <Image
                     src={currentLeaderboard.entries[2].user.imageUrl}
-                    alt={currentLeaderboard.entries[2].user.name || "User"}
+                    alt={currentLeaderboard.entries[2].user?.name || "User"}
                     fill
                     sizes="64px"
                     className="object-cover"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-amber-600 font-bold">
-                    {currentLeaderboard.entries[2].user.name?.[0] || currentLeaderboard.entries[2].user.email[0]}
+                    {currentLeaderboard.entries[2].user?.name?.[0] || currentLeaderboard.entries[2].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[2].user.name || "Anonymous"}</p>
+              <p className="font-semibold">{currentLeaderboard.entries[2].user?.name || "Anonymous"}</p>
               <p className="text-2xl font-bold text-amber-600">{currentLeaderboard.entries[2].points} pts</p>
               <Badge className="mt-2 bg-amber-600">#3</Badge>
             </CardContent>
@@ -243,22 +244,22 @@ export default function LeaderboardPage() {
                 >
                   <div className="w-10 flex justify-center">{getRankIcon(entry.rank + 3)}</div>
                   <div className="relative w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
-                    {entry.user.imageUrl ? (
+                    {entry.user?.imageUrl ? (
                       <Image
                         src={entry.user.imageUrl}
-                        alt={entry.user.name || "User"}
+                        alt={entry.user?.name || "User"}
                         fill
                         sizes="40px"
                         className="object-cover"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
-                        {entry.user.name?.[0] || entry.user.email[0]}
+                        {entry.user?.name?.[0] || entry.user?.email?.[0]}
                       </div>
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{entry.user.name || "Anonymous"}</p>
+                    <p className="font-medium">{entry.user?.name || "Anonymous"}</p>
                     <p className="text-sm text-muted-foreground">
                       {currentLeaderboard.entries.indexOf(entry) + 1} of {currentLeaderboard.entries.length} learners
                     </p>

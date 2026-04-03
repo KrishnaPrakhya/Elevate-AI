@@ -9,6 +9,7 @@ import {
   type CareerInsight,
 } from "@/lib/ai/career-agent";
 import { createHash } from "crypto";
+import { rateLimit } from "@/lib/rate-limit";
 
 type PlannerPayload = {
   targetRole?: string;
@@ -191,6 +192,15 @@ export async function POST(request: NextRequest) {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Rate limit: 5 requests per minute per user
+    const limit = rateLimit(request, { interval: 60 * 1000, maxRequests: 5 });
+    if (!limit.success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait before generating another plan." },
+        { status: 429 }
+      );
     }
 
     const payload = (await request.json()) as PlannerPayload;

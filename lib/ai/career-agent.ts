@@ -8,7 +8,7 @@ export const model = new OpenAI({
   baseURL: ollamaBaseUrl,
 });
 
-export const MODEL_NAME = "minimax-m2.7";
+export const MODEL_NAME = "gpt-oss:20b-cloud";
 
 // ============================================
 // AI CAREER AGENT - Central Intelligence

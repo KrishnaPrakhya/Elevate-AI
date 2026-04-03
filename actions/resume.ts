@@ -184,7 +184,7 @@ export async function analyzeResume(resumeContent: string) {
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       let analysisText = result.choices[0]?.message?.content?.trim() || "";
@@ -253,7 +253,7 @@ export async function tailorToJob(data: TailorProps) {
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       const tailoredContent = result.choices[0]?.message?.content?.trim() || ""

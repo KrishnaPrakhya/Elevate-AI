@@ -49,7 +49,7 @@ export const getIndustryInsights = inngest.createFunction(
     Include at least 5 skills and trends.`;
       const res = await step.ai.wrap("ollama", async (p) => {
         return await model.chat.completions.create({
-          model: "minimax-m2.7",
+          model: "gpt-oss:20b-cloud",
           messages: [{ role: "user", content: p }],
         });
       }, prompt);
@@ -669,7 +669,7 @@ async function getAIRecommendation(user: { industry: string | null; experience: 
       Keep it under 20 words and make it actionable.`;
 
     const result = await model.chat.completions.create({
-      model: "minimax-m2.7",
+      model: "gpt-oss:20b-cloud",
       messages: [{ role: "user", content: prompt }],
     });
     return result.choices[0]?.message?.content?.trim() || "";

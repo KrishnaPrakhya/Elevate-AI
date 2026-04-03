@@ -1,16 +1,19 @@
+"use client";
+
 import { getDashboardInsights } from "@/actions/dashboard";
 import { getOnboardingStatus, getUser } from "@/actions/user";
 import { getAcademyDashboard } from "@/actions/academy";
 import { getUserLearningSummary } from "@/lib/integrations/academy-career-bridge";
-import { analyzeCareerProfile, CareerInsight } from "@/lib/ai/career-agent";
+import type { CareerInsight } from "@/lib/ai/career-agent";
 import { redirect } from "next/navigation";
-import React from "react";
+import { useState, useEffect } from "react";
 import DashBoardView, { IndustryInsights } from "./_components/DashBoardView";
 import { IndustryInsight } from "@prisma/client";
 import { Flame, BookOpen, Trophy, Play } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { DashboardSkeleton } from "@/components/loaders/skeleton-loader";
 export interface SalaryRange {
   role: string;
   min: number;
@@ -19,46 +22,140 @@ export interface SalaryRange {
   location: string;
 }
 
-export interface DashboardInsights
-  extends Omit<IndustryInsight, "salaryRanges"> {
+export interface DashboardInsights extends Omit<
+  IndustryInsight,
+  "salaryRanges"
+> {
   salaryRanges: SalaryRange[];
 }
 
-async function Page() {
-  const { isOnBoardingStatus } = await getOnboardingStatus();
-  if (!isOnBoardingStatus) redirect("/onboarding");
+interface DashboardData {
+  rawInsights: DashboardInsights;
+  academyData: {
+    enrollments: unknown[];
+    stats: {
+      currentStreak: number;
+      weeklyGoalProgress: number;
+      totalPoints: number;
+      totalLessonsCompleted: number;
+    };
+  } | null;
+  learningSummary: {
+    activeEnrollments: number;
+    nextLesson: {
+      title: string;
+      pathTitle: string;
+      enrollmentId: string;
+    } | null;
+    weeklyProgress: number;
+  } | null;
+  user: {
+    id: string;
+    industry?: string | null;
+    experience?: number | null;
+    skills?: string[];
+    bio?: string | null;
+  } | null;
+  careerInsight: CareerInsight | null;
+}
 
-  const [rawInsights, academyData, learningSummary, user] = await Promise.all([
-    getDashboardInsights(),
-    getAcademyDashboard().catch(() => null),
-    getUserLearningSummary().catch(() => null),
-    getUser().catch(() => null),
-  ]);
+function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Generate AI-powered career insights
-  let careerInsight: CareerInsight | null = null;
-  if (user) {
-    careerInsight = await analyzeCareerProfile(
-      {
-        industry: user.industry,
-        experience: user.experience,
-        skills: user.skills || [],
-        bio: user.bio,
-      },
-      {
-        recentActivity: learningSummary ? `Completed ${learningSummary.activeEnrollments} courses` : undefined,
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCareerInsights(
+      user: DashboardData["user"],
+      learningSummary: DashboardData["learningSummary"],
+    ) {
+      if (!user || !isMounted) return;
+
+      const response = await fetch("/api/career-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          industry: user.industry,
+          experience: user.experience,
+          skills: user.skills || [],
+          bio: user.bio,
+          recentActivity: learningSummary
+            ? `Completed ${learningSummary.activeEnrollments} courses`
+            : undefined,
+        }),
+      }).catch(() => null);
+
+      if (!isMounted || !response?.ok) return;
+
+      const careerInsight = (await response.json()) as CareerInsight;
+      setData((prev) => (prev ? { ...prev, careerInsight } : prev));
+    }
+
+    async function load() {
+      try {
+        const { isOnBoardingStatus } = await getOnboardingStatus();
+        if (!isOnBoardingStatus) {
+          redirect("/onboarding");
+          return;
+        }
+
+        const [rawInsights, academyData, learningSummary, user] =
+          await Promise.all([
+            getDashboardInsights(),
+            getAcademyDashboard().catch(() => null),
+            getUserLearningSummary().catch(() => null),
+            getUser().catch(() => null),
+          ]);
+
+        const insights: IndustryInsights = {
+          ...rawInsights,
+          salaryRanges: (
+            rawInsights.salaryRanges as unknown as SalaryRange[]
+          ).filter(Boolean),
+        };
+
+        if (!isMounted) return;
+
+        setData({
+          rawInsights: insights,
+          academyData,
+          learningSummary,
+          user,
+          careerInsight: null,
+        });
+        setLoading(false);
+
+        // Non-blocking AI insights fetch so dashboard loads immediately.
+        void loadCareerInsights(user, learningSummary);
+      } catch (error) {
+        console.error("Error loading dashboard:", error);
+        if (!isMounted) return;
+        setLoading(false);
       }
-    ).catch(() => null);
+    }
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (loading) {
+    return <DashboardSkeleton />;
   }
 
-  const insights: IndustryInsights = {
-    ...rawInsights,
-    salaryRanges: (rawInsights.salaryRanges as unknown as SalaryRange[]).filter(
-      Boolean
-    ),
-  };
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-muted-foreground">Failed to load dashboard</p>
+      </div>
+    );
+  }
 
-  const hasActiveEnrollment = learningSummary && learningSummary.activeEnrollments > 0;
+  const { rawInsights, academyData, learningSummary, user, careerInsight } =
+    data;
+  const hasActiveEnrollment =
+    learningSummary && learningSummary.activeEnrollments > 0;
 
   return (
     <div className="container mx-auto">
@@ -74,7 +171,8 @@ async function Page() {
                 <div>
                   <h3 className="font-semibold text-lg">Continue Learning</h3>
                   <p className="text-sm text-muted-foreground">
-                    Next: {learningSummary.nextLesson.title} in {learningSummary.nextLesson.pathTitle}
+                    Next: {learningSummary.nextLesson.title} in{" "}
+                    {learningSummary.nextLesson.pathTitle}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="h-1.5 w-32 bg-primary/20 rounded-full overflow-hidden">
@@ -89,7 +187,9 @@ async function Page() {
                   </div>
                 </div>
               </div>
-              <Link href={`/academy/learn/${learningSummary.nextLesson.enrollmentId}`}>
+              <Link
+                href={`/academy/learn/${learningSummary.nextLesson.enrollmentId}`}
+              >
                 <Button className="gap-2">
                   <Play className="w-4 h-4" />
                   Continue
@@ -109,7 +209,9 @@ async function Page() {
                 <Flame className="w-6 h-6 text-orange-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{academyData.stats.currentStreak}</p>
+                <p className="text-2xl font-bold">
+                  {academyData.stats.currentStreak}
+                </p>
                 <p className="text-sm text-muted-foreground">Day Streak</p>
               </div>
             </CardContent>
@@ -120,7 +222,9 @@ async function Page() {
                 <BookOpen className="w-6 h-6 text-blue-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{academyData.stats.totalLessonsCompleted}</p>
+                <p className="text-2xl font-bold">
+                  {academyData.stats.totalLessonsCompleted}
+                </p>
                 <p className="text-sm text-muted-foreground">Lessons Done</p>
               </div>
             </CardContent>
@@ -131,8 +235,12 @@ async function Page() {
                 <Trophy className="w-6 h-6 text-purple-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{academyData.stats.totalPoints}</p>
-                <p className="text-sm text-muted-foreground">Achievement Points</p>
+                <p className="text-2xl font-bold">
+                  {academyData.stats.totalPoints}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Achievement Points
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -142,7 +250,9 @@ async function Page() {
                 <BookOpen className="w-6 h-6 text-green-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{academyData.enrollments?.length || 0}</p>
+                <p className="text-2xl font-bold">
+                  {academyData.enrollments?.length || 0}
+                </p>
                 <p className="text-sm text-muted-foreground">Active Courses</p>
               </div>
             </CardContent>
@@ -150,9 +260,15 @@ async function Page() {
         </div>
       )}
 
-      <DashBoardView insights={insights} careerInsight={careerInsight} userId={user?.id} />
+      <DashBoardView
+        insights={rawInsights}
+        careerInsight={careerInsight}
+        userId={user?.id}
+        academyData={academyData}
+        learningSummary={learningSummary}
+      />
     </div>
   );
 }
 
-export default Page;
+export default DashboardPage;

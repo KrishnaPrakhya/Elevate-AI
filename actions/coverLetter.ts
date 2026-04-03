@@ -189,7 +189,7 @@ export async function improveWithAICoverLetter(content: ImproveProps) {
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       const improvedContent = result.choices[0]?.message?.content?.trim() || ""
@@ -254,7 +254,7 @@ export const analyzeCoverLetter = async (content: string) => {
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       let analysisText = result.choices[0]?.message?.content?.trim() || ""
@@ -318,7 +318,7 @@ export async function tailorToJobCoverLetter(data: TailorProps) {
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
@@ -384,7 +384,7 @@ export const generateCoverLetter = async (jobTitle: string, companyName: string,
 
       try {
         const result = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: prompt }],
       });
       return result.choices[0]?.message?.content?.trim() || ""

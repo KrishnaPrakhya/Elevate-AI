@@ -3,6 +3,14 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { generatePersonalizedInterviewQuiz } from "@/lib/ai/career-agent";
+import { CACHE_TTL, getCachedData, invalidateCache, redis } from "@/lib/redis";
+
+type ActivePlan = {
+  targetRole: string;
+  planDetails?: {
+    topGaps?: { skill: string; importance: number }[];
+  };
+};
 
 export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const {userId}=await auth();
@@ -15,13 +23,27 @@ export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   })
   if(!user) throw new Error("User not Found");
 
+  const activePlan = await redis.get<ActivePlan>(`career-planner:active:${user.id}`).catch(() => null);
+  const planTargetRole = activePlan?.targetRole;
+  const planWeakTopics = (activePlan?.planDetails?.topGaps || []).map((g) => g.skill).slice(0, 5);
+
+  const finalTargetRole = targetRole || planTargetRole;
+  const finalWeakTopics = (weakTopics && weakTopics.length > 0) ? weakTopics : planWeakTopics;
+
+  const normalizedWeakTopics = (finalWeakTopics || []).map((topic) => topic.trim().toLowerCase()).sort();
+  const cacheKey = `interview:quiz:${user.id}:${(finalTargetRole || "general").toLowerCase()}:${Buffer.from(normalizedWeakTopics.join(",")).toString("base64").slice(0, 32)}`;
+
   try {
-    // Use AI career agent to generate personalized interview questions
-    const questions = await generatePersonalizedInterviewQuiz(
-      user.industry || "general",
-      user.skills || [],
-      weakTopics,
-      targetRole
+    const questions = await getCachedData(
+      cacheKey,
+      () =>
+        generatePersonalizedInterviewQuiz(
+          user.industry || "general",
+          user.skills || [],
+          finalWeakTopics,
+          finalTargetRole
+        ),
+      CACHE_TTL.MEDIUM
     );
 
     return questions;
@@ -73,23 +95,13 @@ export const saveQuizResult= async (questions:any[],answers:any[],score:number)=
       Keep it encouraging and actionable (under 3 sentences).
     `;
     try {
-      const tipResult = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/career-insights`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "improvement-tip",
-          context: improvementPrompt,
-        }),
-      }).catch(() => null);
-
-      // Fallback to direct AI call
       const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
       const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
       const OpenAI = (await import("openai")).default;
       const model = new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl });
 
       const tipResult2 = await model.chat.completions.create({
-        model: "minimax-m2.7",
+        model: "gpt-oss:20b-cloud",
         messages: [{ role: "user", content: improvementPrompt }],
       });
 
@@ -109,6 +121,8 @@ export const saveQuizResult= async (questions:any[],answers:any[],score:number)=
         improvementTip,
       }
     })
+
+    await invalidateCache(`interview:assessments:${user.id}`)
     
     return assessment;
   } catch (error) {
@@ -129,10 +143,15 @@ export const getAssessments=async()=>{
     }
   })
   if(!user) throw new Error("User not Found");
-  const assessments=await db.assessments.findMany({
-    where:{
-      userId:user.id
-    }
-  })
+  const assessments=await getCachedData(
+    `interview:assessments:${user.id}`,
+    () =>
+      db.assessments.findMany({
+        where:{
+          userId:user.id
+        }
+      }),
+    CACHE_TTL.SHORT
+  )
   return assessments;
 }

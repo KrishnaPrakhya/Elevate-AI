@@ -5,6 +5,7 @@ import { checkUser } from "@/lib/checkUser";
 import { currentUser } from "@clerk/nextjs/server";
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
+import { CACHE_TTL, getCachedData } from "@/lib/redis";
 
 export async function generateHyperPath(targetJob: string) {
   const user = await checkUser();
@@ -42,10 +43,15 @@ export async function getSkillGraph() {
   const user = await checkUser();
   if (!user) throw new Error("Unauthorized");
   
-  const skillProgress = await db.userSkillProgress.findMany({
-    where: { userId: user.id },
-    include: { skill: true }
-  });
+  const skillProgress = await getCachedData(
+    `aiQuest:skillGraph:${user.id}`,
+    () =>
+      db.userSkillProgress.findMany({
+        where: { userId: user.id },
+        include: { skill: true }
+      }),
+    CACHE_TTL.SHORT
+  );
 
   return skillProgress;
 }

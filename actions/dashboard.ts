@@ -58,7 +58,7 @@ export const generateAIinsights = async (industry: string): Promise<AIInsights> 
     `;
 
     const result = await model.chat.completions.create({
-      model: "minimax-m2.7",
+      model: "gpt-oss:20b-cloud",
       messages: [{ role: "user", content: prompt }],
     });
     const text = result.choices[0]?.message?.content || "";

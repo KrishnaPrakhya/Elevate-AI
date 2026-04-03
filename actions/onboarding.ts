@@ -4,6 +4,7 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { analyzeCareerProfile, recommendLearningPath } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
+import { CACHE_TTL, getCachedData } from "@/lib/redis";
 
 export interface OnboardingData {
   industry: string;
@@ -203,21 +204,29 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
 }
 
 export async function getAIOnboardingRecommendations(industry: string, skills: string[]) {
-  try {
-    const careerInsight = await analyzeCareerProfile({
-      industry,
-      experience: 0,
-      skills,
-      bio: "",
-    });
+  const cacheKey = `onboarding:recommendations:${industry.toLowerCase()}:${Buffer.from(skills.map((s) => s.trim().toLowerCase()).sort().join(",")).toString("base64").slice(0, 32)}`;
 
-    return {
-      skillGaps: careerInsight.skillGaps,
-      careerPaths: careerInsight.careerPathSuggestions,
-      marketTrends: careerInsight.marketTrends,
-    };
-  } catch (error) {
-    console.error("Error getting recommendations:", error);
-    return null;
-  }
+  return getCachedData(
+    cacheKey,
+    async () => {
+      try {
+        const careerInsight = await analyzeCareerProfile({
+          industry,
+          experience: 0,
+          skills,
+          bio: "",
+        });
+
+        return {
+          skillGaps: careerInsight.skillGaps,
+          careerPaths: careerInsight.careerPathSuggestions,
+          marketTrends: careerInsight.marketTrends,
+        };
+      } catch (error) {
+        console.error("Error getting recommendations:", error);
+        return null;
+      }
+    },
+    CACHE_TTL.MEDIUM
+  );
 }

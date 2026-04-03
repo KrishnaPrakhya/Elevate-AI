@@ -958,41 +958,15 @@ async def chat_endpoint(
             'current_role': user.bio or ''
         }
 
-        # Fetch chat history
-        # IMPORTANT: The original logic for chat history role assignment was flawed.
-        # ChatHistory table needs a 'role' (user/assistant) column for this to be robust.
-        # Assuming for now that ALL messages in ChatHistory for this user are "user" messages,
-        # and we build the LangGraph history by alternating. This is NOT robust.
-        # A better solution is to modify ChatHistory table to include a `sender_role: str` column.
-
         stmt_history = select(ChatHistory).where(ChatHistory.userId == user.id).order_by(ChatHistory.createdAt.asc()).limit(20) # Increased limit slightly
         result_history = await db.execute(stmt_history)
         chat_history_db_models = result_history.scalars().all()
 
-        # Construct messages for LangGraph state. This part is crucial.
-        # The graph expects a list of {"role": "user" | "assistant", "content": "..."}
-        # Given the current DB schema, we don't store the role.
-        # We'll make a simplifying assumption: we load N past messages, and they are ALL from the user OR
-        # we attempt to alternate. The latter is very fragile.
-        # The best approach is to store 'role' in the DB.
-        # For now, we will assume messages in DB are from the user.
-        
-        # Let's try to reconstruct a semblance of conversation if roles are not stored
-        # This assumes user messages and AI messages were stored one after another for that user.
-        # This part is still a significant simplification.
         messages_for_graph = []
         if chat_history_db_models:
-            # If the number of messages is odd, assume the last one is a user message not yet replied to by AI
-            # Or if it's even, they are pairs. This is a guess.
-            # A more robust way: log only user messages, and let the AI generate its part.
-            # Or better: log both with roles.
-            # For this iteration, let's reconstruct assuming alternating, ending with user if odd.
+          
             for i, msg_model in enumerate(chat_history_db_models):
-                # This is still a guess for roles. It would be better if role was stored.
-                # If we only store user messages, then all are 'user'.
-                # If we store both user and AI under user.id, we need a differentiator.
-                # Let's assume, for now, all stored messages are from the "user" perspective for simplicity of history.
-                # The supervisor will then get the user's latest message on top of this.
+            
                 messages_for_graph.append({"role": "user", "content": msg_model.content})
 
 
@@ -1028,8 +1002,7 @@ async def chat_endpoint(
             logger.error("No messages found in final_state from graph.")
 
 
-        # Save user message and assistant response
-        # Again, this saving logic needs a 'role' in ChatHistory to be correct.
+   
         try:
             # Save user's message
             user_msg_db = ChatHistory(
@@ -1074,11 +1047,6 @@ async def chat_endpoint(
 
 if __name__ == "__main__":
     init_db() 
-    # To create tables based on SQLAlchemy models if they don't exist:
-    # Important: This should generally be handled by migrations (e.g. Alembic) in production.
-    # with sync_engine.connect() as connection:
-    #     Base.metadata.create_all(bind=sync_engine)
-    #     logger.info("Ensured all tables defined in Base metadata are created if they didn't exist.")
 
     logger.info("Starting FastAPI server with Uvicorn.")
     port = int(os.getenv("PORT", "5000")) # Default to 5000 if not set

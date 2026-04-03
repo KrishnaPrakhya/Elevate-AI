@@ -2,13 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { getAcademyDashboard, getPersonalizedRecommendations } from "@/actions/academy";
-import { Loader2, BookOpen, Trophy, Flame, Target, TrendingUp, Play, Award, Users } from "lucide-react";
+import {
+  Loader2,
+  BookOpen,
+  Zap,
+  BrainCircuit,
+  Play,
+  Target,
+  TrendingUp,
+  Plus,
+  Sparkles,
+  GitBranch,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 interface DashboardData {
   enrollments: unknown[];
@@ -36,6 +48,8 @@ export default function AcademyPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendations | null>(null);
   const [loading, setLoading] = useState(true);
+  const [skillInput, setSkillInput] = useState("");
+  const [simulationDifficulty, setSimulationDifficulty] = useState("intermediate");
 
   useEffect(() => {
     async function load() {
@@ -63,8 +77,43 @@ export default function AcademyPage() {
     );
   }
 
-  const { stats } = dashboard || { stats: { currentStreak: 0, weeklyGoalProgress: 0, totalPoints: 0, totalLessonsCompleted: 0, totalAssignmentsCompleted: 0 } };
-  const hasActivity = dashboard?.enrollments && dashboard.enrollments.length > 0;
+  const { stats } = dashboard || {
+    stats: {
+      currentStreak: 0,
+      weeklyGoalProgress: 0,
+      totalPoints: 0,
+      totalLessonsCompleted: 0,
+      totalAssignmentsCompleted: 0,
+    },
+  };
+
+  // Mock data for active simulations
+  const activeSimulations = [
+    {
+      id: 1,
+      title: "API Design Interview Simulation",
+      topic: "System Design",
+      difficulty: "hard",
+      progress: 65,
+      timeSpent: "28 min",
+    },
+    {
+      id: 2,
+      title: "React Performance Optimization",
+      topic: "Frontend Engineering",
+      difficulty: "intermediate",
+      progress: 40,
+      timeSpent: "15 min",
+    },
+    {
+      id: 3,
+      title: "Database Query Optimization",
+      topic: "Backend Engineering",
+      difficulty: "intermediate",
+      progress: 85,
+      timeSpent: "42 min",
+    },
+  ];
 
   return (
     <div className="space-y-8">
@@ -75,297 +124,335 @@ export default function AcademyPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold">Academy</h1>
-          <p className="text-muted-foreground">Your personalized learning hub</p>
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <BrainCircuit className="w-8 h-8 text-primary" />
+            Hyper-Path Academy
+          </h1>
+          <p className="text-muted-foreground">
+            AI-powered skill mastery through personalized simulations
+          </p>
         </div>
-        <Link
-          href="/academy/paths"
-          className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 flex items-center gap-2"
-        >
-          <BookOpen className="w-4 h-4" />
-          Browse Paths
-        </Link>
       </motion.div>
 
-      {/* Empty State - No Activity Yet */}
-      {!hasActivity ? (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        >
-          <Card className="col-span-full lg:col-span-2 border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <TrendingUp className="w-6 h-6 text-primary" />
-                Start Your Learning Journey
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                ElevateAI Academy helps you master new skills with structured learning paths,
-                daily goals, achievements, and peer support. Your career acceleration starts here.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-background/50">
-                  <div className="bg-primary/10 p-3 rounded-lg">
-                    <BookOpen className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Structured Paths</p>
-                    <p className="text-sm text-muted-foreground">Learn step by step</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-background/50">
-                  <div className="bg-orange-500/10 p-3 rounded-lg">
-                    <Flame className="w-6 h-6 text-orange-500" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Daily Streaks</p>
-                    <p className="text-sm text-muted-foreground">Build habits</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-background/50">
-                  <div className="bg-yellow-500/10 p-3 rounded-lg">
-                    <Trophy className="w-6 h-6 text-yellow-500" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Achievements</p>
-                    <p className="text-sm text-muted-foreground">Earn rewards</p>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-4">
-                <Link href="/academy/paths">
-                  <Button size="lg" className="gap-2">
-                    <Play className="w-4 h-4" />
-                    Explore Learning Paths
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="col-span-full lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-yellow-500" />
-                Top Achievements
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {["🎯 First Steps", "🔥 Week Warrior", "📚 Fast Learner", "💎 Month Master"].map((achievement) => (
-                  <div key={achievement} className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>{achievement}</span>
-                  </div>
-                ))}
-              </div>
-              <Link href="/academy/achievements" className="text-sm text-primary hover:underline mt-4 inline-block">
-                View all achievements →
-              </Link>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : (
-        <>
-          {/* AI Recommendation */}
-          {recommendations?.aiTip && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Card className="border-l-4 border-l-primary bg-gradient-to-r from-primary/5 to-transparent">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 p-2 rounded-lg">
-                      <TrendingUp className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">AI Learning Tip</p>
-                      <p className="text-muted-foreground">{recommendations.aiTip}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-
-          {/* Stats Grid */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-          >
-            <Card className="bg-gradient-to-br from-orange-500/10 to-orange-500/5 border-orange-200/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="bg-orange-500/20 p-3 rounded-lg">
-                    <Flame className="w-6 h-6 text-orange-500" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold">{stats?.currentStreak || 0}</p>
-                    <p className="text-sm text-muted-foreground">Day Streak</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-200/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="bg-green-500/20 p-3 rounded-lg">
-                    <Target className="w-6 h-6 text-green-500" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-3xl font-bold">{Math.round(stats?.weeklyGoalProgress || 0)}%</p>
-                    <p className="text-sm text-muted-foreground">Today&apos;s Goal</p>
-                    <Progress value={stats?.weeklyGoalProgress || 0} className="h-2 mt-2" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-200/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="bg-purple-500/20 p-3 rounded-lg">
-                    <Trophy className="w-6 h-6 text-purple-500" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold">{stats?.totalPoints || 0}</p>
-                    <p className="text-sm text-muted-foreground">Total Points</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-200/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-500/20 p-3 rounded-lg">
-                    <BookOpen className="w-6 h-6 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold">{stats?.totalLessonsCompleted || 0}</p>
-                    <p className="text-sm text-muted-foreground">Lessons Done</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Continue Learning */}
-          {dashboard?.enrollments && dashboard.enrollments.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <h2 className="text-xl font-semibold mb-4">Continue Learning</h2>
-              <div className="grid gap-4">
-                {dashboard.enrollments.slice(0, 3).map((enrollment) => (
-                  <Card key={enrollment.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold">{enrollment.learningPath.title}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {enrollment.learningPath.modules?.length || 0} modules
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Progress value={enrollment.progress} className="h-2 flex-1 max-w-xs" />
-                            <span className="text-sm text-muted-foreground">
-                              {Math.round(enrollment.progress)}%
-                            </span>
-                          </div>
-                        </div>
-                        <Link href={`/academy/learn/${enrollment.id}`}>
-                          <Button variant="outline" className="gap-2">
-                            <Play className="w-4 h-4" />
-                            Continue
-                          </Button>
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Recommended Paths */}
-          {recommendations?.recommendedPaths && recommendations.recommendedPaths.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <h2 className="text-xl font-semibold mb-4">Recommended for You</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {recommendations.recommendedPaths.map((path) => (
-                  <Card key={path.id} className="hover:shadow-lg transition-shadow overflow-hidden">
-                    <div className="h-1 bg-gradient-to-r from-primary to-primary/50" />
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold">{path.title}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                        {path.description}
-                      </p>
-                      <div className="flex items-center justify-between mt-4">
-                        <Badge variant="secondary">
-                          <BookOpen className="w-3 h-3 mr-1" />
-                          {path.modules?.length || 0} modules
-                        </Badge>
-                        <Link href={`/academy/paths/${path.id}`} className="text-primary text-sm hover:underline">
-                          Explore →
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </>
-      )}
-
-      {/* Quick Actions */}
+      {/* Skill Constellation / Knowledge Graph */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        transition={{ delay: 0.1 }}
       >
-        <Link href="/academy/paths">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <BookOpen className="w-8 h-8 mx-auto text-primary mb-2" />
-              <p className="font-medium">Browse Paths</p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/academy/streak">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Flame className="w-8 h-8 mx-auto text-orange-500 mb-2" />
-              <p className="font-medium">View Streak</p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/academy/achievements">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Trophy className="w-8 h-8 mx-auto text-yellow-500 mb-2" />
-              <p className="font-medium">Achievements</p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/academy/leaderboard">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Users className="w-8 h-8 mx-auto text-blue-500 mb-2" />
-              <p className="font-medium">Leaderboard</p>
-            </CardContent>
-          </Card>
-        </Link>
+        <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Your Skill Constellation
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your knowledge graph shows interconnected skills and mastery levels
+            </p>
+          </CardHeader>
+          <CardContent>
+            {/* Placeholder for Knowledge Graph Visualization */}
+            <div className="w-full h-80 bg-gradient-to-br from-primary/5 via-primary/10 to-transparent rounded-lg border border-primary/20 flex items-center justify-center relative overflow-hidden">
+              {/* SVG-based Knowledge Graph Placeholder */}
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 600 300">
+                {/* Central node */}
+                <circle cx="300" cy="150" r="30" fill="#000" opacity="0.1" />
+                <circle cx="300" cy="150" r="25" fill="url(#gradient1)" strokeWidth="2" stroke="#000" opacity="0.3" />
+                <text x="300" y="155" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#000" opacity="0.5">
+                  You
+                </text>
+
+                {/* Skill nodes */}
+                {[
+                  { x: 100, y: 80, label: "React", color: "#3b82f6" },
+                  { x: 500, y: 80, label: "System Design", color: "#8b5cf6" },
+                  { x: 100, y: 220, label: "Node.js", color: "#10b981" },
+                  { x: 500, y: 220, label: "SQL", color: "#f59e0b" },
+                  { x: 300, y: 280, label: "DevOps", color: "#ec4899" },
+                ].map((node, idx) => (
+                  <g key={idx}>
+                    {/* Connection line */}
+                    <line
+                      x1="300"
+                      y1="150"
+                      x2={node.x}
+                      y2={node.y}
+                      stroke={node.color}
+                      strokeWidth="2"
+                      opacity="0.3"
+                    />
+                    {/* Skill node */}
+                    <circle cx={node.x} cy={node.y} r="18" fill={node.color} opacity="0.2" />
+                    <circle cx={node.x} cy={node.y} r="15" fill={node.color} opacity="0.4" strokeWidth="1.5" stroke={node.color} />
+                    <text
+                      x={node.x}
+                      y={node.y + 3}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fontWeight="600"
+                      fill="#000"
+                      opacity="0.7"
+                    >
+                      {node.label}
+                    </text>
+                  </g>
+                ))}
+
+                <defs>
+                  <radialGradient id="gradient1" cx="30%" cy="30%">
+                    <stop offset="0%" stopColor="#000" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#000" stopOpacity="0.05" />
+                  </radialGradient>
+                </defs>
+              </svg>
+
+              {/* Overlay text */}
+              <div className="relative z-10 text-center pointer-events-none">
+                <p className="text-sm text-muted-foreground font-medium">
+                  Mastering {stats?.totalLessonsCompleted || 0} core concepts
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+              <div className="p-3 bg-background rounded-lg border border-primary/10">
+                <p className="text-xs text-muted-foreground">Total Points</p>
+                <p className="text-xl font-bold text-primary">{stats?.totalPoints || 0}</p>
+              </div>
+              <div className="p-3 bg-background rounded-lg border border-primary/10">
+                <p className="text-xs text-muted-foreground">Current Streak</p>
+                <p className="text-xl font-bold text-orange-500">{stats?.currentStreak || 0} days</p>
+              </div>
+              <div className="p-3 bg-background rounded-lg border border-primary/10">
+                <p className="text-xs text-muted-foreground">Lessons Done</p>
+                <p className="text-xl font-bold text-green-600">{stats?.totalLessonsCompleted || 0}</p>
+              </div>
+              <div className="p-3 bg-background rounded-lg border border-primary/10">
+                <p className="text-xs text-muted-foreground">Weekly Goal</p>
+                <p className="text-xl font-bold text-blue-600">{stats?.weeklyGoalProgress || 0}%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </motion.div>
+
+      {/* Active AI Simulations */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-orange-500" />
+                Active AI Simulations
+              </CardTitle>
+              <Badge variant="outline">3 Active</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Continue your immersive skill-building scenarios
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeSimulations.map((sim, idx) => (
+              <motion.div
+                key={sim.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 + idx * 0.1 }}
+                className="p-4 rounded-lg border border-primary/20 bg-gradient-to-r from-background to-primary/5 hover:border-primary/40 transition-colors"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="mt-1">
+                    <div
+                      className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                      style={{
+                        background:
+                          idx === 0
+                            ? "linear-gradient(135deg, #8b5cf6, #6366f1)"
+                            : idx === 1
+                              ? "linear-gradient(135deg, #3b82f6, #06b6d4)"
+                              : "linear-gradient(135deg, #10b981, #14b8a6)",
+                      }}
+                    >
+                      {idx === 0 ? (
+                        <GitBranch className="w-6 h-6" />
+                      ) : idx === 1 ? (
+                        <BookOpen className="w-6 h-6" />
+                      ) : (
+                        <Target className="w-6 h-6" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="font-semibold">{sim.title}</h3>
+                        <p className="text-sm text-muted-foreground">{sim.topic}</p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          sim.difficulty === "hard"
+                            ? "bg-red-50 text-red-700"
+                            : "bg-amber-50 text-amber-700"
+                        }
+                      >
+                        {sim.difficulty}
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="font-medium">{sim.progress}%</span>
+                      </div>
+                      <Progress value={sim.progress} className="h-2" />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-2">{sim.timeSpent} invested</p>
+                  </div>
+
+                  <Button size="sm" variant="outline" className="mt-1">
+                    <Play className="w-4 h-4 mr-2" />
+                    Resume
+                  </Button>
+                </div>
+              </motion.div>
+            ))}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Generate Hyper-Path Form */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Generate Your Hyper-Path
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              AI will create a personalized learning and simulation roadmap tailored to your goals
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Skill Input */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Target Skill or Role</label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="E.g., System Design, Full Stack Development, ML Engineering..."
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button variant="outline" size="icon">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Difficulty Selection */}
+              <div>
+                <label className="text-sm font-medium mb-3 block">Difficulty & Pace</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {["beginner", "intermediate", "advanced"].map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setSimulationDifficulty(level)}
+                      className={`p-4 rounded-lg border-2 transition-colors text-center capitalize font-medium ${
+                        simulationDifficulty === level
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-primary/20 bg-background text-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      {level === "beginner" && "🌱 Beginner"}
+                      {level === "intermediate" && "🚀 Intermediate"}
+                      {level === "advanced" && "⚡ Advanced"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Additional Options */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-background rounded-lg border border-primary/10">
+                <div>
+                  <p className="text-sm font-medium mb-2">Learning Duration</p>
+                  <select className="w-full px-3 py-2 rounded-md border border-primary/20 text-sm bg-background">
+                    <option>2 weeks</option>
+                    <option>1 month</option>
+                    <option>3 months</option>
+                    <option>6 months</option>
+                  </select>
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-2">Simulation Intensity</p>
+                  <select className="w-full px-3 py-2 rounded-md border border-primary/20 text-sm bg-background">
+                    <option>Light (3 hrs/week)</option>
+                    <option>Moderate (10 hrs/week)</option>
+                    <option>Intensive (20+ hrs/week)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button size="lg" className="flex-1 gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Generate Hyper-Path
+                </Button>
+                <Button size="lg" variant="outline">
+                  View Examples
+                </Button>
+              </div>
+
+              {/* Info Box */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
+                <p className="font-medium mb-1">💡 Hyper-Paths Include:</p>
+                <ul className="list-disc list-inside space-y-1 text-blue-800">
+                  <li>Structured learning modules with AI tutoring</li>
+                  <li>Interactive real-world simulations & case studies</li>
+                  <li>Adaptive difficulty based on your performance</li>
+                  <li>Daily challenges & peer collaboration features</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* AI Recommendation Banner */}
+      {recommendations?.aiTip && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card className="border-l-4 border-l-primary bg-gradient-to-r from-primary/5 to-transparent">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="bg-primary/10 p-2 rounded-lg flex-shrink-0">
+                  <BrainCircuit className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">AI Insight</p>
+                  <p className="text-muted-foreground text-sm mt-1">{recommendations.aiTip}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 }

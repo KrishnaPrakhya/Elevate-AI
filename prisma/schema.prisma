@@ -32,15 +32,18 @@ model User {
   ChatMessage     ChatMessage[]
 
   // Academy relations
-  enrollments     Enrollment[]
-  dailyGoals      DailyGoal[]
-  streak          Streak?
+  enrollments      Enrollment[]
+  dailyGoals       DailyGoal[]
+  streak           Streak?
   userAchievements UserAchievement[]
-  submissions     Submission[]
+  submissions      Submission[]
   cohortMembership CohortMember[]
-  emailPreference EmailPreference?
-  reminders       Reminder[]
-  mentor          Mentor?
+  emailPreference  EmailPreference?
+  reminders        Reminder[]
+  mentor           Mentor?
+  skillProgress    UserSkillProgress[]
+  simulations      SimulationAttempt[]
+  portfolio        PortfolioArtifact[]
 }
 
 model Resume {
@@ -150,17 +153,17 @@ enum MarketOutLook {
 // ============================================
 
 model LearningPath {
-  id          String   @id @default(cuid())
-  title       String
-  description String   @db.Text
-  industry    String?
-  level       PathLevel @default(BEGINNER)
-  icon        String?
-  bannerUrl   String?
+  id             String    @id @default(cuid())
+  title          String
+  description    String    @db.Text
+  industry       String?
+  level          PathLevel @default(BEGINNER)
+  icon           String?
+  bannerUrl      String?
   estimatedHours Int?
-  isPublished Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isPublished    Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   modules     Module[]
   enrollments Enrollment[]
@@ -177,34 +180,34 @@ enum PathLevel {
 }
 
 model Module {
-  id              String   @id @default(cuid())
-  learningPathId  String
+  id             String       @id @default(cuid())
+  learningPathId String
   learningPath   LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
-  title           String
-  description     String   @db.Text
-  order           Int
-  estimatedHours  Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  title          String
+  description    String       @db.Text
+  order          Int
+  estimatedHours Int?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  lessons        Lesson[]
-  assignments    Assignment[]
+  lessons     Lesson[]
+  assignments Assignment[]
 
   @@index([learningPathId])
 }
 
 model Lesson {
-  id          String   @id @default(cuid())
-  moduleId    String
-  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title       String
-  content     String   @db.Text
-  videoUrl    String?
-  order       Int
-  type        LessonType @default(THEORY)
+  id               String     @id @default(cuid())
+  moduleId         String
+  module           Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title            String
+  content          String     @db.Text
+  videoUrl         String?
+  order            Int
+  type             LessonType @default(THEORY)
   estimatedMinutes Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   progress    LessonProgress[]
   submissions Submission[]
@@ -222,17 +225,17 @@ enum LessonType {
 }
 
 model Enrollment {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   learningPathId  String
   learningPath    LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
-  enrolledAt      DateTime @default(now())
+  enrolledAt      DateTime     @default(now())
   completedAt     DateTime?
-  progress        Float   @default(0)
+  progress        Float        @default(0)
   currentModuleId String?
   currentLessonId String?
-  lastAccessedAt  DateTime @default(now())
+  lastAccessedAt  DateTime     @default(now())
 
   lessonProgress LessonProgress[]
 
@@ -242,17 +245,17 @@ model Enrollment {
 }
 
 model LessonProgress {
-  id              String   @id @default(cuid())
-  enrollmentId    String
-  enrollment      Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  lessonId        String
-  lesson          Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  status          ProgressStatus @default(NOT_STARTED)
-  timeSpentMinutes Int     @default(0)
-  completedAt     DateTime?
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String         @id @default(cuid())
+  enrollmentId     String
+  enrollment       Enrollment     @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId         String
+  lesson           Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  status           ProgressStatus @default(NOT_STARTED)
+  timeSpentMinutes Int            @default(0)
+  completedAt      DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@unique([enrollmentId, lessonId])
   @@index([enrollmentId])
@@ -270,38 +273,38 @@ enum ProgressStatus {
 // ============================================
 
 model Assignment {
-  id              String   @id @default(cuid())
-  moduleId        String
-  module          Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title           String
-  description     String   @db.Text
-  dueDate         DateTime?
-  maxScore        Int      @default(100)
-  passingScore    Int      @default(60)
-  allowLateSubmission Boolean @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  moduleId            String
+  module              Module    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title               String
+  description         String    @db.Text
+  dueDate             DateTime?
+  maxScore            Int       @default(100)
+  passingScore        Int       @default(60)
+  allowLateSubmission Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  submissions     Submission[]
+  submissions Submission[]
 
   @@index([moduleId])
 }
 
 model Submission {
-  id              String   @id @default(cuid())
-  assignmentId    String
-  assignment      Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  lessonId        String?
-  lesson          Lesson?  @relation(fields: [lessonId], references: [id])
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content         String   @db.Text
-  attachments     Json?
-  score           Int?
-  feedback        String?
-  submittedAt     DateTime @default(now())
-  gradedAt        DateTime?
-  isLate          Boolean  @default(false)
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  lessonId     String?
+  lesson       Lesson?    @relation(fields: [lessonId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content      String     @db.Text
+  attachments  Json?
+  score        Int?
+  feedback     String?
+  submittedAt  DateTime   @default(now())
+  gradedAt     DateTime?
+  isLate       Boolean    @default(false)
 
   @@index([assignmentId])
   @@index([userId])
@@ -312,35 +315,35 @@ model Submission {
 // ============================================
 
 model DailyGoal {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date            DateTime @db.Date
-  targetMinutes   Int      @default(30)
-  actualMinutes   Int      @default(0)
-  lessonsCompleted Int     @default(0)
-  assignmentsCompleted Int @default(0)
-  quizzesCompleted Int     @default(0)
-  streakDays      Int      @default(0)
-  bonusEarned     Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime @db.Date
+  targetMinutes        Int      @default(30)
+  actualMinutes        Int      @default(0)
+  lessonsCompleted     Int      @default(0)
+  assignmentsCompleted Int      @default(0)
+  quizzesCompleted     Int      @default(0)
+  streakDays           Int      @default(0)
+  bonusEarned          Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])
 }
 
 model Streak {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  currentStreak   Int      @default(0)
-  longestStreak   Int      @default(0)
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak    Int       @default(0)
+  longestStreak    Int       @default(0)
   lastActivityDate DateTime?
-  weeklyGoalMet   Int      @default(0)
-  monthlyGoalMet Int      @default(0)
-  totalDaysActive Int      @default(0)
-  updatedAt       DateTime @updatedAt
+  weeklyGoalMet    Int       @default(0)
+  monthlyGoalMet   Int       @default(0)
+  totalDaysActive  Int       @default(0)
+  updatedAt        DateTime  @updatedAt
 
   @@index([userId])
 }
@@ -350,16 +353,16 @@ model Streak {
 // ============================================
 
 model Achievement {
-  id              String   @id @default(cuid())
-  title           String
-  description     String
-  icon            String
-  category        AchievementCategory
-  points          Int      @default(10)
-  criteria        Json
-  threshold       Int
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  id          String              @id @default(cuid())
+  title       String
+  description String
+  icon        String
+  category    AchievementCategory
+  points      Int                 @default(10)
+  criteria    Json
+  threshold   Int
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
 
   userAchievements UserAchievement[]
 
@@ -377,27 +380,27 @@ enum AchievementCategory {
 }
 
 model UserAchievement {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  achievementId   String
-  achievement     Achievement @relation(fields: [achievementId], references: [id])
-  earnedAt        DateTime @default(now())
-  progress        Int      @default(0)
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  earnedAt      DateTime    @default(now())
+  progress      Int         @default(0)
 
   @@unique([userId, achievementId])
   @@index([userId])
 }
 
 model Leaderboard {
-  id              String   @id @default(cuid())
-  type            LeaderboardType
-  period          String
-  startDate       DateTime
-  endDate         DateTime
-  createdAt       DateTime @default(now())
+  id        String          @id @default(cuid())
+  type      LeaderboardType
+  period    String
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime        @default(now())
 
-  entries         LeaderboardEntry[]
+  entries LeaderboardEntry[]
 
   @@index([type, period])
 }
@@ -409,14 +412,14 @@ enum LeaderboardType {
 }
 
 model LeaderboardEntry {
-  id              String   @id @default(cuid())
-  leaderboardId   String
-  leaderboard     Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
-  userId          String
-  points          Int      @default(0)
-  rank            Int
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String      @id @default(cuid())
+  leaderboardId String
+  leaderboard   Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  userId        String
+  points        Int         @default(0)
+  rank          Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@unique([leaderboardId, userId])
   @@index([leaderboardId, rank])
@@ -427,32 +430,32 @@ model LeaderboardEntry {
 // ============================================
 
 model Cohort {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  industry        String?
-  startsAt        DateTime
-  endsAt          DateTime
-  maxMembers      Int      @default(30)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  industry    String?
+  startsAt    DateTime
+  endsAt      DateTime
+  maxMembers  Int      @default(30)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  members         CohortMember[]
-  mentorId        String?
+  members  CohortMember[]
+  mentorId String?
 
   @@index([industry])
   @@index([isActive])
 }
 
 model CohortMember {
-  id              String   @id @default(cuid())
-  cohortId        String
-  cohort          Cohort   @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role            CohortRole @default(STUDENT)
-  joinedAt        DateTime @default(now())
+  id       String     @id @default(cuid())
+  cohortId String
+  cohort   Cohort     @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     CohortRole @default(STUDENT)
+  joinedAt DateTime   @default(now())
 
   @@unique([cohortId, userId])
   @@index([cohortId])
@@ -477,24 +480,24 @@ model Mentor {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  sessions        MentorshipSession[]
+  sessions MentorshipSession[]
 
   @@index([userId])
 }
 
 model MentorshipSession {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   mentorId        String
-  mentor          Mentor   @relation(fields: [mentorId], references: [id])
+  mentor          Mentor        @relation(fields: [mentorId], references: [id])
   studentId       String
   scheduledAt     DateTime
-  durationMinutes Int      @default(30)
+  durationMinutes Int           @default(30)
   status          SessionStatus @default(SCHEDULED)
   notes           String?
   feedback        String?
   rating          Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([mentorId])
   @@index([studentId])
@@ -512,39 +515,39 @@ enum SessionStatus {
 // ============================================
 
 model EmailPreference {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dailyDigest       Boolean  @default(true)
-  weeklyProgress    Boolean  @default(true)
-  streakReminders   Boolean  @default(true)
-  deadlineAlerts    Boolean  @default(true)
-  achievementAlerts Boolean  @default(true)
-  cohortMessages    Boolean  @default(true)
-  mentorUpdates     Boolean  @default(true)
-  leaderboardUpdates Boolean @default(false)
-  emailTime         String   @default("09:00")
-  timezone          String   @default("UTC")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyDigest        Boolean  @default(true)
+  weeklyProgress     Boolean  @default(true)
+  streakReminders    Boolean  @default(true)
+  deadlineAlerts     Boolean  @default(true)
+  achievementAlerts  Boolean  @default(true)
+  cohortMessages     Boolean  @default(true)
+  mentorUpdates      Boolean  @default(true)
+  leaderboardUpdates Boolean  @default(false)
+  emailTime          String   @default("09:00")
+  timezone           String   @default("UTC")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  sentEmails        SentEmail[]
+  sentEmails SentEmail[]
 
   @@index([userId])
 }
 
 model SentEmail {
-  id              String   @id @default(cuid())
-  preferenceId    String
-  preference      EmailPreference @relation(fields: [preferenceId], references: [id])
-  type            EmailType
-  subject         String
-  body            String   @db.Text
-  sentAt          DateTime @default(now())
-  openedAt        DateTime?
-  clickedAt       DateTime?
-  bouncedAt       DateTime?
-  metadata        Json?
+  id           String          @id @default(cuid())
+  preferenceId String
+  preference   EmailPreference @relation(fields: [preferenceId], references: [id])
+  type         EmailType
+  subject      String
+  body         String          @db.Text
+  sentAt       DateTime        @default(now())
+  openedAt     DateTime?
+  clickedAt    DateTime?
+  bouncedAt    DateTime?
+  metadata     Json?
 
   @@index([preferenceId])
   @@index([sentAt])
@@ -569,18 +572,18 @@ enum EmailType {
 // ============================================
 
 model Reminder {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type            ReminderType
-  title           String
-  message         String   @db.Text
-  scheduledFor    DateTime
-  sentAt          DateTime?
-  status          ReminderStatus @default(PENDING)
-  priority        Priority @default(MEDIUM)
-  metadata        Json?
-  createdAt       DateTime @default(now())
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         ReminderType
+  title        String
+  message      String         @db.Text
+  scheduledFor DateTime
+  sentAt       DateTime?
+  status       ReminderStatus @default(PENDING)
+  priority     Priority       @default(MEDIUM)
+  metadata     Json?
+  createdAt    DateTime       @default(now())
 
   @@index([userId, status])
   @@index([scheduledFor])
@@ -610,4 +613,91 @@ enum Priority {
   MEDIUM
   HIGH
   URGENT
+}
+
+// ============================================ 
+// EXPERIENCE SIMULATOR & HYPER-PATH 
+// ============================================
+model SkillNode {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String
+  description String?
+  createdAt   DateTime @default(now())
+
+  userProgress UserSkillProgress[]
+  requiredFor  SimulationScenario[]
+}
+
+model UserSkillProgress {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId       String
+  skill         SkillNode @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  masteryLevel  Int       @default(0)
+  lastPracticed DateTime  @default(now())
+
+  @@unique([userId, skillId])
+  @@index([userId])
+}
+
+model SimulationScenario {
+  id              String         @id @default(cuid())
+  title           String
+  description     String         @db.Text
+  difficulty      PathLevel      @default(BEGINNER)
+  type            SimulationType
+  aiPrompt        String         @db.Text
+  successCriteria String         @db.Text
+  primarySkillId  String?
+  primarySkill    SkillNode?     @relation(fields: [primarySkillId], references: [id])
+  createdAt       DateTime       @default(now())
+
+  attempts SimulationAttempt[]
+}
+
+enum SimulationType {
+  TECHNICAL
+  SOFT_SKILL
+  NEGOTIATION
+  DEBUGGING
+  SYSTEM_DESIGN
+}
+
+model SimulationAttempt {
+  id          String             @id @default(cuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenarioId  String
+  scenario    SimulationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  status      AttemptStatus      @default(IN_PROGRESS)
+  transcript  Json?
+  score       Int?
+  feedback    String?            @db.Text
+  startedAt   DateTime           @default(now())
+  completedAt DateTime?
+
+  @@index([userId])
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model PortfolioArtifact {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  description        String   @db.Text
+  contentUrl         String?
+  skillsDemonstrated String[]
+  isPublic           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
 }

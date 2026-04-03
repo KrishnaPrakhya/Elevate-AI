@@ -17,12 +17,16 @@ interface Cohort {
   endsAt: Date | string;
   maxMembers: number;
   members: CohortMember[];
-  _count: { members: number };
+  _count?: { members: number };
 }
 
 interface CohortMember {
   id: string;
-  user: {
+  role: string;
+  userId: string;
+  cohortId: string;
+  joinedAt: Date | string;
+  user?: {
     name: string | null;
     email: string;
     imageUrl: string | null;
@@ -43,8 +47,8 @@ export default function CohortsPage() {
           getCohorts(),
           getUserCohort(),
         ]);
-        setCohorts(cohortsData);
-        setUserCohort(userCohortData);
+        setCohorts(cohortsData as Cohort[]);
+        setUserCohort(userCohortData as Cohort | null);
       } catch (error) {
         console.error("Error loading cohorts:", error);
       } finally {
@@ -59,8 +63,8 @@ export default function CohortsPage() {
     try {
       await joinCohort(cohortId);
       const [cohortsData, userCohortData] = await Promise.all([getCohorts(), getUserCohort()]);
-      setCohorts(cohortsData);
-      setUserCohort(userCohortData);
+      setCohorts(cohortsData as Cohort[]);
+      setUserCohort(userCohortData as Cohort | null);
     } catch (error) {
       console.error("Error joining cohort:", error);
     } finally {
@@ -123,9 +127,9 @@ export default function CohortsPage() {
                 {userCohort.members?.slice(0, 10).map((member) => (
                   <div key={member.id} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs">
-                      {member.user.name?.[0] || member.user.email[0]}
+                      {member.user?.name?.[0] || member.user?.email?.[0]}
                     </div>
-                    <span className="text-sm">{member.user.name || "Anonymous"}</span>
+                    <span className="text-sm">{member.user?.name || "Anonymous"}</span>
                   </div>
                 ))}
               </div>

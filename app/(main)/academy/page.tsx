@@ -106,8 +106,6 @@ export default function AcademyPage() {
     useState<Recommendations | null>(null);
   const [loading, setLoading] = useState(true);
   const [skillInput, setSkillInput] = useState("");
-  const [simulationDifficulty, setSimulationDifficulty] =
-    useState("intermediate");
   const [timelineWeeks, setTimelineWeeks] = useState("8");
   const [weeklyHours, setWeeklyHours] = useState("10");
   const [generatedPlan, setGeneratedPlan] = useState<string | null>(null);
@@ -127,7 +125,7 @@ export default function AcademyPage() {
     setRecommendations(recData);
   };
 
-  const handleGenerateHyperPath = async () => {
+  const handleGeneratePlan = async () => {
     if (!skillInput.trim()) {
       toast.error("Enter a target skill or role first");
       return;
@@ -146,7 +144,6 @@ export default function AcademyPage() {
           targetRole: skillInput,
           timelineWeeks: Number(timelineWeeks),
           weeklyHours: Number(weeklyHours),
-          focusArea: `Difficulty preference: ${simulationDifficulty}`,
           source: "academy",
         }),
       });
@@ -168,13 +165,13 @@ export default function AcademyPage() {
 
       if (data.autoEnrollment?.activated) {
         toast.success(
-          `Hyper-Path activated: ${data.autoEnrollment.learningPathTitle}`,
+          `Learning Plan activated: ${data.autoEnrollment.learningPathTitle}`,
         );
       }
-      toast.success("Hyper-Path generated successfully");
+      toast.success("Learning Plan generated successfully");
     } catch (error) {
       console.error("Error generating hyper-path:", error);
-      toast.error("Failed to generate Hyper-Path");
+      toast.error("Failed to generate Learning Plan");
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -332,10 +329,10 @@ export default function AcademyPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <BrainCircuit className="w-8 h-8 text-primary" />
-            Hyper-Path Academy
+            Learning Plan Academy
           </h1>
           <p className="text-muted-foreground">
-            AI-powered skill mastery through personalized simulations
+            AI-powered skill mastery with personalized learning paths
           </p>
         </div>
       </motion.div>
@@ -610,7 +607,7 @@ export default function AcademyPage() {
               ))
             ) : (
               <div className="p-4 rounded-lg border border-dashed border-primary/30 text-sm text-muted-foreground">
-                No active learning sessions yet. Generate a Hyper-Path below to
+                No active learning sessions yet. Generate a Learning Plan below to
                 start with a personalized plan.
               </div>
             )}
@@ -663,14 +660,14 @@ export default function AcademyPage() {
             ) : (
               <p className="text-sm text-muted-foreground">
                 No specific recommendations yet. Complete onboarding details and
-                generate your Hyper-Path.
+                generate your Learning Plan.
               </p>
             )}
           </CardContent>
         </Card>
       </motion.div>
 
-      {/* Generate Hyper-Path Form */}
+      {/* Generate Learning Plan Form */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -680,10 +677,10 @@ export default function AcademyPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
-              Generate Your Hyper-Path
+              Generate Your Learning Plan
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              AI will create a personalized learning and simulation roadmap
+              AI will create a personalized learning roadmap
               tailored to your goals
             </p>
           </CardHeader>
@@ -707,31 +704,7 @@ export default function AcademyPage() {
                 </div>
               </div>
 
-              {/* Difficulty Selection */}
-              <div>
-                <label className="text-sm font-medium mb-3 block">
-                  Difficulty & Pace
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {["beginner", "intermediate", "advanced"].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() => setSimulationDifficulty(level)}
-                      className={`p-4 rounded-lg border-2 transition-colors text-center capitalize font-medium ${
-                        simulationDifficulty === level
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-primary/20 bg-background text-foreground hover:border-primary/40"
-                      }`}
-                    >
-                      {level === "beginner" && "🌱 Beginner"}
-                      {level === "intermediate" && "🚀 Intermediate"}
-                      {level === "advanced" && "⚡ Advanced"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Additional Options */}
+              {/* Learning Options */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-background rounded-lg border border-primary/10">
                 <div>
                   <p className="text-sm font-medium mb-2">Learning Duration</p>
@@ -740,7 +713,6 @@ export default function AcademyPage() {
                     onChange={(e) => setTimelineWeeks(e.target.value)}
                     className="w-full px-3 py-2 rounded-md border border-primary/20 text-sm bg-background"
                   >
-                    <option value="2">2 weeks</option>
                     <option value="4">4 weeks</option>
                     <option value="8">8 weeks</option>
                     <option value="12">12 weeks</option>
@@ -749,7 +721,7 @@ export default function AcademyPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium mb-2">
-                    Simulation Intensity
+                    Weekly Commitment
                   </p>
                   <select
                     value={weeklyHours}
@@ -768,16 +740,13 @@ export default function AcademyPage() {
                 <Button
                   size="lg"
                   className="flex-1 gap-2"
-                  onClick={handleGenerateHyperPath}
+                  onClick={handleGeneratePlan}
                   disabled={isGeneratingPlan}
                 >
                   <Sparkles className="w-4 h-4" />
                   {isGeneratingPlan
-                    ? "Generating Hyper-Path..."
-                    : "Generate Hyper-Path"}
-                </Button>
-                <Button size="lg" variant="outline">
-                  View Examples
+                    ? "Generating Plan..."
+                    : "Generate Learning Plan"}
                 </Button>
               </div>
 
@@ -929,10 +898,10 @@ export default function AcademyPage() {
 
               {/* Info Box */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
-                <p className="font-medium mb-1">💡 Hyper-Paths Include:</p>
+                <p className="font-medium mb-1">💡 Learning Plans Include:</p>
                 <ul className="list-disc list-inside space-y-1 text-blue-800">
                   <li>Structured learning modules with AI tutoring</li>
-                  <li>Interactive real-world simulations & case studies</li>
+                  <li>Real-world projects & case studies</li>
                   <li>Adaptive difficulty based on your performance</li>
                   <li>Daily challenges & peer collaboration features</li>
                 </ul>

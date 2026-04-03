@@ -43,18 +43,19 @@ export default function AcademySettingsPage() {
     async function load() {
       try {
         const user = await getUser();
-        if (user.emailPreference) {
+        const userWithPrefs = user as typeof user & { emailPreference?: EmailPreferences };
+        if (userWithPrefs.emailPreference) {
           setPreferences({
-            dailyDigest: user.emailPreference.dailyDigest,
-            weeklyProgress: user.emailPreference.weeklyProgress,
-            streakReminders: user.emailPreference.streakReminders,
-            deadlineAlerts: user.emailPreference.deadlineAlerts,
-            achievementAlerts: user.emailPreference.achievementAlerts,
-            cohortMessages: user.emailPreference.cohortMessages,
-            mentorUpdates: user.emailPreference.mentorUpdates,
-            leaderboardUpdates: user.emailPreference.leaderboardUpdates,
-            emailTime: user.emailPreference.emailTime,
-            timezone: user.emailPreference.timezone,
+            dailyDigest: userWithPrefs.emailPreference.dailyDigest,
+            weeklyProgress: userWithPrefs.emailPreference.weeklyProgress,
+            streakReminders: userWithPrefs.emailPreference.streakReminders,
+            deadlineAlerts: userWithPrefs.emailPreference.deadlineAlerts,
+            achievementAlerts: userWithPrefs.emailPreference.achievementAlerts,
+            cohortMessages: userWithPrefs.emailPreference.cohortMessages,
+            mentorUpdates: userWithPrefs.emailPreference.mentorUpdates,
+            leaderboardUpdates: userWithPrefs.emailPreference.leaderboardUpdates,
+            emailTime: userWithPrefs.emailPreference.emailTime,
+            timezone: userWithPrefs.emailPreference.timezone,
           });
         }
       } catch (error) {

@@ -158,7 +158,7 @@ export async function getLearningPathForTopic(
     });
 
     // Extract unique paths from lessons
-    const pathMap = new Map<string, typeof matchingLessons[0] & { module: typeof matchingLessons[0]['module'] }>();
+    const pathMap = new Map<string, typeof matchingLessons[0]['module']['learningPath']>();
     matchingLessons.forEach((lesson) => {
       if (!pathMap.has(lesson.module.learningPathId)) {
         pathMap.set(lesson.module.learningPathId, lesson.module.learningPath);
@@ -294,7 +294,7 @@ export async function getUserLearningSummary() {
     nextLesson,
     weeklyProgress,
     streak: user.streak?.currentStreak || 0,
-    totalPoints: user.userAchievements?.reduce((acc, ua) => acc + (ua.achievement?.points || 0), 0) || 0,
+    totalPoints: (user as any).userAchievements?.reduce((acc: number, ua: any) => acc + (ua.achievement?.points || 0), 0) || 0,
   };
 }
 
@@ -334,7 +334,7 @@ export async function getLearningPathForQuizCategory(
         { industry: searchIndustry },
         { industry: null },
         ...searchTopics.map((topic) => ({
-          title: { contains: topic, mode: "insensitive" },
+          title: { contains: topic },
         })),
       ],
     },

@@ -24,11 +24,11 @@ async function main() {
             estimatedHours: 8,
             lessons: {
               create: [
-                { title: "Introduction to HTML", content: "HTML basics...", order: 1, type: "THEORY", estimatedMinutes: 30 },
-                { title: "HTML Elements & Structure", content: "Deep dive into elements...", order: 2, type: "THEORY", estimatedMinutes: 45 },
-                { title: "CSS Fundamentals", content: "CSS basics...", order: 3, type: "THEORY", estimatedMinutes: 30 },
-                { title: "Flexbox & Grid", content: "Modern layouts...", order: 4, type: "VIDEO", estimatedMinutes: 45 },
-                { title: "Building a Landing Page", content: "Practical project...", order: 5, type: "PROJECT", estimatedMinutes: 60 },
+                { title: "Introduction to HTML", content: "HTML basics...", order: 1, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "HTML Elements & Structure", content: "Deep dive into elements...", order: 2, type: "THEORY" as const, estimatedMinutes: 45 },
+                { title: "CSS Fundamentals", content: "CSS basics...", order: 3, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "Flexbox & Grid", content: "Modern layouts...", order: 4, type: "VIDEO" as const, estimatedMinutes: 45 },
+                { title: "Building a Landing Page", content: "Practical project...", order: 5, type: "PROJECT" as const, estimatedMinutes: 60 },
               ],
             },
             assignments: {
@@ -44,11 +44,11 @@ async function main() {
             estimatedHours: 12,
             lessons: {
               create: [
-                { title: "JavaScript Basics", content: "Variables, data types...", order: 1, type: "THEORY", estimatedMinutes: 30 },
-                { title: "Functions & Scope", content: "Understanding functions...", order: 2, type: "THEORY", estimatedMinutes: 45 },
-                { title: "DOM Manipulation", content: "Interactive web pages...", order: 3, type: "VIDEO", estimatedMinutes: 45 },
-                { title: "Async JavaScript", content: "Promises and async/await...", order: 4, type: "VIDEO", estimatedMinutes: 60 },
-                { title: "Build a Todo App", content: "Apply your skills...", order: 5, type: "PROJECT", estimatedMinutes: 90 },
+                { title: "JavaScript Basics", content: "Variables, data types...", order: 1, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "Functions & Scope", content: "Understanding functions...", order: 2, type: "THEORY" as const, estimatedMinutes: 45 },
+                { title: "DOM Manipulation", content: "Interactive web pages...", order: 3, type: "VIDEO" as const, estimatedMinutes: 45 },
+                { title: "Async JavaScript", content: "Promises and async/await...", order: 4, type: "VIDEO" as const, estimatedMinutes: 60 },
+                { title: "Build a Todo App", content: "Apply your skills...", order: 5, type: "PROJECT" as const, estimatedMinutes: 90 },
               ],
             },
           },
@@ -59,10 +59,10 @@ async function main() {
             estimatedHours: 15,
             lessons: {
               create: [
-                { title: "Introduction to React", content: "Component-based architecture...", order: 1, type: "THEORY", estimatedMinutes: 30 },
-                { title: "State & Props", content: "Managing data in React...", order: 2, type: "VIDEO", estimatedMinutes: 45 },
-                { title: "Hooks Deep Dive", content: "useState, useEffect...", order: 3, type: "VIDEO", estimatedMinutes: 60 },
-                { title: "Build a Weather App", content: "API integration project...", order: 4, type: "PROJECT", estimatedMinutes: 90 },
+                { title: "Introduction to React", content: "Component-based architecture...", order: 1, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "State & Props", content: "Managing data in React...", order: 2, type: "VIDEO" as const, estimatedMinutes: 45 },
+                { title: "Hooks Deep Dive", content: "useState, useEffect...", order: 3, type: "VIDEO" as const, estimatedMinutes: 60 },
+                { title: "Build a Weather App", content: "API integration project...", order: 4, type: "PROJECT" as const, estimatedMinutes: 90 },
               ],
             },
           },
@@ -86,10 +86,10 @@ async function main() {
             estimatedHours: 15,
             lessons: {
               create: [
-                { title: "Python Basics", content: "Syntax and data types...", order: 1, type: "THEORY", estimatedMinutes: 30 },
-                { title: "NumPy Fundamentals", content: "Numerical computing...", order: 2, type: "VIDEO", estimatedMinutes: 45 },
-                { title: "Pandas Data Analysis", content: "Data manipulation...", order: 3, type: "VIDEO", estimatedMinutes: 60 },
-                { title: "Data Visualization", content: "Matplotlib and Seaborn...", order: 4, type: "VIDEO", estimatedMinutes: 45 },
+                { title: "Python Basics", content: "Syntax and data types...", order: 1, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "NumPy Fundamentals", content: "Numerical computing...", order: 2, type: "VIDEO" as const, estimatedMinutes: 45 },
+                { title: "Pandas Data Analysis", content: "Data manipulation...", order: 3, type: "VIDEO" as const, estimatedMinutes: 60 },
+                { title: "Data Visualization", content: "Matplotlib and Seaborn...", order: 4, type: "VIDEO" as const, estimatedMinutes: 45 },
               ],
             },
           },
@@ -100,9 +100,9 @@ async function main() {
             estimatedHours: 20,
             lessons: {
               create: [
-                { title: "Descriptive Statistics", content: "Mean, median, mode...", order: 1, type: "THEORY", estimatedMinutes: 45 },
-                { title: "Probability Distributions", content: "Normal, binomial...", order: 2, type: "VIDEO", estimatedMinutes: 60 },
-                { title: "Hypothesis Testing", content: "Statistical testing...", order: 3, type: "VIDEO", estimatedMinutes: 60 },
+                { title: "Descriptive Statistics", content: "Mean, median, mode...", order: 1, type: "THEORY" as const, estimatedMinutes: 45 },
+                { title: "Probability Distributions", content: "Normal, binomial...", order: 2, type: "VIDEO" as const, estimatedMinutes: 60 },
+                { title: "Hypothesis Testing", content: "Statistical testing...", order: 3, type: "VIDEO" as const, estimatedMinutes: 60 },
               ],
             },
           },
@@ -126,9 +126,9 @@ async function main() {
             estimatedHours: 6,
             lessons: {
               create: [
-                { title: "LinkedIn Optimization", content: "Profile best practices...", order: 1, type: "THEORY", estimatedMinutes: 30 },
-                { title: "Personal Website", content: "Portfolio website creation...", order: 2, type: "VIDEO", estimatedMinutes: 45 },
-                { title: "Networking Strategy", content: "Build professional connections...", order: 3, type: "VIDEO", estimatedMinutes: 40 },
+                { title: "LinkedIn Optimization", content: "Profile best practices...", order: 1, type: "THEORY" as const, estimatedMinutes: 30 },
+                { title: "Personal Website", content: "Portfolio website creation...", order: 2, type: "VIDEO" as const, estimatedMinutes: 45 },
+                { title: "Networking Strategy", content: "Build professional connections...", order: 3, type: "VIDEO" as const, estimatedMinutes: 40 },
               ],
             },
           },
@@ -139,9 +139,9 @@ async function main() {
             estimatedHours: 12,
             lessons: {
               create: [
-                { title: "Behavioral Questions", content: "STAR method...", order: 1, type: "VIDEO", estimatedMinutes: 30 },
-                { title: "Technical Interviews", content: "Problem solving...", order: 2, type: "VIDEO", estimatedMinutes: 60 },
-                { title: "Salary Negotiation", content: "Get what you deserve...", order: 3, type: "VIDEO", estimatedMinutes: 30 },
+                { title: "Behavioral Questions", content: "STAR method...", order: 1, type: "VIDEO" as const, estimatedMinutes: 30 },
+                { title: "Technical Interviews", content: "Problem solving...", order: 2, type: "VIDEO" as const, estimatedMinutes: 60 },
+                { title: "Salary Negotiation", content: "Get what you deserve...", order: 3, type: "VIDEO" as const, estimatedMinutes: 30 },
               ],
             },
           },
@@ -156,7 +156,14 @@ async function main() {
       update: {},
       create: {
         id: pathData.title.toLowerCase().replace(/\s+/g, "-"),
-        ...pathData,
+        title: pathData.title,
+        description: pathData.description,
+        industry: pathData.industry,
+        level: pathData.level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT",
+        icon: pathData.icon,
+        estimatedHours: pathData.estimatedHours,
+        isPublished: pathData.isPublished,
+        modules: pathData.modules,
       },
     });
     console.log(`Created: ${pathData.title}`);
@@ -184,7 +191,13 @@ async function main() {
       update: {},
       create: {
         id: achievement.title.toLowerCase().replace(/\s+/g, "-"),
-        ...achievement,
+        title: achievement.title,
+        description: achievement.description,
+        icon: achievement.icon,
+        category: achievement.category as "LEARNING" | "STREAK" | "ASSIGNMENT" | "QUIZ" | "MILESTONE" | "COMMUNITY",
+        points: achievement.points,
+        threshold: achievement.threshold,
+        criteria: achievement.criteria,
         isActive: true,
       },
     });

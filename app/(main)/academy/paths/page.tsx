@@ -187,14 +187,14 @@ export default function PathsPage() {
                   )}
 
                   <Link
-                    href={isEnrolled ? `/academy/learn/${enrollment.id}` : `/academy/paths/${path.id}`}
+                    href={isEnrolled && enrollment ? `/academy/learn/${enrollment.id}` : `/academy/paths/${path.id}`}
                     className={`block text-center py-2 rounded-lg font-medium transition-colors ${
                       isEnrolled
                         ? "bg-primary text-white hover:bg-primary/90"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    {isEnrolled ? "Continue Learning" : "View Path"}
+                    {isEnrolled && enrollment ? "Continue Learning" : "View Path"}
                   </Link>
                 </CardContent>
               </Card>

@@ -38,7 +38,7 @@ export default function Page() {
           <InterviewQuiz />
         </TabsContent>
         <TabsContent value="subtopicQuiz">
-          <SubTopicQuiz Topics={topics} />
+          <SubTopicQuiz Topics={topics || []} />
         </TabsContent>
       </Tabs>
     </div>

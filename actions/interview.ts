@@ -4,6 +4,7 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { generatePersonalizedInterviewQuiz } from "@/lib/ai/career-agent";
 import { CACHE_TTL, getCachedData, invalidateCache, redis } from "@/lib/redis";
+import { z } from "zod";
 
 type ActivePlan = {
   targetRole: string;
@@ -11,6 +12,11 @@ type ActivePlan = {
     topGaps?: { skill: string; importance: number }[];
   };
 };
+
+const generateQuizSchema = z.object({
+  targetRole: z.string().optional(),
+  weakTopics: z.array(z.string()).optional(),
+});
 
 export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const {userId}=await auth();
@@ -53,23 +59,36 @@ export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   }
 }
 
-export const saveQuizResult= async (questions:any[],answers:any[],score:number)=>{
-  const {userId}=await auth();
-  if(!userId) throw new Error("User is Unauthorized");
+const saveQuizResultSchema = z.object({
+  questions: z.array(z.object({
+    question: z.string(),
+    correctAnswer: z.string(),
+    explanation: z.string().optional(),
+  })),
+  answers: z.array(z.string()),
+  score: z.number().min(0).max(100),
+});
 
-  const user=await db.user.findUnique({
-    where:{
-      clerkUserId:userId
+export const saveQuizResult = async (questions: any[], answers: any[], score: number) => {
+  const { userId } = await auth();
+  if (!userId) throw new Error("User is Unauthorized");
+
+  // Validate input
+  const validated = saveQuizResultSchema.parse({ questions, answers, score });
+
+  const user = await db.user.findUnique({
+    where: {
+      clerkUserId: userId
     }
   })
-  if(!user) throw new Error("User not Found");
-  const questionResults=questions.map((q,index)=>({
-    question:q.question,
-    correctAnswer:q.correctAnswer,
-    userAnswer:answers[index],
-    isCorrect:q.correctAnswer===answers[index],
-    explanation:q.explanation
-  }))
+  if (!user) throw new Error("User not Found");
+  const questionResults = validated.questions.map((q, index) => ({
+    question: q.question,
+    correctAnswer: q.correctAnswer,
+    userAnswer: validated.answers[index],
+    isCorrect: q.correctAnswer === validated.answers[index],
+    explanation: q.explanation
+  }));
   console.log(questionResults)
   const wrongAnswers=questionResults.filter((q)=>!q.isCorrect);
   let improvementTip = null;
@@ -115,7 +134,7 @@ export const saveQuizResult= async (questions:any[],answers:any[],score:number)=
     const assessment=await db.assessments.create({
       data:{
         userId:user.id,
-        quizScore:score,
+        quizScore:validated.score,
         questions:questionResults,
         category:"Technical",
         improvementTip,

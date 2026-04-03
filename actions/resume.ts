@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { optimizeResumeSection, analyzeSkillGaps } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
 import OpenAI from "openai";
+import { z } from "zod";
 
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
@@ -14,16 +15,29 @@ const model = new OpenAI({
   baseURL: ollamaBaseUrl,
 });
 
-export async function saveResume(content:string) {
-  const {userId}=await auth();
-  if(!userId) throw new Error("User Unauthorized");
+// Input validation schemas
+const saveResumeSchema = z.object({
+  content: z.string().min(10, "Resume content must be at least 10 characters"),
+});
 
-  const user=await db.user.findUnique({
-    where:{
-      clerkUserId:userId
+const improveWithAISchema = z.object({
+  type: z.enum(["summary", "experience", "skills", "education", "full-resume"]),
+  current: z.string().min(1, "Current content is required"),
+});
+
+export async function saveResume(content: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("User Unauthorized");
+
+  // Validate input
+  const validated = saveResumeSchema.parse({ content });
+
+  const user = await db.user.findUnique({
+    where: {
+      clerkUserId: userId
     }
   })
-  if(!user) throw new Error("User Not Found")
+  if (!user) throw new Error("User Not Found")
 try {
   const resume=await db.resume.upsert({
     where:{
@@ -74,10 +88,13 @@ interface props{
   current:string
 }
 
-export async function improveWithAI(content:props) {
-  const {type,current}=content;
+export async function improveWithAI(content: props) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Validate input
+  const validated = improveWithAISchema.parse(content);
+  const { type, current } = validated;
 
   const user = await db.user.findUnique({
     where: { clerkUserId: userId },
@@ -136,27 +153,36 @@ export async function getResumeAIAnalysis(resumeContent: string) {
   );
 }
 
+const analyzeResumeSchema = z.object({
+  resumeContent: z.string().min(50, "Resume content must be at least 50 characters for analysis"),
+});
+
 export async function analyzeResume(resumeContent: string) {
-  const { userId } = await auth()
-  if (!userId) throw new Error("Unauthorized")
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  // Validate input
+  const validated = analyzeResumeSchema.parse({ resumeContent });
 
   const user = await db.user.findUnique({
     where: { clerkUserId: userId },
-  })
+  });
 
-  if (!user) throw new Error("User not found")
-    const contentHash = Buffer.from(resumeContent).toString("base64").substring(0, 20)
-  const cacheKey = `analyze:${user.id}:${contentHash}`
-      return getCachedData(
-        cacheKey,
-        async () => {
+  if (!user) throw new Error("User not found");
+
+  const contentHash = Buffer.from(validated.resumeContent).toString("base64").substring(0, 20);
+  const cacheKey = `analyze:${user.id}:${contentHash}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
       const prompt = `
         As an expert resume reviewer, analyze the following resume for a ${user.industry} professional.
         Provide a comprehensive analysis with scores and feedback.
-        
+
         Resume content:
-        ${resumeContent}
-        
+        ${validated.resumeContent}
+
         Return the analysis in this JSON format only:
         {
           "overall": number, // 0-100 score
@@ -178,63 +204,67 @@ export async function analyzeResume(resumeContent: string) {
             }
           ]
         }
-        
+
         Provide at least 3-5 specific suggestions for improvement. Focus on content, not formatting.
-      `
+      `;
 
       try {
         const result = await model.chat.completions.create({
-        model: "gpt-oss:20b-cloud",
-        messages: [{ role: "user", content: prompt }],
-      });
-      let analysisText = result.choices[0]?.message?.content?.trim() || "";
+          model: "gpt-oss:20b-cloud",
+          messages: [{ role: "user", content: prompt }],
+        });
+        let analysisText = result.choices[0]?.message?.content?.trim() || "";
         if (analysisText.startsWith("```json") || analysisText.startsWith("```")) {
-          analysisText = analysisText.replace(/```json|```/g, "").trim()
+          analysisText = analysisText.replace(/```json|```/g, "").trim();
         }
-        return JSON.parse(analysisText)
-        
-        
+        return JSON.parse(analysisText);
       } catch (error) {
-        console.error("Error analyzing resume:", error)
-        throw new Error("Failed to analyze resume")
+        console.error("Error analyzing resume:", error);
+        throw new Error("Failed to analyze resume");
       }
-    },CACHE_TTL.MEDIUM)
-  }
+    },
+    CACHE_TTL.MEDIUM
+  );
+}
   
 
 
-interface TailorProps {
-  resumeContent: string
-  jobDescription: string
-}
+const tailorToJobSchema = z.object({
+  resumeContent: z.string().min(50, "Resume content must be at least 50 characters"),
+  jobDescription: z.string().min(20, "Job description must be at least 20 characters"),
+});
 
-export async function tailorToJob(data: TailorProps) {
-  const { resumeContent, jobDescription } = data
-  const { userId } = await auth()
-  if (!userId) throw new Error("Unauthorized")
+export async function tailorToJob(data: { resumeContent: string; jobDescription: string }) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  // Validate input
+  const validated = tailorToJobSchema.parse(data);
+  const { resumeContent, jobDescription } = validated;
 
   const user = await db.user.findUnique({
     where: { clerkUserId: userId },
-  })
+  });
 
-  if (!user) throw new Error("User not found")
+  if (!user) throw new Error("User not found");
 
-    const resumeHash = Buffer.from(resumeContent).toString("base64").substring(0, 10)
-    const jobHash = Buffer.from(jobDescription).toString("base64").substring(0, 10)
-    const cacheKey = `tailor:${user.id}:${resumeHash}:${jobHash}`
-    return getCachedData(
-      cacheKey,
-      async () => {
+  const resumeHash = Buffer.from(resumeContent).toString("base64").substring(0, 10);
+  const jobHash = Buffer.from(jobDescription).toString("base64").substring(0, 10);
+  const cacheKey = `tailor:${user.id}:${resumeHash}:${jobHash}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
       const prompt = `
         As an expert resume writer, tailor the following resume to match the provided job description.
         Identify key skills and requirements from the job description and modify the resume to highlight relevant experience.
-        
+
         Resume content:
         ${resumeContent}
-        
+
         Job Description:
         ${jobDescription}
-        
+
         Return only the modified sections in this JSON format:
         {
           "summary": string, // Modified summary
@@ -246,22 +276,23 @@ export async function tailorToJob(data: TailorProps) {
             }
           ]
         }
-        
+
         Focus on highlighting relevant experience and incorporating keywords from the job description.
         Do not include sections that don't need modification.
-      `
+      `;
 
       try {
         const result = await model.chat.completions.create({
-        model: "gpt-oss:20b-cloud",
-        messages: [{ role: "user", content: prompt }],
-      });
-      const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
-        return JSON.parse(tailoredContent)
+          model: "gpt-oss:20b-cloud",
+          messages: [{ role: "user", content: prompt }],
+        });
+        const tailoredContent = result.choices[0]?.message?.content?.trim() || "";
+        return JSON.parse(tailoredContent);
       } catch (error) {
-        console.error("Error tailoring resume:", error)
-        throw new Error("Failed to tailor resume")
+        console.error("Error tailoring resume:", error);
+        throw new Error("Failed to tailor resume");
       }
     },
-  CACHE_TTL.MEDIUM)
-  }
+    CACHE_TTL.MEDIUM
+  );
+}

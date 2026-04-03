@@ -2,19 +2,17 @@
 import { db } from "@/lib/prisma";
 import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { optimizeResumeSection, analyzeSkillGaps } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
+import OpenAI from "openai";
 
-let model:any;
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
 
-if(process.env.GEMINI_API_KEY){
-
-  const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  
-  model=genAI.getGenerativeModel({
-    model:"gemini-2.5-flash-lite"
-  })
-}
+const model = new OpenAI({
+  apiKey: ollamaApiKey,
+  baseURL: ollamaBaseUrl,
+});
 
 export async function saveResume(content:string) {
   const {userId}=await auth();
@@ -90,54 +88,52 @@ export async function improveWithAI(content:props) {
 
   if (!user) throw new Error("User not found");
   const cacheKey = `improve:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
-  console.log(cacheKey);
+
   return getCachedData(
     cacheKey,
     async () => {
-  let prompt="";
-  if(type==="skills"){
-    prompt = `
-      As an expert resume writer, improve the following skills section for a ${user.industry} professional.
-      Make it more impactful, quantifiable, and aligned with industry standards.
-      Current content: "${current}"
-      categorize the given skills based on the domain and provide skills in the given format:
-      
-        Languages: programming Languages,
-        Frameworks: frameworks,
-        Tools: tools 1, Tool 2,
-        Other Skills: all other skills
-      
-      
-      Format the response as a single paragraph and each subheading should occupy a single line follwed by next category in the next line , if any catgeory is missing dont mention it without any additional text or explanations.
-    `;
-  }
-  else
-  prompt = `
-    As an expert resume writer, improve the following ${type} description for a ${user.industry} professional.
-    Make it more impactful, quantifiable, and aligned with industry standards.
-    Current content: "${current}"
+      // Use AI career agent for resume optimization
+      const result = await optimizeResumeSection(
+        type,
+        current,
+        user.industry || "general"
+      );
 
-    Requirements:
-    1. Use action verbs
-    2. Include metrics and results where possible
-    3. Highlight relevant technical skills
-    4. Keep it concise but detailed
-    5. Focus on achievements over responsibilities
-    6. Use industry-specific keywords
-    
-    Format the response as a single paragraph without any additional text or explanations.
-  `;
+      return result.optimized;
+    },
+    CACHE_TTL.MEDIUM
+  );
+}
 
-  try {
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const improvedContent = response.text().trim();
-    return improvedContent;
-  } catch (error) {
-    console.error("Error improving content:", error);
-    throw new Error("Failed to improve content");
-  }
-},CACHE_TTL.MEDIUM)
+export async function getResumeAIAnalysis(resumeContent: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  const cacheKey = `resume-analysis:${user.id}:${Buffer.from(resumeContent.substring(0, 100)).toString("base64").substring(0, 20)}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
+      const result = await optimizeResumeSection(
+        "full-resume",
+        resumeContent,
+        user.industry || "general"
+      );
+
+      return {
+        optimized: result.optimized,
+        suggestions: result.suggestions,
+        atsScore: result.atsScore,
+      };
+    },
+    CACHE_TTL.LONG
+  );
 }
 
 export async function analyzeResume(resumeContent: string) {
@@ -187,9 +183,11 @@ export async function analyzeResume(resumeContent: string) {
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        let analysisText = response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "minimax-m2.7",
+        messages: [{ role: "user", content: prompt }],
+      });
+      let analysisText = result.choices[0]?.message?.content?.trim() || "";
         if (analysisText.startsWith("```json") || analysisText.startsWith("```")) {
           analysisText = analysisText.replace(/```json|```/g, "").trim()
         }
@@ -254,9 +252,11 @@ export async function tailorToJob(data: TailorProps) {
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        const tailoredContent = response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "minimax-m2.7",
+        messages: [{ role: "user", content: prompt }],
+      });
+      const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
         return JSON.parse(tailoredContent)
       } catch (error) {
         console.error("Error tailoring resume:", error)

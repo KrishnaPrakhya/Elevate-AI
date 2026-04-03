@@ -1,13 +1,16 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 import os
 import asyncio
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
-    google_api_key=os.getenv("GEMINI_API_KEY"),
-    transport="rest",
+ollama_api_key = os.getenv("OLLAMA_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1")
+
+llm = ChatOpenAI(
+    model="minimax-m2.7",
+    openai_api_key=ollama_api_key,
+    base_url=ollama_base_url,
 )
 
 

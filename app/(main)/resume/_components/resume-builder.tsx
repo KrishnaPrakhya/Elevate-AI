@@ -1007,6 +1007,9 @@ function ResumeBuilder({ initialContent }: Props) {
                   (suggestion) => suggestion.content
                 ),
               }}
+              userId={user?.id}
+              industry={user?.industry}
+              currentSkills={formValues.skills ? formValues.skills.split(",").map(s => s.trim()).filter(Boolean) : []}
             />
           ) : (
             <Card className="shadow-md border-primary/20">

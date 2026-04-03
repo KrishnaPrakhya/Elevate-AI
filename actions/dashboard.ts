@@ -3,18 +3,15 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
-import {GoogleGenerativeAI} from "@google/generative-ai"
+import OpenAI from "openai";
 
-let model:any;
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
 
-if(process.env.GEMINI_API_KEY){
-
-  const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  
-  model=genAI.getGenerativeModel({
-    model:"gemini-2.5-flash-lite"
-  })
-}
+const model = new OpenAI({
+  apiKey: ollamaApiKey,
+  baseURL: ollamaBaseUrl,
+});
 
 
 interface SalaryRange {
@@ -60,9 +57,11 @@ export const generateAIinsights = async (industry: string): Promise<AIInsights> 
       Include at least 5 skills and trends.
     `;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const result = await model.chat.completions.create({
+      model: "minimax-m2.7",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = result.choices[0]?.message?.content || "";
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
   
     return JSON.parse(cleanedText) as AIInsights;

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, Check, X } from "lucide-react";
+import { Lightbulb, Check, X, BookOpen, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 interface AiSuggestionCardProps {
   suggestion: {
@@ -28,6 +29,11 @@ export function AiSuggestionCard({
   if (isDismissed) {
     return null;
   }
+
+  // Check if this suggestion is skill-related for Academy integration
+  const isSkillRelated = suggestion.type === "skills" ||
+    suggestion.reason.toLowerCase().includes("skill") ||
+    suggestion.content.toLowerCase().includes("skill");
 
   return (
     <motion.div
@@ -90,6 +96,30 @@ export function AiSuggestionCard({
             </div>
           </div>
         </CardContent>
+
+        {/* Academy Integration - Show for skill-related suggestions */}
+        {isSkillRelated && (
+          <div className="px-4 pb-4 pt-0">
+            <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
+              <div className="flex items-start gap-2">
+                <BookOpen className="h-4 w-4 text-primary mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-medium mb-1">Want to build this skill?</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Check out our Academy courses to master this and related skills
+                  </p>
+                  <Link href="/academy/paths">
+                    <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                      <BookOpen className="h-3 w-3" />
+                      Explore Academy
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </motion.div>
   );

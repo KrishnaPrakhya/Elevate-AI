@@ -10,10 +10,13 @@ import {
   Info,
   ChevronRight,
   ArrowUpRight,
+  ArrowRight,
   Lightbulb,
   Award,
   Zap,
   DollarSign,
+  BookOpen,
+  Target,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -51,6 +54,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import Link from "next/link";
+import { CareerInsight } from "@/lib/ai/career-agent";
 
 type salaryInsights = {
   max: number;
@@ -76,6 +81,8 @@ export type IndustryInsights = {
 
 interface Props {
   insights: IndustryInsights;
+  careerInsight?: CareerInsight | null;
+  userId?: string;
 }
 
 function DashBoardView(props: Props) {
@@ -245,6 +252,133 @@ function DashBoardView(props: Props) {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* AI Career Insights Card */}
+          {props.careerInsight && props.careerInsight.recommendedActions?.length > 0 && (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <Card className="overflow-hidden border-primary/30 bg-gradient-to-r from-primary/10 via-purple-500/10 to-blue-500/10">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-primary/20 p-2.5 rounded-lg">
+                        <Brain className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">AI Career Insights</CardTitle>
+                        <CardDescription>
+                          Personalized recommendations based on your profile
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="gap-1">
+                      <Zap className="w-3.5 h-3.5" />
+                      AI-Powered
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Skill Gaps */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2">
+                        <Target className="w-4 h-4 text-primary" />
+                        Priority Skill Gaps
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {props.careerInsight.skillGaps.slice(0, 4).map((gap, idx) => (
+                          <Link
+                            key={idx}
+                            href={`/academy/paths?search=${encodeURIComponent(gap.skill)}`}
+                          >
+                            <Badge
+                              variant="outline"
+                              className="cursor-pointer hover:bg-primary/10 transition-colors gap-1"
+                            >
+                              {gap.skill}
+                              <span className="text-xs opacity-60">({gap.importance}/10)</span>
+                            </Badge>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recommended Actions */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-primary" />
+                        Recommended Actions
+                      </h4>
+                      <div className="space-y-2">
+                        {props.careerInsight.recommendedActions.slice(0, 3).map((action, idx) => (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded-lg bg-background/50 border border-border/50"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{action.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{action.description}</p>
+                              </div>
+                              <Badge
+                                variant={action.priority === "high" ? "default" : "secondary"}
+                                className="text-xs shrink-0"
+                              >
+                                {action.priority}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Career Path Suggestions */}
+                  {props.careerInsight.careerPathSuggestions?.length > 0 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-primary" />
+                        Suggested Career Paths
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {props.careerInsight.careerPathSuggestions.map((path, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3 rounded-lg bg-primary/5 border border-primary/20"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="font-medium text-sm">{path.role}</p>
+                              <Badge variant="outline" className="text-xs">
+                                {path.matchScore}% match
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {path.skillsNeeded.slice(0, 2).map((skill, sIdx) => (
+                                <span
+                                  key={sIdx}
+                                  className="text-xs px-1.5 py-0.5 rounded bg-background/50"
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                              {path.skillsNeeded.length > 2 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{path.skillsNeeded.length - 2} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           <motion.div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
             variants={containerVariants}
@@ -757,27 +891,31 @@ function DashBoardView(props: Props) {
                     Recommended Skills
                   </CardTitle>
                   <CardDescription>
-                    Skills to consider developing for career advancement
+                    Click to explore courses for each skill
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">
                     {insights.recommendedSkills.map((skill, index) => (
-                      <div
+                      <Link
                         key={index}
-                        className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 transition-all hover:bg-amber-500/20 cursor-pointer"
+                        href={`/academy/paths?search=${encodeURIComponent(skill)}`}
+                        className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 transition-all hover:bg-amber-500/20 cursor-pointer group"
                       >
-                        <Zap className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                        <Zap className="h-4 w-4 text-amber-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
                         <span className="text-sm font-medium">{skill}</span>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 </CardContent>
                 <CardFooter className="border-t bg-muted/20 px-6 py-4">
-                  <Button variant="outline" size="sm" className="gap-1 w-full">
-                    <ArrowUpRight className="h-4 w-4" />
-                    <span>Find Learning Resources</span>
-                  </Button>
+                  <Link href="/academy/paths" className="w-full">
+                    <Button variant="outline" size="sm" className="gap-1 w-full">
+                      <BookOpen className="h-4 w-4" />
+                      <span>Browse All Learning Paths</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                 </CardFooter>
               </Card>
             </motion.div>

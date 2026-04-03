@@ -2,18 +2,9 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-let model:any;
+import { generatePersonalizedInterviewQuiz } from "@/lib/ai/career-agent";
 
-if(process.env.GEMINI_API_KEY){
-
-  const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  
-  model=genAI.getGenerativeModel({
-    model:"gemini-2.5-flash-lite"
-  })
-}
-export async function generateQuiz(){
+export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const {userId}=await auth();
   if(!userId) throw new Error("User is Unauthorized");
 
@@ -23,38 +14,20 @@ export async function generateQuiz(){
     }
   })
   if(!user) throw new Error("User not Found");
+
   try {
-    
-    const prompt = `
-      Generate 10 technical interview questions for a ${
-        user.industry
-      } professional${
-      user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
-    }.
-      
-      Each question should be multiple choice with 4 options.
-      
-      Return the response in this JSON format only, no additional text:
-      {
-        "questions": [
-          {
-            "question": "string",
-            "options": ["string", "string", "string", "string"],
-            "correctAnswer": "string",
-            "explanation": "string"
-          }
-        ]
-      }
-    `;
-    const res=await model.generateContent(prompt);
-    const response = res.response;
-    const text = response.text();
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    const quiz=JSON.parse(cleanedText);
-    return quiz.questions;
-  } catch (error:any) {
-    console.log(error);
-    throw new Error(error);
+    // Use AI career agent to generate personalized interview questions
+    const questions = await generatePersonalizedInterviewQuiz(
+      user.industry || "general",
+      user.skills || [],
+      weakTopics,
+      targetRole
+    );
+
+    return questions;
+  } catch (error: any) {
+    console.error("Error generating interview quiz:", error);
+    throw new Error("Failed to generate quiz");
   }
 }
 
@@ -86,21 +59,41 @@ export const saveQuizResult= async (questions:any[],answers:any[],score:number)=
       )
       .join("\n\n");
 
+    // AI-powered improvement tip with learning recommendations
     const improvementPrompt = `
       The user got the following ${user.industry} technical interview questions wrong:
 
       ${wrongQuestionsText}
 
-      Based on these mistakes, provide a concise, specific improvement tip.
-      Focus on the knowledge gaps revealed by these wrong answers.
-      Keep the response under 2 sentences and make it encouraging.
-      Don't explicitly mention the mistakes, instead focus on what to learn/practice.
+      Based on these mistakes:
+      1. Provide a concise, specific improvement tip
+      2. Suggest 1-2 specific topics to study
+      3. Recommend a learning approach (course, project, practice)
+
+      Keep it encouraging and actionable (under 3 sentences).
     `;
     try {
-      const tipResult = await model.generateContent(improvementPrompt);
-  
-      improvementTip = tipResult.response.text().trim();
-      console.log(improvementTip);
+      const tipResult = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/career-insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "improvement-tip",
+          context: improvementPrompt,
+        }),
+      }).catch(() => null);
+
+      // Fallback to direct AI call
+      const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+      const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+      const OpenAI = (await import("openai")).default;
+      const model = new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl });
+
+      const tipResult2 = await model.chat.completions.create({
+        model: "minimax-m2.7",
+        messages: [{ role: "user", content: improvementPrompt }],
+      });
+
+      improvementTip = tipResult2.choices[0]?.message?.content?.trim() || "";
     } catch (error) {
       console.error("Error generating improvement tip:", error);
     }

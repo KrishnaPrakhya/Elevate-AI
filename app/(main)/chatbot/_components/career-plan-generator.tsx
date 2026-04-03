@@ -12,13 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Sparkles, Target, Rocket } from "lucide-react";
+import { Loader2, Sparkles, Target, Rocket, BookOpen, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from "react-markdown";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 interface CareerPlanGeneratorProps {
   userProfile: {
@@ -195,6 +196,37 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                 <p className="text-xs text-muted-foreground">
                   Separate multiple skills with commas
                 </p>
+                {userProfile.industry && (
+                  <div className="mt-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
+                    <div className="flex items-center gap-2 mb-2">
+                      <BookOpen className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-xs font-medium">Recommended for {userProfile.industry}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["Leadership", "System Design", "Cloud Architecture"].map((skill) => (
+                        <Badge
+                          key={skill}
+                          variant="secondary"
+                          className="text-xs cursor-pointer hover:bg-primary/10 transition-colors"
+                          onClick={() => {
+                            const current = skillsToAdd.split(",").filter(s => s.trim());
+                            if (!current.includes(skill)) {
+                              setSkillsToAdd([...current, skill].join(", "));
+                            }
+                          }}
+                        >
+                          + {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                    <Link href="/academy/paths" target="_blank">
+                      <Button variant="ghost" size="sm" className="h-6 gap-1 mt-2 text-xs">
+                        <ExternalLink className="h-3 w-3" />
+                        Browse all learning paths
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -304,45 +336,64 @@ Has cover letter: ${!!userProfile.cover_letter_content}`,
                 )}
 
                 {plan && (
-                  <ReactMarkdown
-                    className="prose prose-sm max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-p:my-2"
-                    components={{
-                      a: ({ ...props }) => (
-                        <a
-                          {...props}
-                          className="font-medium text-primary underline-offset-4 hover:underline"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      ),
-                      ul: ({ ...props }) => (
-                        <ul {...props} className="my-2 list-disc pl-6" />
-                      ),
-                      ol: ({ ...props }) => (
-                        <ol {...props} className="my-2 list-decimal pl-6" />
-                      ),
-                      li: ({ ...props }) => <li {...props} className="my-1" />,
-                      table: ({ ...props }) => (
-                        <div className="my-3 overflow-x-auto rounded-lg border border-border/70">
-                          <table {...props} className="w-full text-sm" />
+                  <>
+                    <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-primary/10 to-blue-500/10 border border-primary/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">Accelerate Your Plan with Academy</span>
                         </div>
-                      ),
-                      th: ({ ...props }) => (
-                        <th
-                          {...props}
-                          className="bg-muted px-3 py-2 text-left font-semibold"
-                        />
-                      ),
-                      td: ({ ...props }) => (
-                        <td
-                          {...props}
-                          className="border-t px-3 py-2 align-top"
-                        />
-                      ),
-                    }}
-                  >
-                    {plan}
-                  </ReactMarkdown>
+                        <Link href="/academy/paths">
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
+                            <BookOpen className="h-3 w-3" />
+                            Explore Courses
+                          </Button>
+                        </Link>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enroll in structured learning paths to achieve your career goals faster
+                      </p>
+                    </div>
+                    <ReactMarkdown
+                      className="prose prose-sm max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-p:my-2"
+                      components={{
+                        a: ({ ...props }) => (
+                          <a
+                            {...props}
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        ),
+                        ul: ({ ...props }) => (
+                          <ul {...props} className="my-2 list-disc pl-6" />
+                        ),
+                        ol: ({ ...props }) => (
+                          <ol {...props} className="my-2 list-decimal pl-6" />
+                        ),
+                        li: ({ ...props }) => <li {...props} className="my-1" />,
+                        table: ({ ...props }) => (
+                          <div className="my-3 overflow-x-auto rounded-lg border border-border/70">
+                            <table {...props} className="w-full text-sm" />
+                          </div>
+                        ),
+                        th: ({ ...props }) => (
+                          <th
+                            {...props}
+                            className="bg-muted px-3 py-2 text-left font-semibold"
+                          />
+                        ),
+                        td: ({ ...props }) => (
+                          <td
+                            {...props}
+                            className="border-t px-3 py-2 align-top"
+                          />
+                        ),
+                      }}
+                    >
+                      {plan}
+                    </ReactMarkdown>
+                  </>
                 )}
               </div>
             </ScrollArea>

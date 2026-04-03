@@ -2,17 +2,15 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-let model:any;
+import OpenAI from "openai";
 
-if(process.env.GEMINI_API_KEY){
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
 
-  const genAI=new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  
-  model=genAI.getGenerativeModel({
-    model:"gemini-2.5-flash-lite"
-  })
-}
+const model = new OpenAI({
+  apiKey: ollamaApiKey,
+  baseURL: ollamaBaseUrl,
+});
 export async function generateTopicQuiz(topics:string[]){
   const {userId}=await auth();
   if(!userId) throw new Error("User is Unauthorized");
@@ -46,9 +44,11 @@ export async function generateTopicQuiz(topics:string[]){
         ]
       }
     `;
-    const res=await model.generateContent(prompt);
-    const response = res.response;
-    const text = response.text();
+    const res = await model.chat.completions.create({
+      model: "minimax-m2.7",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = res.choices[0]?.message?.content || "";
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
     const quiz=JSON.parse(cleanedText);
     return quiz.questions;
@@ -79,9 +79,11 @@ export async function generateTopicContent(topics: string[]) {
       Include explanations, examples, and best practices where applicable.
     `;
 
-    const res = await model.generateContent(prompt);
-    const response = res.response;
-    const text = response.text();
+    const res = await model.chat.completions.create({
+      model: "minimax-m2.7",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = res.choices[0]?.message?.content || "";
     return text;
   } catch (error: any) {
     console.error(error);
@@ -127,9 +129,11 @@ export async function getTopTopics(){
     },...
     ]
     `;
-    const res=await model.generateContent(prompt);
-    const response = res.response;
-    const text = response.text();
+    const res = await model.chat.completions.create({
+      model: "minimax-m2.7",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = res.choices[0]?.message?.content || "";
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
     const topics=JSON.parse(cleanedText);
     return topics;

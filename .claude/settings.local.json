@@ -10,7 +10,32 @@
       "Bash(npm install:*)",
       "Bash(npx next:*)",
       "Bash(ls:*)",
-      "Bash(grep -l \"simulator-live\" app/**/*.tsx components/**/*.tsx)"
+      "Bash(grep -l \"simulator-live\" app/**/*.tsx components/**/*.tsx)",
+      "Bash(npx playwright:*)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(node -e ':*)",
+      "Bash(npx tsx -e ':*)",
+      "Bash(timeout 30 npx tsx -e ':*)",
+      "Bash(curl -s http://localhost:5000/api/livekit/token -X POST -H \"Content-Type: application/json\" -d '{\"roomName\":\"test-room\",\"role\":\"participant\",\"level\":\"beginner\"}')",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5000)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(tasklist)",
+      "Bash(findstr python:*)",
+      "Bash(taskkill:*)",
+      "Bash(python app.py)",
+      "Bash(curl -s -X POST http://localhost:5000/api/livekit/token -H \"Content-Type: application/json\" -d '{\"roomName\":\"test-room\",\"role\":\"Software Engineer\",\"level\":\"Mid-Level\"}')",
+      "Bash(where python:*)",
+      "Bash(C:\\\\Python314\\\\python.exe app.py)",
+      "Bash(/c/Python314/python.exe app.py)",
+      "Bash(/c/Python314/python.exe:*)",
+      "Bash(findstr \"3002 5000\")",
+      "Bash(findstr LISTENING)",
+      "Bash(curl -s -X POST http://localhost:5000/api/voice-interview/start -H \"Content-Type: application/json\" -d '{\"role\":\"Software Engineer\",\"level\":\"Mid-Level\",\"numQuestions\":5}')",
+      "Bash(python -m json.tool)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"python.*app.py\")"
     ]
   }
 }

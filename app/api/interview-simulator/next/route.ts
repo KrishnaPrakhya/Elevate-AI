@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { questionIndex, previousAnswer, mode } = body;
+    const { questionIndex, previousAnswer } = body;
 
     // Generate adaptive next question based on previous answer
     const prompt = `

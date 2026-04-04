@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
-
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
 
 // Get all available simulations
 export async function GET(request: NextRequest) {
@@ -36,7 +27,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const where: any = {};
+    const where: {
+      type?: string;
+      difficulty?: string;
+    } = {};
     if (type) where.type = type;
     if (difficulty) where.difficulty = difficulty;
 

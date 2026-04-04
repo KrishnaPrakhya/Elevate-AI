@@ -294,7 +294,10 @@ export async function getUserLearningSummary() {
     nextLesson,
     weeklyProgress,
     streak: user.streak?.currentStreak || 0,
-    totalPoints: (user as any).userAchievements?.reduce((acc: number, ua: any) => acc + (ua.achievement?.points || 0), 0) || 0,
+    totalPoints: user.userAchievements?.reduce(
+      (acc, ua) => acc + (ua.achievement?.points || 0),
+      0
+    ) || 0,
   };
 }
 

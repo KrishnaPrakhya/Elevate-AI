@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Any, Literal, TypedDict, List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode # Added for URL manipulation
@@ -12,6 +13,31 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+
+
+def format_markdown_response(content: str) -> str:
+    """
+    Format AI response content for consistent markdown rendering.
+    Ensures proper table formatting, spacing, and structure.
+    """
+    if not content:
+        return content
+
+    formatted = content
+
+    # Ensure blank lines before and after tables
+    formatted = re.sub(r'\n(\|[^|]+\|.*)\n(\|[-| ]+\|)', r'\n\n\1\n\2\n', formatted)
+
+    # Ensure blank lines before headings
+    formatted = re.sub(r'([^\n])\n(#{1,6}\s)', r'\1\n\n\2', formatted)
+
+    # Ensure blank lines before code blocks
+    formatted = re.sub(r'([^\n])\n(```)', r'\1\n\n\2', formatted)
+
+    # Normalize multiple blank lines to single blank line
+    formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+
+    return formatted.strip()
 
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.output_parsers import StrOutputParser
@@ -29,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 # LiveKit imports for voice interview
 try:
-    from livekit.api import AccessToken, TokenOptions
+    from livekit.api import AccessToken
     LIVEKIT_AVAILABLE = True
 except ImportError:
     LIVEKIT_AVAILABLE = False
@@ -511,17 +537,21 @@ Important:
 async def generate_interview_questions(input_data: InterviewQuestionsInput) -> str:
     try:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert career coach.
-            Generate 5-10 potential interview questions for the user's target role and industry.
-            Include:
-            1. Behavioral questions
-            2. Technical questions (if applicable)
-            3. Role-specific questions
-            4. Industry-specific questions
-            Provide brief guidance on answering each question."""),
+            ("system", """You are an expert career coach. Generate interview questions for the candidate.
+
+IMPORTANT FORMAT REQUIREMENTS:
+- Each question MUST end with a question mark (?)
+- Number each question like: 1. Question text?
+- Include a mix of behavioral and technical questions
+- Keep questions clear and concise
+- Do NOT include advice, tips, or explanations - just the questions
+
+Generate 5-10 interview questions for the specified role."""),
             ("user", """Target role: {target_role}
-            Industry: {industry}
-            Skills: {skills}""")
+Industry: {industry}
+Skills: {skills}
+
+Please provide numbered interview questions, each ending with a question mark.""")
         ])
         return await invoke_prompt_template(prompt, {
             "target_role": input_data.target_role,
@@ -644,7 +674,7 @@ async def document_improver(state: AgentState) -> AgentState:
             company_name=company_name
         ), doc_type)
 
-        state["messages"].append({"role": "assistant", "content": result})
+        state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -691,7 +721,7 @@ async def job_searcher(state: AgentState) -> AgentState:
             remote=search_remote
         ))
 
-        state["messages"].append({"role": "assistant", "content": result})
+        state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -740,7 +770,7 @@ async def career_advisor(state: AgentState) -> AgentState:
             career_goals=career_goals # Use LLM extracted/fallback or None
         ))
 
-        state["messages"].append({"role": "assistant", "content": result})
+        state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -793,7 +823,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
             has_cover_letter=bool(user_profile.get("cover_letter_content"))
         ))
 
-        state["messages"].append({"role": "assistant", "content": result})
+        state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -837,7 +867,7 @@ async def interview_preparer(state: AgentState) -> AgentState:
             skills=user_profile.get("skills", [])
         ))
 
-        state["messages"].append({"role": "assistant", "content": result})
+        state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -1051,7 +1081,7 @@ async def chat_endpoint(
 
         return {
             'status': 'success',
-            'response': assistant_response_content,
+            'response': format_markdown_response(assistant_response_content),
             'history': final_state["messages"] # Full history from the graph
         }
 
@@ -1087,27 +1117,32 @@ async def get_livekit_token(request_data: VoiceInterviewRoomRequest):
         raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
 
     try:
-        # Create access token with interview-specific permissions
-        token = AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            options=TokenOptions(
-                name=f"Interview Agent - {request_data.role}",
-                metadata={
-                    "role": request_data.role,
-                    "level": request_data.level,
-                    "type": "voice-interview"
-                }
-            )
+        from livekit.api import VideoGrants
+
+        # Create access token with interview-specific permissions using builder pattern
+        grants = VideoGrants(
+            room_join=True,
+            room_admin=True,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+            can_publish_sources=True,
+        )
+        grants.room = request_data.roomName  # Explicitly set room for room_join
+
+        token = (AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+            .with_identity(f"interviewer-{request_data.roomName}")
+            .with_name(f"Interview Agent - {request_data.role}")
+            .with_metadata({
+                "role": request_data.role,
+                "level": request_data.level,
+                "type": "voice-interview"
+            })
+            .with_grants(grants)
         )
 
-        # Grant permissions for voice communication
-        token.set_can_publish_microphone(True)
-        token.set_can_subscribe(True)
-        token.set_can_publish_data(True)
-
-        # Generate token with room name
-        token_str = token.to_jwt(identity=f"interviewer-{request_data.roomName}")
+        # Generate token
+        token_str = token.to_jwt()
 
         return {
             "token": token_str,
@@ -1133,17 +1168,8 @@ async def start_voice_interview(request_data: VoiceInterviewStartRequest):
         # Generate questions via LLM
         questions_text = await generate_interview_questions(questions_input)
 
-        # Parse questions from LLM response (simplified - in production, use structured output)
-        # For now, return a structured response that frontend can use
-        questions = [
-            VoiceInterviewQuestion(
-                id=f"q-{i}",
-                question=f"Question {i+1} for {request_data.role} - detailed questions will be asked by voice agent",
-                category="technical",
-                difficulty="medium"
-            )
-            for i in range(min(request_data.numQuestions, 5))
-        ]
+        # Parse questions from LLM response - extract actual questions from markdown
+        questions = parse_questions_from_llm_response(questions_text, request_data.role, request_data.numQuestions)
 
         return {
             "questions": [q.model_dump() for q in questions],
@@ -1153,6 +1179,104 @@ async def start_voice_interview(request_data: VoiceInterviewStartRequest):
     except Exception as e:
         logger.error(f"Error starting voice interview: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to start interview: {str(e)}")
+
+
+def parse_questions_from_llm_response(llm_response: str, role: str, num_questions: int) -> List[VoiceInterviewQuestion]:
+    """Parse LLM response to extract actual interview questions."""
+    questions = []
+
+    # Split by lines and look for numbered questions
+    lines = llm_response.split('\n')
+    # More robust patterns that capture questions ending with ?
+    question_patterns = [
+        r'^\d+[\.\)]\s*([^?]+[?])',  # "1. Question?" or "1) Question?"
+        r'^\*\s+\d+[\.\)]\s*([^?]+[?])',  # "* 1. Question?"
+        r'^-\s+\d+[\.\)]\s*([^?]+[?])',  # "- 1. Question?"
+        r'^\d+\.\s*\*\*([^*]+)\*\*',  # "1. **Question text**"
+    ]
+
+    current_category = "behavioral"
+    current_difficulty = "easy"
+    difficulty_cycle = 0
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+
+        # Detect category from headings
+        line_lower = line.lower()
+        if "behavioral" in line_lower and ("question" in line_lower or "section" in line_lower):
+            current_category = "behavioral"
+            continue
+        elif "technical" in line_lower and ("question" in line_lower or "section" in line_lower):
+            current_category = "technical"
+            continue
+        elif "problem-solving" in line_lower or ("problem" in line_lower and "solving" in line_lower):
+            current_category = "problem-solving"
+            continue
+        elif "system" in line_lower and "design" in line_lower:
+            current_category = "system-design"
+            continue
+
+        # Check if line contains a question
+        for pattern in question_patterns:
+            match = re.match(pattern, line, re.IGNORECASE)
+            if match:
+                question_text = match.group(1).strip()
+                # Clean up any markdown
+                question_text = question_text.replace('**', '').strip()
+                # Validate it looks like a real question
+                if len(question_text) > 15 and '?' in question_text:
+                    questions.append(VoiceInterviewQuestion(
+                        id=f"q-{len(questions) + 1}",
+                        question=question_text,
+                        category=current_category,
+                        difficulty=current_difficulty
+                    ))
+                    # Cycle difficulty
+                    difficulty_cycle += 1
+                    if difficulty_cycle % 3 == 0:
+                        current_difficulty = "easy"
+                    elif difficulty_cycle % 3 == 1:
+                        current_difficulty = "medium"
+                    else:
+                        current_difficulty = "hard"
+                break
+
+        # Stop if we have enough questions
+        if len(questions) >= num_questions:
+            break
+
+    # If parsing failed or got too few questions, create fallback questions
+    if len(questions) < num_questions:
+        fallback_templates = [
+            f"Tell me about yourself and why you are interested in the {role} position.",
+            "Describe a challenging technical problem you recently solved. What was your approach?",
+            "How do you handle working under pressure or tight deadlines?",
+            "Explain a time when you had to make a difficult technical decision. What trade-offs did you consider?",
+            "What are your career goals and how does this role align with them?",
+            "Describe a project where you had to work with a difficult team member. How did you handle it?",
+            "What technical skills or technologies are you most excited about right now?",
+            "Tell me about a time you failed at something. What did you learn?",
+            "How do you stay current with new technologies and industry trends?",
+            "Describe a situation where you had to explain a technical concept to a non-technical audience.",
+        ]
+
+        existing_count = len(questions)
+        for i in range(min(num_questions - existing_count, len(fallback_templates))):
+            fallback_idx = i % len(fallback_templates)
+            # Avoid duplicates
+            if any(q.question == fallback_templates[fallback_idx] for q in questions):
+                continue
+            questions.append(VoiceInterviewQuestion(
+                id=f"q-{len(questions) + 1}",
+                question=fallback_templates[fallback_idx],
+                category="behavioral" if i % 2 == 0 else "technical",
+                difficulty="easy" if i < 2 else "medium" if i < 5 else "hard"
+            ))
+
+    return questions[:num_questions]
 
 
 @app.post("/api/voice-interview/finish")

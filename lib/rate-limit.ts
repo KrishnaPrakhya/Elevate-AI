@@ -52,7 +52,7 @@ export function rateLimit(request: NextRequest, config: Partial<RateLimitConfig>
   };
 }
 
-export function withRateLimit<T extends (...args: any[]) => Promise<NextResponse>>(
+export function withRateLimit<T extends (request: NextRequest) => Promise<NextResponse>>(
   handler: T,
   config?: Partial<RateLimitConfig>
 ) {

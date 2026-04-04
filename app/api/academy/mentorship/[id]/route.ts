@@ -44,7 +44,11 @@ export async function PATCH(
       );
     }
 
-    const updateData: any = { status };
+    const updateData: {
+      status: string;
+      rating?: number | null;
+      feedback?: string | null;
+    } = { status };
 
     // If completing and rating provided (student rates mentor)
     if (status === "COMPLETED" && rating && session.mentorId === user.id) {

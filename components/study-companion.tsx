@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 import {
   Bot,
   User,
@@ -33,7 +31,6 @@ import {
   ThumbsDown,
   Loader2,
   MessageSquare,
-  X,
   Minimize2,
   Maximize2,
   ExternalLink,
@@ -41,7 +38,6 @@ import {
   BrainCircuit,
   ChevronRight,
   PanelLeftClose,
-  PanelRightClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -459,9 +455,7 @@ export default function StudyCompanion({
                       )}
                     >
                       {message.role === "assistant" ? (
-                        <ReactMarkdown className="prose prose-sm dark:prose-invert prose-p:leading-relaxed">
-                          {message.content}
-                        </ReactMarkdown>
+                        <AIResponseFormatter content={formatAIResponse(message.content)} variant="chat" />
                       ) : (
                         <p className="leading-relaxed">{message.content}</p>
                       )}

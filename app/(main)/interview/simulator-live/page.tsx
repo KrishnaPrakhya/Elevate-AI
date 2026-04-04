@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,12 +9,9 @@ import { toast } from "sonner";
 import {
   Mic,
   MicOff,
-  Phone,
   PhoneOff,
   Brain,
   Sparkles,
-  Volume2,
-  VolumeX,
   CheckCircle,
   Clock,
   Activity,
@@ -28,7 +25,16 @@ import {
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import axios from "axios";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    SpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
 
 interface InterviewQuestion {
   id: string;
@@ -38,6 +44,154 @@ interface InterviewQuestion {
 }
 
 type InterviewState = "setup" | "connecting" | "active" | "feedback";
+
+// Component that uses LiveKit hooks - must be inside LiveKitRoom context
+function InterviewRoomContent({
+  isSpeaking,
+  setIsSpeaking,
+  isMuted,
+  setIsMuted,
+  questions,
+  currentQuestionIndex,
+  setCurrentQuestionIndex,
+  spokenAnswer,
+  isListeningAnswer,
+  onToggleListening,
+  commitCurrentAnswer,
+  onReadQuestion,
+}: {
+  isSpeaking: boolean;
+  setIsSpeaking: (speaking: boolean) => void;
+  isMuted: boolean;
+  setIsMuted: (muted: boolean) => void;
+  questions: InterviewQuestion[];
+  currentQuestionIndex: number;
+  setCurrentQuestionIndex: (index: number) => void;
+  spokenAnswer: string;
+  isListeningAnswer: boolean;
+  onToggleListening: () => void;
+  commitCurrentAnswer: () => void;
+  onReadQuestion: () => void;
+}) {
+  const localParticipant = useLocalParticipant();
+  const tracks = useTracks();
+
+  // Track if AI (remote participant) is speaking
+  useEffect(() => {
+    const remoteTracks = tracks.filter(
+      (track) => track.participant.identity !== localParticipant.identity
+    );
+    const isRemoteSpeaking = remoteTracks.some(
+      (track) =>
+        track.source === "microphone" &&
+        track.participant.isSpeaking
+    );
+    setIsSpeaking(isRemoteSpeaking);
+  }, [tracks, localParticipant.identity, setIsSpeaking]);
+
+  // Handle mute/unmute
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+    toast.info(isMuted ? "Microphone unmuted" : "Microphone muted");
+  };
+
+  return (
+    <div className="flex flex-col">
+      {/* AI Interviewer Status */}
+      <Card className="mb-4">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+              isSpeaking ? "bg-primary/20 animate-pulse" : "bg-muted"
+            }`}>
+              <Brain className={`w-8 h-8 ${isSpeaking ? "text-primary" : "text-muted-foreground"}`} />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">AI Interviewer</h3>
+              <p className="text-sm text-muted-foreground">
+                {isSpeaking ? "Speaking..." : "Listening..."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Signal className={`w-5 h-5 ${isSpeaking ? "text-emerald-500" : "text-muted-foreground"}`} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Current Question */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Brain className="w-6 h-6 text-primary mt-1" />
+            <div className="flex-1">
+              <h3 className="font-semibold mb-2">Current Question:</h3>
+              <p className="text-lg">
+                {questions[currentQuestionIndex]?.question || "Waiting for question..."}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={onReadQuestion}
+              >
+                <Sparkles className="w-3 h-3 mr-1" />
+                Read Question Aloud
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2">
+                If live AI audio is unavailable, this uses browser voice as fallback.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4 p-3 rounded-lg border bg-muted/20">
+            <label className="text-sm font-medium">Your Live Answer Transcript</label>
+            <p className="text-sm text-muted-foreground min-h-10">
+              {spokenAnswer || "Start speaking to capture your answer..."}
+            </p>
+            <div className="flex gap-2">
+              <Button onClick={onToggleListening} variant={isListeningAnswer ? "destructive" : "secondary"} size="sm">
+                {isListeningAnswer ? "Stop Listening" : "Start Speaking"}
+              </Button>
+              <Button onClick={commitCurrentAnswer} variant="outline" size="sm">
+                Save This Answer
+              </Button>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-4 pt-4 border-t">
+            <Button
+              size="lg"
+              variant={isMuted ? "destructive" : "outline"}
+              onClick={handleToggleMute}
+              className="w-14 h-14 rounded-full"
+            >
+              {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+            </Button>
+
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => {
+                commitCurrentAnswer();
+                if (currentQuestionIndex < questions.length - 1) {
+                  setCurrentQuestionIndex(currentQuestionIndex + 1);
+                  toast.success("Next question");
+                }
+              }}
+              disabled={currentQuestionIndex >= questions.length - 1}
+            >
+              Next
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <RoomAudioRenderer />
+    </div>
+  );
+}
 
 export default function VoiceInterviewSimulator() {
   const [state, setState] = useState<InterviewState>("setup");
@@ -51,10 +205,115 @@ export default function VoiceInterviewSimulator() {
   const [selectedRole, setSelectedRole] = useState("Software Engineer");
   const [selectedLevel, setSelectedLevel] = useState("Mid-Level");
   const [interviewDuration, setInterviewDuration] = useState(0);
-  const [transcript, setTranscript] = useState<string[]>([]);
   const [aiFeedback, setAiFeedback] = useState<string>("");
+  const [transcript, setTranscript] = useState<string[]>([]);
+  const [spokenAnswer, setSpokenAnswer] = useState("");
+  const [isListeningAnswer, setIsListeningAnswer] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const { isMicrophoneEnabled, isSpeaking: localIsSpeaking } = useLocalParticipant();
+  const buildFallbackQuestions = (role: string, level: string): InterviewQuestion[] => [
+    {
+      id: "q-1",
+      question: `Tell me about yourself and why you are a fit for a ${level} ${role} position.`,
+      category: "behavioral",
+      difficulty: "easy",
+    },
+    {
+      id: "q-2",
+      question: "Describe a challenging project you worked on and the trade-offs you made.",
+      category: "technical",
+      difficulty: "medium",
+    },
+    {
+      id: "q-3",
+      question: "How do you debug production issues under time pressure?",
+      category: "problem-solving",
+      difficulty: "medium",
+    },
+    {
+      id: "q-4",
+      question: "Explain one improvement you would make to a recent project and why.",
+      category: "system-design",
+      difficulty: "hard",
+    },
+    {
+      id: "q-5",
+      question: "What are your goals for the next 12 months in your career?",
+      category: "behavioral",
+      difficulty: "easy",
+    },
+  ];
+
+  const readQuestionAloud = () => {
+    const currentQuestion = questions[currentQuestionIndex]?.question;
+    if (!currentQuestion || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(currentQuestion);
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const commitCurrentAnswer = () => {
+    if (!spokenAnswer.trim()) {
+      return;
+    }
+
+    setTranscript((prev) => {
+      const next = [...prev];
+      next[currentQuestionIndex] = spokenAnswer.trim();
+      return next;
+    });
+  };
+
+  const toggleAnswerListening = () => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      toast.error("Speech recognition is not supported in this browser");
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let fullTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          fullTranscript += event.results[i][0].transcript;
+        }
+
+        setSpokenAnswer((prev) => `${prev} ${fullTranscript}`.trim());
+      };
+
+      recognition.onerror = () => {
+        setIsListeningAnswer(false);
+      };
+
+      recognition.onend = () => {
+        setIsListeningAnswer(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    if (isListeningAnswer) {
+      recognitionRef.current.stop();
+      setIsListeningAnswer(false);
+      return;
+    }
+
+    setSpokenAnswer("");
+    recognitionRef.current.start();
+    setIsListeningAnswer(true);
+  };
 
   // Timer for interview duration
   useEffect(() => {
@@ -67,23 +326,50 @@ export default function VoiceInterviewSimulator() {
     return () => clearInterval(timer);
   }, [state]);
 
-  // Track if AI is speaking
   useEffect(() => {
-    setIsSpeaking(localIsSpeaking);
-  }, [localIsSpeaking]);
+    if (state === "active" && questions[currentQuestionIndex]) {
+      readQuestionAloud();
+    }
+  }, [state, currentQuestionIndex, questions]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Start voice interview
   const startInterview = async () => {
     setState("connecting");
     try {
-      // Generate interview questions
-      const questionsResponse = await axios.post("/api/interview-simulator/start", {
-        role: selectedRole,
-        level: selectedLevel,
-        mode: "voice",
-        numQuestions: 5,
-      });
-      setQuestions(questionsResponse.data.questions || []);
+      // Generate interview questions (fallback locally if backend is unavailable)
+      let generatedQuestions: InterviewQuestion[] = [];
+      try {
+        const questionsResponse = await axios.post("/api/interview-simulator/start", {
+          role: selectedRole,
+          level: selectedLevel,
+          mode: "voice",
+          numQuestions: 5,
+        });
+        generatedQuestions = questionsResponse.data.questions || [];
+      } catch {
+        generatedQuestions = buildFallbackQuestions(selectedRole, selectedLevel);
+        toast.info("Using local interview questions (backend unavailable)");
+      }
+
+      if (!generatedQuestions.length) {
+        generatedQuestions = buildFallbackQuestions(selectedRole, selectedLevel);
+      }
+
+      setQuestions(generatedQuestions);
+      setTranscript(new Array(generatedQuestions.length).fill(""));
+      setCurrentQuestionIndex(0);
+      setSpokenAnswer("");
 
       // Create LiveKit room (voice only)
       const roomResponse = await axios.post("/api/interview-simulator/room", {
@@ -110,12 +396,12 @@ export default function VoiceInterviewSimulator() {
     setState("connecting");
     try {
       const feedbackResponse = await axios.post("/api/interview-simulator/finish", {
-        responses: transcript.map((t, i) => ({
-          question: questions[i]?.question || "",
-          answer: t,
+        responses: questions.map((q, i) => ({
+          question: q.question,
+          answer: transcript[i] || (i === currentQuestionIndex ? spokenAnswer : "No recorded answer"),
         })),
         mode: "voice",
-        duration: Math.floor(interviewDuration / 60), // Convert to minutes for backend
+        duration: Math.floor(interviewDuration / 60),
       });
 
       setAiFeedback(feedbackResponse.data.feedback?.summary || "");
@@ -125,11 +411,6 @@ export default function VoiceInterviewSimulator() {
       console.error("Error ending interview:", error);
       setState("setup");
     }
-  };
-
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-    toast.info(isMuted ? "Microphone unmuted" : "Microphone muted");
   };
 
   const formatDuration = (seconds: number) => {
@@ -282,7 +563,7 @@ export default function VoiceInterviewSimulator() {
             </div>
             <Button variant="ghost" size="sm" onClick={endInterview} className="text-red-500 hover:text-red-600">
               <PhoneOff className="w-4 h-4 mr-2" />
-              End
+              Submit & End
             </Button>
           </div>
         </div>
@@ -300,72 +581,20 @@ export default function VoiceInterviewSimulator() {
           }}
           className="rounded-2xl overflow-hidden border border-primary/20 shadow-xl"
         >
-          <div className="flex flex-col">
-            {/* AI Interviewer Status */}
-            <Card className="mb-4">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                    isSpeaking ? "bg-primary/20 animate-pulse" : "bg-muted"
-                  }`}>
-                    <Brain className={`w-8 h-8 ${isSpeaking ? "text-primary" : "text-muted-foreground"}`} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">AI Interviewer</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {isSpeaking ? "Speaking..." : "Listening..."}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Signal className={`w-5 h-5 ${isSpeaking ? "text-emerald-500" : "text-muted-foreground"}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Current Question */}
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-start gap-3 mb-4">
-                  <Brain className="w-6 h-6 text-primary mt-1" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold mb-2">Current Question:</h3>
-                    <p className="text-lg">
-                      {questions[currentQuestionIndex]?.question || "Waiting for question..."}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Controls */}
-                <div className="flex items-center justify-center gap-4 pt-4 border-t">
-                  <Button
-                    size="lg"
-                    variant={isMuted ? "destructive" : "outline"}
-                    onClick={toggleMute}
-                    className="w-14 h-14 rounded-full"
-                  >
-                    {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-                  </Button>
-
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={() => {
-                      if (currentQuestionIndex < questions.length - 1) {
-                        setCurrentQuestionIndex(currentQuestionIndex + 1);
-                        toast.success("Next question");
-                      }
-                    }}
-                    disabled={currentQuestionIndex >= questions.length - 1}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <RoomAudioRenderer />
-          </div>
+          <InterviewRoomContent
+            isSpeaking={isSpeaking}
+            setIsSpeaking={setIsSpeaking}
+            isMuted={isMuted}
+            setIsMuted={setIsMuted}
+            questions={questions}
+            currentQuestionIndex={currentQuestionIndex}
+            setCurrentQuestionIndex={setCurrentQuestionIndex}
+            spokenAnswer={spokenAnswer}
+            isListeningAnswer={isListeningAnswer}
+            onToggleListening={toggleAnswerListening}
+            commitCurrentAnswer={commitCurrentAnswer}
+            onReadQuestion={readQuestionAloud}
+          />
         </LiveKitRoom>
 
         {/* Tips */}
@@ -379,7 +608,7 @@ export default function VoiceInterviewSimulator() {
                   <li>Speak clearly and at a natural pace</li>
                   <li>Take a moment to gather thoughts before answering</li>
                   <li>Use specific examples from your experience</li>
-                  <li>It's okay to ask for clarification</li>
+                  <li>It&apos;s okay to ask for clarification</li>
                 </ul>
               </div>
             </div>
@@ -414,9 +643,7 @@ export default function VoiceInterviewSimulator() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-              <ReactMarkdown className="prose prose-sm dark:prose-invert">
-                {aiFeedback}
-              </ReactMarkdown>
+              <AIResponseFormatter content={formatAIResponse(aiFeedback)} variant="chat" />
             </div>
 
             <div className="flex gap-4">

@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+const normalizeUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
 
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    return new URL(withProtocol).toString();
+  } catch {
+    return null;
+  }
+};
 
 export async function PATCH(
   request: NextRequest,
@@ -31,6 +38,17 @@ export async function PATCH(
       isPublic: boolean;
     }>;
 
+    if (Object.prototype.hasOwnProperty.call(updates, "contentUrl")) {
+      const normalizedContentUrl = normalizeUrl(updates.contentUrl);
+      if ((updates.contentUrl ?? "").trim() && !normalizedContentUrl) {
+        return NextResponse.json(
+          { error: "Invalid content URL" },
+          { status: 400 }
+        );
+      }
+      updates.contentUrl = normalizedContentUrl ?? "";
+    }
+
     const user = await db.user.findUnique({
       where: { clerkUserId: userId },
     });
@@ -41,7 +59,12 @@ export async function PATCH(
 
     const artifact = await db.portfolioArtifact.update({
       where: { id, userId: user.id },
-      data: updates,
+      data: {
+        ...updates,
+        ...(Object.prototype.hasOwnProperty.call(updates, "contentUrl")
+          ? { contentUrl: updates.contentUrl || null }
+          : {}),
+      },
     });
 
     return NextResponse.json({ artifact });

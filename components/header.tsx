@@ -12,6 +12,7 @@ import {
   Sparkles,
   User,
   LogOut,
+  FolderOpen,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,7 +24,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./theme-toggle";
 import { checkUser } from "@/lib/checkUser";
-import { BookOpen, Trophy, Flame, Users } from "lucide-react";
+import { BookOpen, Trophy, Flame, Users, Mic } from "lucide-react";
 
 async function Header() {
   const user = await checkUser();
@@ -90,11 +91,29 @@ async function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
+                    href="/portfolio"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                    <span>Portfolio</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
                     href="/interview"
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <GraduationCap className="h-4 w-4 text-primary" />
                     <span>Interview Prep</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/interview/simulator-live"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Mic className="h-4 w-4 text-emerald-500" />
+                    <span>Voice Interview</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -220,11 +239,29 @@ async function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
+                    href="/portfolio"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                    <span>Portfolio</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
                     href="/interview"
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <GraduationCap className="h-4 w-4 text-primary" />
                     <span>Interview Prep</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/interview/simulator-live"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Mic className="h-4 w-4 text-emerald-500" />
+                    <span>Voice Interview</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

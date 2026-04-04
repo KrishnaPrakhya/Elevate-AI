@@ -17,6 +17,7 @@ import {
   DollarSign,
   BookOpen,
   Target,
+  Mic,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -372,11 +373,17 @@ function DashBoardView(props: Props) {
                           </Badge>
                         )) || <span className="text-xs text-muted-foreground">None tracked</span>}
                       </div>
-                      <div className="pt-2">
+                      <div className="pt-2 grid grid-cols-2 gap-2">
                         <Link href="/interview">
                           <Button size="sm" variant="outline" className="w-full text-xs gap-1">
                             <Brain className="w-3 h-3" />
-                            Practice Quiz
+                            Quiz
+                          </Button>
+                        </Link>
+                        <Link href="/interview/simulator-live">
+                          <Button size="sm" variant="outline" className="w-full text-xs gap-1">
+                            <Mic className="w-3 h-3 text-emerald-500" />
+                            Voice
                           </Button>
                         </Link>
                       </div>

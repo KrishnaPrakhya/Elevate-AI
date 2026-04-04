@@ -9,7 +9,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
       "Bash(npx next:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep -l \"simulator-live\" app/**/*.tsx components/**/*.tsx)"
     ]
   }
 }

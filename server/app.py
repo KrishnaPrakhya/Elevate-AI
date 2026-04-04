@@ -24,9 +24,16 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session, selectinload
 from sqlalchemy.future import select
 
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# LiveKit imports for voice interview
+try:
+    from livekit.api import AccessToken, TokenOptions
+    LIVEKIT_AVAILABLE = True
+except ImportError:
+    LIVEKIT_AVAILABLE = False
+    logger.warning("LiveKit SDK not installed. Voice interview features will be limited.")
 
 load_dotenv()
 
@@ -269,6 +276,17 @@ class InterviewQuestionsInput(BaseModel):
     target_role: str = Field(description="Target role")
     industry: Optional[str] = Field(None, description="User's industry")
     skills: List[str] = Field(description="User's skills")
+
+# Voice Interview Pydantic Models
+class VoiceInterviewRoomRequest(BaseModel):
+    roomName: str
+    role: Optional[str] = Field("Software Engineer", description="Target job role")
+    level: Optional[str] = Field("Mid-Level", description="Experience level")
+
+class VoiceInterviewStartRequest(BaseModel):
+    role: str = Field(description="Target job role")
+    level: str = Field(description="Experience level")
+    numQuestions: Optional[int] = Field(5, description="Number of questions")
 
 # Core Logic Functions (Async)
 async def improve_document(input_data: DocumentInput, doc_type: str = "resume") -> str:
@@ -1043,6 +1061,142 @@ async def chat_endpoint(
     except Exception as e:
         logger.error(f"Unexpected error in chat endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected server error occurred: {str(e)}")
+
+
+# ============================================
+# LiveKit Voice Interview Endpoints
+# ============================================
+
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
+
+class VoiceInterviewQuestion(BaseModel):
+    id: str
+    question: str
+    category: str
+    difficulty: str
+
+@app.post("/api/livekit/token")
+async def get_livekit_token(request_data: VoiceInterviewRoomRequest):
+    """Generate a LiveKit room token for voice interview."""
+    if not LIVEKIT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="LiveKit SDK not available")
+
+    if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
+        raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
+
+    try:
+        # Create access token with interview-specific permissions
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            options=TokenOptions(
+                name=f"Interview Agent - {request_data.role}",
+                metadata={
+                    "role": request_data.role,
+                    "level": request_data.level,
+                    "type": "voice-interview"
+                }
+            )
+        )
+
+        # Grant permissions for voice communication
+        token.set_can_publish_microphone(True)
+        token.set_can_subscribe(True)
+        token.set_can_publish_data(True)
+
+        # Generate token with room name
+        token_str = token.to_jwt(identity=f"interviewer-{request_data.roomName}")
+
+        return {
+            "token": token_str,
+            "roomName": request_data.roomName,
+            "wsUrl": LIVEKIT_URL
+        }
+    except Exception as e:
+        logger.error(f"Error generating LiveKit token: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate token: {str(e)}")
+
+
+@app.post("/api/voice-interview/start")
+async def start_voice_interview(request_data: VoiceInterviewStartRequest):
+    """Start a voice interview session and generate questions."""
+    try:
+        # Generate interview questions using the existing interview_preparer logic
+        questions_input = InterviewQuestionsInput(
+            target_role=request_data.role,
+            industry="",
+            skills=[]
+        )
+
+        # Generate questions via LLM
+        questions_text = await generate_interview_questions(questions_input)
+
+        # Parse questions from LLM response (simplified - in production, use structured output)
+        # For now, return a structured response that frontend can use
+        questions = [
+            VoiceInterviewQuestion(
+                id=f"q-{i}",
+                question=f"Question {i+1} for {request_data.role} - detailed questions will be asked by voice agent",
+                category="technical",
+                difficulty="medium"
+            )
+            for i in range(min(request_data.numQuestions, 5))
+        ]
+
+        return {
+            "questions": [q.model_dump() for q in questions],
+            "role": request_data.role,
+            "level": request_data.level
+        }
+    except Exception as e:
+        logger.error(f"Error starting voice interview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start interview: {str(e)}")
+
+
+@app.post("/api/voice-interview/finish")
+async def finish_voice_interview(request_data: dict):
+    """Finish voice interview and generate feedback."""
+    try:
+        responses = request_data.get("responses", [])
+        duration = request_data.get("duration", 0)
+
+        # Generate feedback using LLM
+        feedback_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert interviewer providing constructive feedback.
+            Analyze the candidate's performance and provide:
+            1. Overall assessment
+            2. Strengths demonstrated
+            3. Areas for improvement
+            4. Specific recommendations
+            Be encouraging but honest."""),
+            ("user", """Interview duration: {duration} minutes
+            Questions asked and answers given:
+            {responses}
+
+            Provide detailed feedback on the candidate's performance.""")
+        ])
+
+        responses_text = "\n".join([
+            f"Q: {r.get('question', 'N/A')}\nA: {r.get('answer', 'N/A')}"
+            for r in responses
+        ])
+
+        feedback = await invoke_prompt_template(feedback_prompt, {
+            "duration": str(duration),
+            "responses": responses_text or "No transcript available"
+        })
+
+        return {
+            "feedback": {
+                "summary": feedback,
+                "duration": duration
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error finishing voice interview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate feedback: {str(e)}")
 
 
 if __name__ == "__main__":

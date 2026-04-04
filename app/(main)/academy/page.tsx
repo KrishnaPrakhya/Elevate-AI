@@ -21,6 +21,7 @@ import {
   Mic,
   GraduationCap,
   Trophy,
+  Brain,
 } from "lucide-react";
 import {
   Card,
@@ -35,7 +36,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useCallback } from "react";
@@ -46,6 +46,7 @@ import type {
   NodeObject,
 } from "react-force-graph-2d";
 import StudyCompanion from "@/components/study-companion";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 
 const ForceGraph2D = dynamic(
   () => import("react-force-graph-2d").then((mod) => mod.default),
@@ -159,6 +160,8 @@ export default function AcademyPage() {
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 });
   const [isGraphReady, setIsGraphReady] = useState(false);
+  const [graphKey, setGraphKey] = useState(0); // Force re-render graph
+  const [cacheBuster, setCacheBuster] = useState(Date.now());
 
   const refreshAcademyData = async () => {
     const [dashData, recData] = await Promise.all([
@@ -167,6 +170,11 @@ export default function AcademyPage() {
     ]);
     setDashboard(dashData);
     setRecommendations(recData);
+    // Force graph to re-render with new data
+    setGraphKey((prev) => prev + 1);
+    setCacheBuster(Date.now());
+    // Reset graph ready state
+    setIsGraphReady(false);
   };
 
   const handleGeneratePlan = async () => {
@@ -273,15 +281,23 @@ export default function AcademyPage() {
     const attach = () => {
       const container = graphContainerRef.current;
       if (!container) {
-        retryTimer = setTimeout(attach, 50);
+        retryTimer = setTimeout(attach, 100);
         return;
       }
 
       const resize = () => {
-        const width = Math.max(800, Math.floor(container.clientWidth));
+        const rect = container.getBoundingClientRect();
+        const width = Math.max(400, Math.floor(rect.width));
         const height = 420;
+        console.log("[Skill Graph] Container resized:", {
+          width,
+          height,
+          clientWidth: container.clientWidth,
+          offsetWidth: container.offsetWidth,
+        });
         setGraphSize({ width, height });
-        setIsGraphReady(true);
+        // Delay graph ready to ensure container is fully rendered
+        setTimeout(() => setIsGraphReady(true), 100);
       };
 
       resize();
@@ -295,17 +311,29 @@ export default function AcademyPage() {
       if (retryTimer) clearTimeout(retryTimer);
       if (observer) observer.disconnect();
     };
-  }, [loading]);
+  }, [loading, graphKey]);
 
-  const [selectedSkill, setSelectedSkill] = useState<ForceGraphNode | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<ForceGraphNode | null>(
+    null,
+  );
   const [hoveredNode, setHoveredNode] = useState<ForceGraphNode | null>(null);
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
 
   const skillGraph = useMemo(() => {
     // Don't compute graph until container is measured
     if (!isGraphReady || graphSize.width === 0 || graphSize.height === 0) {
+      console.log("[Skill Graph] Not ready yet:", {
+        isGraphReady,
+        width: graphSize.width,
+        height: graphSize.height,
+      });
       return { nodes: [], links: [] } as GraphData<ForceGraphNode, SkillLink>;
     }
+    console.log("[Skill Graph] Computing graph with:", {
+      width: graphSize.width,
+      height: graphSize.height,
+      nodesCount: planDetails?.topGaps?.length || recommendedPaths.length,
+    });
 
     const fallbackSkills = recommendedPaths
       .slice(0, 6)
@@ -375,10 +403,15 @@ export default function AcademyPage() {
 
     const centerX = graphSize.width / 2;
     const centerY = graphSize.height / 2;
-    const radius = Math.min(graphSize.width * 0.32, 180);
+    const radius = Math.min(
+      graphSize.width * 0.28,
+      graphSize.height * 0.35,
+      160,
+    );
 
     const nodes: ForceGraphNode[] = baseNodes.map((node, idx) => {
-      const angle = (2 * Math.PI * idx) / Math.max(baseNodes.length, 1) - Math.PI / 2;
+      const angle =
+        (2 * Math.PI * idx) / Math.max(baseNodes.length, 1) - Math.PI / 2;
       const x = centerX + Math.cos(angle) * radius;
       const y = centerY + Math.sin(angle) * radius;
 
@@ -399,9 +432,12 @@ export default function AcademyPage() {
     }));
 
     // Add center node
-    const graphAvgMastery = nodes.length > 0
-      ? Math.round(nodes.reduce((sum, node) => sum + node.mastery, 0) / nodes.length)
-      : 0;
+    const graphAvgMastery =
+      nodes.length > 0
+        ? Math.round(
+            nodes.reduce((sum, node) => sum + node.mastery, 0) / nodes.length,
+          )
+        : 0;
 
     const centerNode: ForceGraphNode = {
       id: "center",
@@ -416,17 +452,49 @@ export default function AcademyPage() {
 
     const allNodes = [centerNode, ...nodes];
 
+    // Set initial x/y to match fx/fy so graph starts centered
+    allNodes.forEach((node) => {
+      if (node.fx !== undefined) node.x = node.fx;
+      if (node.fy !== undefined) node.y = node.fy;
+    });
+
     return {
       nodes: allNodes,
       links,
     } as GraphData<ForceGraphNode, SkillLink>;
-  }, [nextLessons, planDetails?.topGaps, recommendedPaths, weeklyGoalProgress, isGraphReady, graphSize.width, graphSize.height]);
+  }, [
+    nextLessons,
+    planDetails?.topGaps,
+    recommendedPaths,
+    weeklyGoalProgress,
+    isGraphReady,
+    graphSize.width,
+    graphSize.height,
+  ]);
 
-  const avgMastery = useMemo(() => {
-    const skillNodes = (skillGraph.nodes as ForceGraphNode[]).filter((n) => n.id !== "center");
-    if (!skillNodes.length) return 0;
-    return Math.round(skillNodes.reduce((sum, node) => sum + node.mastery, 0) / skillNodes.length);
-  }, [skillGraph.nodes]);
+  // Re-center graph when data changes
+  useEffect(() => {
+    if (
+      graphRef.current &&
+      skillGraph.nodes.length > 0 &&
+      isGraphReady &&
+      graphSize.width > 0
+    ) {
+      console.log("[Skill Graph] Centering graph:", {
+        width: graphSize.width,
+        height: graphSize.height,
+        nodes: skillGraph.nodes.length,
+      });
+      // Center the graph immediately
+      graphRef.current.centerAt(graphSize.width / 2, graphSize.height / 2, 0);
+      graphRef.current.zoom(1, 0);
+      // Then zoom to fit after a short delay
+      const timer = setTimeout(() => {
+        graphRef.current.zoomToFit(1000);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isGraphReady, skillGraph.nodes.length, graphKey]);
 
   // Handle node click
   const handleNodeClick = useCallback((node: NodeObject) => {
@@ -445,101 +513,133 @@ export default function AcademyPage() {
   // Helper to darken colors
   const adjustColor = (color: string, amount: number) => {
     const hex = color.replace("#", "");
-    const r = Math.max(0, Math.min(255, parseInt(hex.substr(0, 2), 16) + amount));
-    const g = Math.max(0, Math.min(255, parseInt(hex.substr(2, 2), 16) + amount));
-    const b = Math.max(0, Math.min(255, parseInt(hex.substr(4, 2), 16) + amount));
+    const r = Math.max(
+      0,
+      Math.min(255, parseInt(hex.substr(0, 2), 16) + amount),
+    );
+    const g = Math.max(
+      0,
+      Math.min(255, parseInt(hex.substr(2, 2), 16) + amount),
+    );
+    const b = Math.max(
+      0,
+      Math.min(255, parseInt(hex.substr(4, 2), 16) + amount),
+    );
     return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
   };
 
   // Custom node rendering with enhanced visuals
-  const renderNode = useCallback((node: NodeObject, ctx: CanvasRenderingContext2D) => {
-    const typedNode = node as ForceGraphNode;
-    const isCenter = typedNode.id === "center";
-    const baseRadius = isCenter ? 42 : 26 + (typedNode.importance || 5) * 0.5;
-    const x = typedNode.x || 0;
-    const y = typedNode.y || 0;
-    const centerX = graphSize.width / 2;
-    const isHovered = hoveredNode?.id === typedNode.id;
-    const scale = isHovered ? 1.12 : 1;
-    const radius = baseRadius * scale;
+  const renderNode = useCallback(
+    (node: NodeObject, ctx: CanvasRenderingContext2D) => {
+      const typedNode = node as ForceGraphNode;
+      const isCenter = typedNode.id === "center";
+      const baseRadius = isCenter ? 42 : 26 + (typedNode.importance || 5) * 0.5;
+      // Use fixed positions (fx, fy) if available, otherwise use simulated positions
+      const x = typedNode.fx ?? typedNode.x ?? graphSize.width / 2;
+      const y = typedNode.fy ?? typedNode.y ?? graphSize.height / 2;
+      const centerX = graphSize.width / 2;
+      const isHovered = hoveredNode?.id === typedNode.id;
+      const scale = isHovered ? 1.12 : 1;
+      const radius = baseRadius * scale;
 
-    // Animated outer glow ring
-    const glowGradient = ctx.createRadialGradient(x, y, radius, x, y, radius * 2.2);
-    glowGradient.addColorStop(0, typedNode.color + "60");
-    glowGradient.addColorStop(0.5, typedNode.color + "20");
-    glowGradient.addColorStop(1, "transparent");
-    ctx.fillStyle = glowGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 2.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pulsing ring for center node
-    if (isCenter) {
-      const pulseRadius = radius + 10 + Math.sin(Date.now() / 300) * 4;
+      // Animated outer glow ring
+      const glowGradient = ctx.createRadialGradient(
+        x,
+        y,
+        radius,
+        x,
+        y,
+        radius * 2.2,
+      );
+      glowGradient.addColorStop(0, typedNode.color + "60");
+      glowGradient.addColorStop(0.5, typedNode.color + "20");
+      glowGradient.addColorStop(1, "transparent");
+      ctx.fillStyle = glowGradient;
       ctx.beginPath();
-      ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = "#3b82f680";
-      ctx.lineWidth = 2;
+      ctx.arc(x, y, radius * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pulsing ring for center node
+      if (isCenter) {
+        const pulseRadius = radius + 10 + Math.sin(Date.now() / 300) * 4;
+        ctx.beginPath();
+        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = "#3b82f680";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Main circle with gradient
+      const mainGradient = ctx.createRadialGradient(
+        x - radius * 0.3,
+        y - radius * 0.3,
+        0,
+        x,
+        y,
+        radius,
+      );
+      mainGradient.addColorStop(0, isCenter ? "#60a5fa" : typedNode.color);
+      mainGradient.addColorStop(0.7, isCenter ? "#2563eb" : typedNode.color);
+      mainGradient.addColorStop(
+        1,
+        isCenter ? "#1d4ed8" : adjustColor(typedNode.color, -25),
+      );
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = mainGradient;
+      ctx.fill();
+
+      // Bright border
+      ctx.strokeStyle = isCenter
+        ? "rgba(255,255,255,0.9)"
+        : "rgba(255,255,255,0.5)";
+      ctx.lineWidth = isHovered ? 3.5 : 2.5;
       ctx.stroke();
-    }
 
-    // Main circle with gradient
-    const mainGradient = ctx.createRadialGradient(
-      x - radius * 0.3, y - radius * 0.3, 0,
-      x, y, radius
-    );
-    mainGradient.addColorStop(0, isCenter ? "#60a5fa" : typedNode.color);
-    mainGradient.addColorStop(0.7, isCenter ? "#2563eb" : typedNode.color);
-    mainGradient.addColorStop(1, isCenter ? "#1d4ed8" : adjustColor(typedNode.color, -25));
+      // Inner decorative ring
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.72, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = mainGradient;
-    ctx.fill();
-
-    // Bright border
-    ctx.strokeStyle = isCenter ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)";
-    ctx.lineWidth = isHovered ? 3.5 : 2.5;
-    ctx.stroke();
-
-    // Inner decorative ring
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 0.72, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Mastery percentage text with shadow
-    ctx.shadowColor = "rgba(0,0,0,0.4)";
-    ctx.shadowBlur = 6;
-    ctx.fillStyle = "white";
-    ctx.font = `bold ${isCenter ? 15 : 12}px Inter, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(`${Math.round(typedNode.mastery)}%`, x, y);
-    ctx.shadowBlur = 0;
-
-    // Label below node
-    if (typedNode.label && !isCenter) {
-      ctx.fillStyle = "#64748b";
-      ctx.font = "12px Inter, sans-serif";
-      ctx.textAlign = x < centerX ? "right" : "left";
-      const labelX = x < centerX ? x - radius - 14 : x + radius + 14;
-      const label = typedNode.label.length > 18 ? `${typedNode.label.substring(0, 16)}...` : typedNode.label;
-      ctx.fillText(label, labelX, y + 4);
-      ctx.textAlign = "center";
-    }
-
-    // Center node label
-    if (isCenter) {
+      // Mastery percentage text with shadow
+      ctx.shadowColor = "rgba(0,0,0,0.4)";
+      ctx.shadowBlur = 6;
       ctx.fillStyle = "white";
-      ctx.font = "bold 12px Inter, sans-serif";
-      ctx.fillText("YOU", x, y - 12);
-      ctx.fillStyle = "#93c5fd";
-      ctx.font = "10px Inter, sans-serif";
-      ctx.fillText(`${Math.round(typedNode.mastery)}% avg`, x, y + 14);
-    }
-  }, [graphSize.width, hoveredNode]);
+      ctx.font = `bold ${isCenter ? 15 : 12}px Inter, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${Math.round(typedNode.mastery)}%`, x, y);
+      ctx.shadowBlur = 0;
+
+      // Label below node
+      if (typedNode.label && !isCenter) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = "12px Inter, sans-serif";
+        ctx.textAlign = x < centerX ? "right" : "left";
+        const labelX = x < centerX ? x - radius - 14 : x + radius + 14;
+        const label =
+          typedNode.label.length > 18
+            ? `${typedNode.label.substring(0, 16)}...`
+            : typedNode.label;
+        ctx.fillText(label, labelX, y + 4);
+        ctx.textAlign = "center";
+      }
+
+      // Center node label
+      if (isCenter) {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 12px Inter, sans-serif";
+        ctx.fillText("YOU", x, y - 12);
+        ctx.fillStyle = "#93c5fd";
+        ctx.font = "10px Inter, sans-serif";
+        ctx.fillText(`${Math.round(typedNode.mastery)}% avg`, x, y + 14);
+      }
+    },
+    [graphSize.width, hoveredNode],
+  );
 
   if (loading) {
     return <AcademySkeleton />;
@@ -552,13 +652,12 @@ export default function AcademyPage() {
 
   const getNodeValue = (node: NodeObject) => {
     const typedNode = node as ForceGraphNode;
-    return typedNode.id === "center" ? 35 : 20 + (typedNode.importance || 5) * 0.8;
+    return typedNode.id === "center"
+      ? 35
+      : 20 + (typedNode.importance || 5) * 0.8;
   };
 
-  const renderLink = (
-    link: LinkObject,
-    ctx: CanvasRenderingContext2D,
-  ) => {
+  const renderLink = (link: LinkObject, ctx: CanvasRenderingContext2D) => {
     const startNode = link.source as ForceGraphNode | undefined;
     const endNode = link.target as ForceGraphNode | undefined;
     const startX = startNode?.x ?? 400;
@@ -582,7 +681,7 @@ export default function AcademyPage() {
 
     // Animated particle effect on links
     const time = Date.now() / 1500;
-    const progress = (time % 1);
+    const progress = time % 1;
     const particleX = startX + (endX - startX) * progress;
     const particleY = startY + (endY - startY) * progress;
 
@@ -631,7 +730,8 @@ export default function AcademyPage() {
                   Your Skill Constellation
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Skill map arranged by priority and mastery for faster focus decisions
+                  Skill map arranged by priority and mastery for faster focus
+                  decisions
                 </p>
               </div>
               <Badge variant="outline" className="bg-primary/10 text-primary">
@@ -640,28 +740,40 @@ export default function AcademyPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={graphContainerRef} className="w-full h-[420px] bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-100/20 dark:from-slate-950 dark:via-blue-950/30 dark:to-cyan-950/30 rounded-2xl border border-primary/20 relative overflow-hidden">
+            <div
+              ref={graphContainerRef}
+              className="w-full h-[420px] bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-100/20 dark:from-slate-950 dark:via-blue-950/30 dark:to-cyan-950/30 rounded-2xl border border-primary/20 relative overflow-hidden"
+              style={{ contain: "layout" }}
+            >
               {/* Decorative background grid pattern */}
-              <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style={{
-                backgroundImage: `linear-gradient(#3b82f6 1px, transparent 1px), linear-gradient(90deg, #3b82f6 1px, transparent 1px)`,
-                backgroundSize: '40px 40px'
-              }} />
+              <div
+                className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]"
+                style={{
+                  backgroundImage: `linear-gradient(#3b82f6 1px, transparent 1px), linear-gradient(90deg, #3b82f6 1px, transparent 1px)`,
+                  backgroundSize: "40px 40px",
+                }}
+              />
               {/* Radial glow effect */}
               <div className="absolute inset-0 bg-radial-gradient from-blue-500/5 to-transparent pointer-events-none" />
 
               {/* Loading state while measuring container */}
               {!isGraphReady && (
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center z-10">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                    <p className="text-sm text-muted-foreground">Initializing skill graph...</p>
+                    <p className="text-sm text-muted-foreground">
+                      Initializing skill graph...
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Force Graph Component */}
-              <div className={`transition-opacity duration-500 ${isGraphReady ? 'opacity-100' : 'opacity-0'}`}>
+              {/* Force Graph Component - positioned absolutely to fill container */}
+              <div
+                className={`absolute inset-0 transition-opacity duration-500 ${isGraphReady ? "opacity-100" : "opacity-0"}`}
+              >
                 <ForceGraph2D
+                  key={`skill-graph-${graphKey}-${cacheBuster}`}
                   ref={graphRef}
                   width={graphSize.width}
                   height={graphSize.height}
@@ -678,10 +790,10 @@ export default function AcademyPage() {
                   onNodeHover={handleNodeHover}
                   backgroundColor="transparent"
                   enableNodeDrag={false}
-                  d3VelocityDecay={0.95}
-                  warmupTicks={150}
+                  d3VelocityDecay={1}
+                  warmupTicks={0}
                   cooldownTicks={0}
-                  cooldownTime={Infinity}
+                  cooldownTime={0}
                   nodeCanvasObject={renderNode}
                   linkCanvasObject={renderLink}
                 />
@@ -713,9 +825,7 @@ export default function AcademyPage() {
                 <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
                   Active Tracks
                 </p>
-                <p className="text-lg font-bold mt-0.5">
-                  {nextLessons.length}
-                </p>
+                <p className="text-lg font-bold mt-0.5">{nextLessons.length}</p>
               </div>
 
               <div className="absolute right-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
@@ -727,7 +837,7 @@ export default function AcademyPage() {
                 </p>
               </div>
 
-              {/* Hover tooltip */}
+              {/* Hover tooltip - positioned relative to graph container */}
               <AnimatePresence>
                 {hoveredNode && hoveredNode.id !== "center" && (
                   <motion.div
@@ -736,24 +846,37 @@ export default function AcademyPage() {
                     exit={{ opacity: 0, scale: 0.9 }}
                     className="absolute z-20 pointer-events-none"
                     style={{
-                      left: `${Math.min(78, Math.max(10, ((hoveredNode.x || graphSize.width / 2) / graphSize.width) * 100))}%`,
-                      top: `${Math.max(14, Math.min(85, ((hoveredNode.y || graphSize.height / 2) / graphSize.height) * 100 - 15))}%`,
+                      left: `${(hoveredNode.x ?? graphSize.width / 2) + 50}px`,
+                      top: `${(hoveredNode.y ?? graphSize.height / 2) - 80}px`,
                     }}
                   >
-                    <div className="bg-background/95 backdrop-blur-sm border border-primary/30 rounded-xl px-4 py-3 shadow-xl min-w-[180px]">
-                      <p className="font-semibold text-sm text-primary">{hoveredNode.label}</p>
+                    <div className="bg-background/98 backdrop-blur-md border border-primary/30 rounded-xl px-4 py-3 shadow-2xl min-w-[200px]">
+                      <p className="font-semibold text-sm text-primary">
+                        {hoveredNode.label ?? "Unknown Skill"}
+                      </p>
                       <div className="mt-2 space-y-1.5 text-xs">
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Mastery</span>
-                          <span className="font-medium">{Math.round(hoveredNode.mastery)}%</span>
+                          <span className="font-medium text-primary">
+                            {Math.round(hoveredNode.mastery ?? 0)}%
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Importance</span>
-                          <Badge variant="outline" className="text-xs">{hoveredNode.importance}/10</Badge>
+                          <span className="text-muted-foreground">
+                            Importance
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {Math.round(hoveredNode.importance ?? 0)}/10
+                          </Badge>
                         </div>
-                        <Progress value={hoveredNode.mastery} className="h-1.5 mt-2" />
+                        <Progress
+                          value={hoveredNode.mastery ?? 0}
+                          className="h-2 mt-2"
+                        />
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-2 italic">Click for details</p>
+                      <p className="text-[10px] text-muted-foreground mt-2 italic">
+                        Click node for detailed analysis
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -850,10 +973,74 @@ export default function AcademyPage() {
               ))
             ) : (
               <div className="p-4 rounded-lg border border-dashed border-primary/30 text-sm text-muted-foreground">
-                No active learning sessions yet. Generate a Learning Plan below to
-                start with a personalized plan.
+                No active learning sessions yet. Generate a Learning Plan below
+                to start with a personalized plan.
               </div>
             )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Quick Actions - Mentorship & Simulations */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.27 }}
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+      >
+        {/* Mentorship Card */}
+        <Card className="border-primary/20 bg-gradient-to-br from-purple-500/10 to-background">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-500/10 rounded-lg">
+                <Mic className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <CardTitle>Mentorship</CardTitle>
+                <CardDescription>
+                  Connect with experienced mentors
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Book 1-on-1 sessions with industry experts for personalized
+              guidance on your career journey.
+            </p>
+            <Link href="/academy/mentors">
+              <Button className="w-full gap-2 bg-purple-600 hover:bg-purple-700">
+                <Mic className="w-4 h-4" />
+                Find a Mentor
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Simulations Card */}
+        <Card className="border-primary/20 bg-gradient-to-br from-orange-500/10 to-background">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-500/10 rounded-lg">
+                <Brain className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <CardTitle>Simulations</CardTitle>
+                <CardDescription>Practice real-world scenarios</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Test your skills with interactive simulations of real-world
+              technical and behavioral scenarios.
+            </p>
+            <Link href="/academy/simulation">
+              <Button className="w-full gap-2 bg-orange-600 hover:bg-orange-700">
+                <Brain className="w-4 h-4" />
+                Start Simulation
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </motion.div>
@@ -923,8 +1110,8 @@ export default function AcademyPage() {
               Generate Your Learning Plan
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              AI will create a personalized learning roadmap
-              tailored to your goals
+              AI will create a personalized learning roadmap tailored to your
+              goals
             </p>
           </CardHeader>
           <CardContent>
@@ -963,9 +1150,7 @@ export default function AcademyPage() {
                   </select>
                 </div>
                 <div>
-                  <p className="text-sm font-medium mb-2">
-                    Weekly Commitment
-                  </p>
+                  <p className="text-sm font-medium mb-2">Weekly Commitment</p>
                   <select
                     value={weeklyHours}
                     onChange={(e) => setWeeklyHours(e.target.value)}
@@ -1080,9 +1265,7 @@ export default function AcademyPage() {
                       </div>
                     </div>
                   ) : (
-                    <ReactMarkdown className="prose prose-sm max-w-none dark:prose-invert">
-                      {generatedPlan}
-                    </ReactMarkdown>
+                    <AIResponseFormatter content={formatAIResponse(generatedPlan)} />
                   )}
 
                   {planCheckpoints.length > 0 && (
@@ -1199,8 +1382,12 @@ export default function AcademyPage() {
               {/* Header */}
               <div className="sticky top-0 bg-gradient-to-r from-primary/10 to-background border-b border-primary/20 px-6 py-4 flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-primary">{selectedSkill.label}</h3>
-                  <p className="text-xs text-muted-foreground">Skill Analysis</p>
+                  <h3 className="text-lg font-bold text-primary">
+                    {selectedSkill.label}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Skill Analysis
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -1238,14 +1425,25 @@ export default function AcademyPage() {
                       />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-2xl font-bold">{Math.round(selectedSkill.mastery)}%</span>
+                      <span className="text-2xl font-bold">
+                        {Math.round(selectedSkill.mastery)}%
+                      </span>
                     </div>
                   </div>
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Current Mastery</span>
-                      <Badge variant="outline" className="bg-primary/10 text-primary">
-                        {selectedSkill.mastery < 30 ? "Beginner" : selectedSkill.mastery < 60 ? "Intermediate" : "Advanced"}
+                      <span className="text-sm text-muted-foreground">
+                        Current Mastery
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="bg-primary/10 text-primary"
+                      >
+                        {selectedSkill.mastery < 30
+                          ? "Beginner"
+                          : selectedSkill.mastery < 60
+                            ? "Intermediate"
+                            : "Advanced"}
                       </Badge>
                     </div>
                     <Progress value={selectedSkill.mastery} className="h-3" />
@@ -1253,8 +1451,8 @@ export default function AcademyPage() {
                       {selectedSkill.mastery < 30
                         ? "Keep practicing to build foundational knowledge"
                         : selectedSkill.mastery < 60
-                        ? "You're making great progress!"
-                        : "Excellent mastery! Consider teaching others"}
+                          ? "You're making great progress!"
+                          : "Excellent mastery! Consider teaching others"}
                     </p>
                   </div>
                 </div>
@@ -1263,15 +1461,24 @@ export default function AcademyPage() {
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Target className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-semibold">Importance for your goals</span>
+                    <span className="text-sm font-semibold">
+                      Importance for your goals
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-muted-foreground">Priority Level</span>
-                        <span className="font-medium">{selectedSkill.importance}/10</span>
+                        <span className="text-muted-foreground">
+                          Priority Level
+                        </span>
+                        <span className="font-medium">
+                          {selectedSkill.importance}/10
+                        </span>
                       </div>
-                      <Progress value={(selectedSkill.importance / 10) * 100} className="h-2" />
+                      <Progress
+                        value={(selectedSkill.importance / 10) * 100}
+                        className="h-2"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1285,7 +1492,9 @@ export default function AcademyPage() {
                   <div className="space-y-2">
                     {recommendedPaths
                       .filter((path) =>
-                        path.title.toLowerCase().includes(selectedSkill.label.toLowerCase())
+                        path.title
+                          .toLowerCase()
+                          .includes(selectedSkill.label.toLowerCase()),
                       )
                       .slice(0, 3)
                       .map((path) => (
@@ -1294,16 +1503,26 @@ export default function AcademyPage() {
                           className="p-3 rounded-lg border border-primary/15 bg-background hover:border-primary/30 transition-colors"
                         >
                           <p className="text-sm font-medium">{path.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-1">{path.description}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-1">
+                            {path.description}
+                          </p>
                           <div className="flex items-center gap-2 mt-2">
                             {path.level && (
-                              <Badge variant="outline" className="text-xs">{path.level}</Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {path.level}
+                              </Badge>
                             )}
                             {path.estimatedHours && (
-                              <Badge variant="outline" className="text-xs">{path.estimatedHours}h</Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {path.estimatedHours}h
+                              </Badge>
                             )}
                             <Link href="/academy/paths">
-                              <Button size="sm" variant="ghost" className="h-6 text-xs">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs"
+                              >
                                 Start <ExternalLink className="w-3 h-3 ml-1" />
                               </Button>
                             </Link>
@@ -1311,10 +1530,13 @@ export default function AcademyPage() {
                         </div>
                       ))}
                     {recommendedPaths.filter((path) =>
-                      path.title.toLowerCase().includes(selectedSkill.label.toLowerCase())
+                      path.title
+                        .toLowerCase()
+                        .includes(selectedSkill.label.toLowerCase()),
                     ).length === 0 && (
                       <p className="text-sm text-muted-foreground italic">
-                        No specific paths for this skill yet. Generate a new Learning Plan to include it.
+                        No specific paths for this skill yet. Generate a new
+                        Learning Plan to include it.
                       </p>
                     )}
                   </div>
@@ -1322,15 +1544,21 @@ export default function AcademyPage() {
 
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-2">
-                  <Button className="flex-1" onClick={() => {
-                    setSkillInput(selectedSkill.label);
-                    setSelectedSkill(null);
-                    toast.info(`Generating plan for ${selectedSkill.label}`);
-                  }}>
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      setSkillInput(selectedSkill.label);
+                      setSelectedSkill(null);
+                      toast.info(`Generating plan for ${selectedSkill.label}`);
+                    }}
+                  >
                     <Sparkles className="w-4 h-4 mr-2" />
                     Focus on this skill
                   </Button>
-                  <Button variant="outline" onClick={() => setSelectedSkill(null)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedSkill(null)}
+                  >
                     Close
                   </Button>
                 </div>
@@ -1358,11 +1586,15 @@ export default function AcademyPage() {
                     Voice Mock Interview
                   </CardTitle>
                   <CardDescription>
-                    Practice with real-time AI interviewer using natural voice conversation
+                    Practice with real-time AI interviewer using natural voice
+                    conversation
                   </CardDescription>
                 </div>
               </div>
-              <Badge variant="outline" className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30">
+              <Badge
+                variant="outline"
+                className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
+              >
                 <Zap className="w-3 h-3 mr-1" />
                 Live AI
               </Badge>
@@ -1376,13 +1608,16 @@ export default function AcademyPage() {
                   <span className="text-sm font-semibold">Voice-to-Voice</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Natural conversation with AI interviewer powered by LiveKit + Ollama Cloud
+                  Natural conversation with AI interviewer powered by LiveKit +
+                  Ollama Cloud
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-background/50 border border-border/50">
                 <div className="flex items-center gap-2 mb-2">
                   <BrainCircuit className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-semibold">Adaptive Questions</span>
+                  <span className="text-sm font-semibold">
+                    Adaptive Questions
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Questions adjust based on your role, level, and responses
@@ -1391,7 +1626,9 @@ export default function AcademyPage() {
               <div className="p-3 rounded-lg bg-background/50 border border-border/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Trophy className="w-4 h-4 text-yellow-500" />
-                  <span className="text-sm font-semibold">Instant Feedback</span>
+                  <span className="text-sm font-semibold">
+                    Instant Feedback
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Get detailed AI feedback on your performance immediately

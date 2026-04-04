@@ -209,11 +209,42 @@ function detectAgentIntent(message: string): string {
 }
 
 /**
+ * Format markdown response for consistent rendering
+ */
+function formatMarkdownResponse(content: string): string {
+  if (!content) return content;
+
+  let formatted = content;
+
+  // Ensure blank lines before and after tables
+  formatted = formatted.replace(/(\|[^|]+\|.*\n)(\|[-| ]+\|)/g, "\n$1\n$2\n");
+
+  // Ensure blank lines before headings
+  formatted = formatted.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
+
+  // Ensure blank lines before code blocks
+  formatted = formatted.replace(/([^\n])\n(```)/g, "$1\n\n$2");
+
+  // Normalize multiple blank lines to single blank line
+  formatted = formatted.replace(/\n{3,}/g, "\n\n");
+
+  return formatted.trim();
+}
+
+/**
  * Local fallback when Python backend is unavailable
  */
+interface UserContext {
+  name?: string | null;
+  industry?: string | null;
+  experience?: number | null;
+  skills: string[];
+  activeLearning: { path: string }[];
+}
+
 async function handleLocalFallback(
   message: string,
-  userContext: any,
+  userContext: UserContext,
   agent: string
 ) {
   // Import OpenAI locally to avoid bundle issues
@@ -237,7 +268,7 @@ async function handleLocalFallback(
     - Industry: ${userContext.industry || "Not specified"}
     - Experience: ${userContext.experience || 0} years
     - Skills: ${userContext.skills.join(", ") || "Not specified"}
-    - Current Learning: ${userContext.activeLearning.map((l: any) => l.path).join(", ") || "None"}
+    - Current Learning: ${userContext.activeLearning.map((l) => l.path).join(", ") || "None"}
 
     User Message: ${message}
 
@@ -254,7 +285,7 @@ async function handleLocalFallback(
       temperature: 0.7,
     });
 
-    const response = result.choices[0]?.message?.content?.trim() || "";
+    const response = formatMarkdownResponse(result.choices[0]?.message?.content?.trim() || "");
 
     return NextResponse.json({
       response,

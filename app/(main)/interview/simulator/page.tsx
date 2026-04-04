@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// Global type augmentation for webkitSpeechRecognition
+declare global {
+  interface Window {
+    webkitSpeechRecognition: {
+      new (): SpeechRecognition;
+    };
+  }
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +17,6 @@ import { Progress } from "@/components/ui/progress";
 import {
   Mic,
   MicOff,
-  Video,
-  VideoOff,
   Phone,
   PhoneOff,
   MessageSquare,
@@ -23,12 +30,11 @@ import {
   Type,
   SkipForward,
   ThumbsUp,
-  ThumbsDown,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 
 interface InterviewQuestion {
   id: string;
@@ -63,6 +69,36 @@ interface InterviewFeedback {
 type InterviewMode = "voice" | "text";
 type InterviewState = "idle" | "starting" | "active" | "feedback";
 
+// SpeechRecognition interface for web speech API
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: SpeechRecognitionResult;
+  length: number;
+}
+
+interface SpeechRecognitionResult {
+  [index: number]: SpeechRecognitionAlternative;
+  length: number;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
 export default function InterviewSimulator() {
   const [mode, setMode] = useState<InterviewMode>("voice");
   const [state, setState] = useState<InterviewState>("idle");
@@ -70,8 +106,6 @@ export default function InterviewSimulator() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(5);
   const [timeRemaining, setTimeRemaining] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [userAnswer, setUserAnswer] = useState("");
   const [feedback, setFeedback] = useState<InterviewFeedback | null>(null);
@@ -83,17 +117,16 @@ export default function InterviewSimulator() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // Initialize speech recognition
   useEffect(() => {
     if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current = new window.webkitSpeechRecognition();
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
 
-      recognitionRef.current.onresult = (event: any) => {
+      recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
         let transcript = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
@@ -119,7 +152,7 @@ export default function InterviewSimulator() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [state, timeRemaining]);
+  }, [state, timeRemaining, handleSkipQuestion]);
 
   const startInterview = async () => {
     setState("starting");
@@ -232,7 +265,7 @@ export default function InterviewSimulator() {
     }
   };
 
-  const nextQuestion = async () => {
+  const nextQuestion = useCallback(async () => {
     const nextIndex = questionIndex + 1;
     setQuestionIndex(nextIndex);
 
@@ -252,18 +285,18 @@ export default function InterviewSimulator() {
     } catch (error) {
       console.error("Error getting next question:", error);
     }
-  };
+  }, [questionIndex, userAnswer, mode, totalQuestions]);
 
-  const handleSkipQuestion = () => {
+  const handleSkipQuestion = useCallback(() => {
     toast.info("Question skipped");
     if (questionIndex < totalQuestions - 1) {
       nextQuestion();
     } else {
       finishInterview();
     }
-  };
+  }, [questionIndex, totalQuestions, nextQuestion, finishInterview]);
 
-  const finishInterview = async () => {
+  const finishInterview = useCallback(async () => {
     setState("starting");
     try {
       const response = await axios.post("/api/interview-simulator/finish", {
@@ -281,7 +314,7 @@ export default function InterviewSimulator() {
       toast.error("Failed to get feedback");
       setState("idle");
     }
-  };
+  }, [responses, mode]);
 
   const endInterview = () => {
     setState("idle");
@@ -590,9 +623,7 @@ export default function InterviewSimulator() {
 
             <div className="mt-8 p-4 rounded-lg bg-primary/5 border border-primary/20">
               <h3 className="font-semibold mb-2">AI Summary</h3>
-              <ReactMarkdown className="prose prose-sm dark:prose-invert">
-                {feedback.summary}
-              </ReactMarkdown>
+              <AIResponseFormatter content={formatAIResponse(feedback.summary)} variant="chat" />
             </div>
 
             <div className="flex gap-4 mt-8">

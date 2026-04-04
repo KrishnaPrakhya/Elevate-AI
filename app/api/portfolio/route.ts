@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+const normalizeUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
 
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
 
-export async function GET(request: NextRequest) {
+  try {
+    return new URL(withProtocol).toString();
+  } catch {
+    return null;
+  }
+};
+
+export async function GET() {
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -58,6 +65,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedContentUrl = normalizeUrl(contentUrl);
+    if (contentUrl?.trim() && !normalizedContentUrl) {
+      return NextResponse.json(
+        { error: "Invalid content URL" },
+        { status: 400 }
+      );
+    }
+
     const user = await db.user.findUnique({
       where: { clerkUserId: userId },
     });
@@ -71,7 +86,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         title,
         description,
-        contentUrl: contentUrl || null,
+        contentUrl: normalizedContentUrl,
         skillsDemonstrated: skillsDemonstrated || [],
         isPublic: isPublic ?? true,
       },

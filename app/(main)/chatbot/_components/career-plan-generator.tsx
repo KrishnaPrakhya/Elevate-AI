@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -560,9 +560,7 @@ export default function CareerPlanGenerator({
                         </div>
                       </div>
                     ) : (
-                      <ReactMarkdown className="prose prose-sm max-w-none dark:prose-invert prose-headings:mb-2 prose-headings:mt-4 prose-p:my-2">
-                        {plan}
-                      </ReactMarkdown>
+                      <AIResponseFormatter content={formatAIResponse(plan)} />
                     )}
 
                     {checkpoints.length > 0 && (

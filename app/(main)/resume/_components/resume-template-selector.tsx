@@ -1,16 +1,12 @@
 "use client";
-import { Card, CardFooter } from "@/components/ui/card";
+
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-}
+import { LATEX_TEMPLATES } from "./latex-templates";
 
 interface ResumeTemplateSelectorProps {
-  templates: Template[];
+  templates?: Array<{ id: string; name: string; description: string }>;
   selectedTemplate: string;
   onSelect: (templateId: string) => void;
 }
@@ -20,9 +16,12 @@ export function ResumeTemplateSelector({
   selectedTemplate,
   onSelect,
 }: ResumeTemplateSelectorProps) {
+  // Use LaTeX templates if no templates provided
+  const templateList = templates || LATEX_TEMPLATES;
+
   return (
     <>
-      {templates.map((template) => (
+      {templateList.map((template) => (
         <Card
           key={template.id}
           className={cn(
@@ -41,39 +40,116 @@ export function ResumeTemplateSelector({
                 </div>
               )}
             </div>
-            <div className="h-32 bg-muted/50 flex items-center justify-center">
-              <div
-                className={`w-20 h-28 border ${getTemplatePreviewStyle(
-                  template.id
-                )}`}
-              ></div>
+            <div className="h-32 bg-muted/50 flex items-center justify-center p-2">
+              <TemplatePreview templateId={template.id} />
             </div>
           </div>
-          <CardFooter className="p-3 flex flex-col items-start">
+          <div className="p-3">
             <p className="font-medium text-sm">{template.name}</p>
             <p className="text-xs text-muted-foreground">
               {template.description}
             </p>
-          </CardFooter>
+          </div>
         </Card>
       ))}
     </>
   );
 }
 
-function getTemplatePreviewStyle(templateId: string): string {
+function TemplatePreview({ templateId }: { templateId: string }) {
   switch (templateId) {
-    case "modern":
-      return "bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200";
-    case "classic":
-      return "bg-gradient-to-r from-gray-50 to-gray-100 border-gray-200";
-    case "minimal":
-      return "bg-white border-gray-100";
-    case "professional":
-      return "bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200";
-    case "creative":
-      return "bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200";
+    case "de-sitter":
+      return (
+        <div className="w-full h-full bg-white border border-gray-200 p-2">
+          <div className="text-center border-b border-black pb-1 mb-2">
+            <div className="h-2 bg-black w-2/3 mx-auto mb-1" />
+            <div className="h-1 bg-gray-400 w-1/2 mx-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-1 bg-black w-1/3" />
+            <div className="h-0.5 bg-gray-300 w-full" />
+            <div className="space-y-1">
+              <div className="h-0.5 bg-gray-200 w-full" />
+              <div className="h-0.5 bg-gray-200 w-full" />
+            </div>
+          </div>
+        </div>
+      );
+    case "venkat":
+      return (
+        <div className="w-full h-full bg-white border border-gray-200 p-2">
+          <div className="text-center mb-2">
+            <div className="h-2 bg-blue-500 w-2/3 mx-auto mb-1" />
+            <div className="h-0.5 bg-gray-400 w-1/2 mx-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-1 bg-blue-500 w-1/3" />
+            <div className="h-0.5 bg-blue-500 w-full" />
+            <div className="space-y-1">
+              <div className="h-0.5 bg-gray-200 w-full" />
+              <div className="h-0.5 bg-gray-200 w-full" />
+            </div>
+          </div>
+        </div>
+      );
+    case "jackson-sharp":
+      return (
+        <div className="w-full h-full bg-white border border-gray-200 p-2">
+          <div className="text-center border-b-2 border-black pb-1 mb-2">
+            <div className="h-2 bg-black w-2/3 mx-auto mb-1" />
+            <div className="h-0.5 bg-gray-400 w-1/2 mx-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-0.5 bg-black w-full" />
+            <div className="space-y-1">
+              <div className="h-0.5 bg-gray-200 w-full" />
+              <div className="h-0.5 bg-gray-200 w-full" />
+            </div>
+          </div>
+        </div>
+      );
+    case "clark":
+      return (
+        <div className="w-full h-full bg-white border border-gray-200 p-2">
+          <div className="flex justify-between items-end border-b-2 border-black pb-1 mb-2">
+            <div className="h-3 bg-black w-1/2" />
+            <div className="space-y-0.5">
+              <div className="h-0.5 bg-gray-400 w-16" />
+              <div className="h-0.5 bg-gray-400 w-12" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <div className="h-0.5 bg-black flex-1" />
+            </div>
+            <div className="space-y-1">
+              <div className="h-0.5 bg-gray-200 w-full" />
+              <div className="h-0.5 bg-gray-200 w-full" />
+            </div>
+          </div>
+        </div>
+      );
+    case "racine":
+      return (
+        <div className="w-full h-full bg-white border border-gray-200 p-2">
+          <div className="text-center mb-3">
+            <div className="h-2 bg-gray-300 w-2/3 mx-auto mb-1" />
+            <div className="h-0.5 bg-gray-300 w-1/2 mx-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="text-center">
+              <div className="h-0.5 bg-gray-300 w-1/3 mx-auto" />
+            </div>
+            <div className="space-y-1">
+              <div className="h-0.5 bg-gray-100 w-full" />
+              <div className="h-0.5 bg-gray-100 w-full" />
+            </div>
+          </div>
+        </div>
+      );
     default:
-      return "bg-white border-gray-200";
+      return (
+        <div className="w-20 h-28 border border-gray-200 bg-white" />
+      );
   }
 }

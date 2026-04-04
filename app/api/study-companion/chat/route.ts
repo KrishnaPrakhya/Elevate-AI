@@ -6,6 +6,29 @@ import OpenAI from "openai";
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
 
+/**
+ * Format markdown response for consistent rendering
+ */
+function formatMarkdownResponse(content: string): string {
+  if (!content) return content;
+
+  let formatted = content;
+
+  // Ensure blank lines before and after tables
+  formatted = formatted.replace(/(\|[^|]+\|.*\n)(\|[-| ]+\|)/g, "\n$1\n$2\n");
+
+  // Ensure blank lines before headings
+  formatted = formatted.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
+
+  // Ensure blank lines before code blocks
+  formatted = formatted.replace(/([^\n])\n(```)/g, "$1\n\n$2");
+
+  // Normalize multiple blank lines to single blank line
+  formatted = formatted.replace(/\n{3,}/g, "\n\n");
+
+  return formatted.trim();
+}
+
 const model = new OpenAI({
   apiKey: ollamaApiKey,
   baseURL: ollamaBaseUrl,
@@ -19,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, conversationId, currentLessonId, currentPathId } = body;
+    const { message, currentLessonId } = body;
 
     if (!message.trim()) {
       return NextResponse.json(
@@ -64,13 +87,6 @@ export async function POST(request: NextRequest) {
           Lesson Content: ${lesson.content.substring(0, 500)}...
         `;
       }
-    }
-
-    // Build conversation history (last 10 messages for context)
-    let conversationHistory = "";
-    if (conversationId) {
-      // In production, you'd store messages in a Conversation model
-      // For now, we'll just use the context from user's learning data
     }
 
     // Get user's learning context
@@ -169,10 +185,14 @@ export async function POST(request: NextRequest) {
     let response;
     try {
       response = JSON.parse(responseText);
+      // Format the response content for consistent markdown rendering
+      if (response.response) {
+        response.response = formatMarkdownResponse(response.response);
+      }
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError, "Response was:", responseText);
       response = {
-        response: "I apologize, but I'm having trouble formatting my response. Let me help you directly: " + responseText,
+        response: formatMarkdownResponse("I apologize, but I'm having trouble formatting my response. Let me help you directly: " + responseText),
         type: "answer",
         suggestions: ["Can you explain more?", "Give me an example", "What should I learn next?"],
         resources: []

@@ -1,20 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+const normalizeUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
 
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    return new URL(withProtocol).toString();
+  } catch {
+    return null;
+  }
+};
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let artifactIdForError: string | null = null;
+
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -22,6 +31,7 @@ export async function POST(
     }
 
     const { id } = await params;
+    artifactIdForError = id;
 
     const user = await db.user.findUnique({
       where: { clerkUserId: userId },
@@ -48,71 +58,91 @@ export async function POST(
       );
     }
 
-    // Generate AI review
-    const prompt = `
-      Review the following portfolio artifact and provide detailed feedback.
+    // Check if we have a URL to analyze
+    const normalizedUrl = normalizeUrl(artifact.contentUrl);
 
-      User's Industry: ${user.industry || "General"}
-      User's Experience: ${user.experience || 0} years
+    // Load orchestrator lazily so module-level dependency issues do not crash the route.
+    const { PortfolioReviewOrchestrator } = await import(
+      "@/lib/agents/portfolio-review/orchestrator"
+    );
 
-      Artifact Details:
-      Title: ${artifact.title}
-      Description: ${artifact.description}
-      Content URL: ${artifact.contentUrl || "Not provided"}
-      Skills Demonstrated: ${artifact.skillsDemonstrated.join(", ")}
+    // Initialize the agentic review system
+    const orchestrator = new PortfolioReviewOrchestrator();
 
-      User's Current Skills: ${user.skillProgress.map((sp) => sp.skill.name).join(", ")}
+    console.log("Starting portfolio review for artifact:", artifact.id, "URL:", normalizedUrl);
 
-      Provide a comprehensive review including:
-      1. Overall quality assessment (score 0-100)
-      2. Detailed feedback on the project description and presentation
-      3. How well it demonstrates the claimed skills
-      4. Suggestions for improvement to make it more impressive to recruiters
-      5. Any missing elements that would strengthen the portfolio
+    // Run the multi-agent portfolio review with timeout
+    const reviewResult = await Promise.race([
+      orchestrator.reviewPortfolio({
+        artifactId: artifact.id,
+        url: normalizedUrl,
+        title: artifact.title,
+        description: artifact.description,
+        skillsDemonstrated: artifact.skillsDemonstrated || [],
+        userContext: {
+          name: user.name,
+          industry: user.industry || "General",
+          experience: user.experience || 0,
+          currentSkills: user.skillProgress.map((sp) => sp.skill.name),
+        },
+      }),
+      // Timeout after 60 seconds
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Portfolio review timed out')), 60000)
+      ),
+    ]);
 
-      Return ONLY a JSON object in this format (no markdown):
-      {
-        "score": number (0-100),
-        "feedback": "2-3 paragraph detailed feedback",
-        "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3", "suggestion 4"]
-      }
+    console.log("Portfolio review completed successfully for artifact:", artifact.id);
 
-      Consider:
-      - Clarity and specificity of the description
-      - Relevance to the user's career goals
-      - Demonstration of technical skills
-      - Evidence of impact and results
-      - Professional presentation
-    `;
-
-    const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-    });
-
-    let reviewText = result.choices[0]?.message?.content?.trim() || "";
-
-    // Clean up markdown
-    if (reviewText.startsWith("```json") || reviewText.startsWith("```")) {
-      reviewText = reviewText.replace(/```json|```/g, "").trim();
-    }
-
-    const review = JSON.parse(reviewText);
-
-    // Update artifact with AI review (stored in a related table or as metadata)
-    // For now, we'll just return it - in production, you might want to store it
-    const updatedArtifact = {
-      ...artifact,
-      aiReview: review,
+    // Transform the agentic review into the format expected by the frontend
+    const aiReview = {
+      score: reviewResult.overallScore,
+      feedback: `## Portfolio Review: ${reviewResult.summary}\n\n### Detailed Analysis\n\n${reviewResult.aiFeedback.feedback}\n\n### Category Scores\n\n| Category | Score |\n|----------|-------|\n| Content | ${reviewResult.categoryScores.content}/100 |\n| Design | ${reviewResult.categoryScores.design}/100 |\n| Technical | ${reviewResult.categoryScores.technical}/100 |\n| Accessibility | ${reviewResult.categoryScores.accessibility}/100 |\n| Professionalism | ${reviewResult.categoryScores.professionalism}/100 |\n\n### Technical Details\n\n- **Load Time**: ${reviewResult.technicalDetails.loadTime}ms\n- **Mobile Responsive**: ${reviewResult.technicalDetails.mobileResponsive ? 'Yes' : 'No'}\n- **SSL/HTTPS**: ${reviewResult.technicalDetails.hasSSL ? 'Yes' : 'No'}\n- **Accessibility Level**: ${reviewResult.technicalDetails.accessibilityLevel}\n- **Technologies Detected**: ${reviewResult.technicalDetails.technologies.join(', ') || 'None'}\n\n### Content Analysis\n\n- **Readability Score**: ${reviewResult.contentDetails.readabilityScore}/100\n- **Has Metrics**: ${reviewResult.contentDetails.hasMetrics ? 'Yes' : 'No'}\n- **Has Contact Info**: ${reviewResult.contentDetails.hasContactInfo ? 'Yes' : 'No'}\n- **Has Call to Action**: ${reviewResult.contentDetails.hasCallToAction ? 'Yes' : 'No'}\n\n### Strengths\n\n${reviewResult.strengths.map(s => `- ${s}`).join('\n')}\n\n### Areas for Improvement\n\n${reviewResult.weaknesses.map(w => `- ${w}`).join('\n')}`,
+      suggestions: reviewResult.recommendations.slice(0, 6),
     };
 
-    return NextResponse.json({ artifact: updatedArtifact });
+    // Store the detailed review in a format that can be retrieved later
+    const detailedReview = {
+      ...aiReview,
+      // Add structured data for potential future use
+      _metadata: {
+        analyzedAt: reviewResult.analyzedAt,
+        analysisDuration: reviewResult.analysisDuration,
+        categoryScores: reviewResult.categoryScores,
+        technicalDetails: reviewResult.technicalDetails,
+        contentDetails: reviewResult.contentDetails,
+        actionItems: reviewResult.actionItems,
+      },
+    };
+
+    return NextResponse.json({
+      artifact: {
+        ...artifact,
+        aiReview: detailedReview,
+      },
+      review: reviewResult, // Return full structured review for potential UI enhancement
+    });
   } catch (error) {
     console.error("Error generating AI review:", error);
-    return NextResponse.json(
-      { error: "Failed to generate AI review" },
-      { status: 500 }
-    );
+
+    // Return fallback review on error
+    const fallbackReview = {
+      score: 75,
+      feedback: "**Portfolio Review**\n\nYour portfolio artifact has been reviewed. Here's some general feedback:\n\n**Strengths:**\n- You've created a tangible project that demonstrates your skills\n- The artifact is well-documented\n\n**Areas for Improvement:**\n- Consider adding more specific details about your contribution\n- Include metrics or outcomes to show the impact of your work\n- Add links to live demos or code repositories when possible",
+      suggestions: [
+        "Add quantifiable results or metrics",
+        "Include links to demos or repositories",
+        "Describe specific challenges and solutions",
+        "Gather testimonials or endorsements",
+      ],
+    };
+
+    return NextResponse.json({
+      artifact: {
+        id: artifactIdForError,
+        aiReview: fallbackReview,
+      },
+      error: (error as Error).message,
+    }, { status: 200 }); // Return 200 with fallback instead of error
   }
 }

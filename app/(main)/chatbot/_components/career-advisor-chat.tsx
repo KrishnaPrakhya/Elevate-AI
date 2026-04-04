@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 import CareerPlanGenerator from "./career-plan-generator";
 
 interface Message {
@@ -343,51 +343,7 @@ export default function CareerAdvisorChat({
                         )}
                       >
                         {message.role === "assistant" ? (
-                          <ReactMarkdown
-                            className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-headings:mt-3 prose-headings:mb-2 prose-ul:my-2 prose-ol:my-2"
-                            components={{
-                              a: ({ ...props }) => (
-                                <a
-                                  {...props}
-                                  className="font-medium text-primary underline-offset-4 hover:underline"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                />
-                              ),
-                              ul: ({ ...props }) => (
-                                <ul
-                                  {...props}
-                                  className="list-disc pl-6 my-2"
-                                />
-                              ),
-                              ol: ({ ...props }) => (
-                                <ol
-                                  {...props}
-                                  className="list-decimal pl-6 my-2"
-                                />
-                              ),
-                              li: ({ ...props }) => (
-                                <li {...props} className="my-1" />
-                              ),
-                              h3: ({ ...props }) => (
-                                <h3
-                                  {...props}
-                                  className="text-base font-semibold mt-4 mb-2"
-                                />
-                              ),
-                              h4: ({ ...props }) => (
-                                <h4
-                                  {...props}
-                                  className="text-sm font-semibold mt-3 mb-1"
-                                />
-                              ),
-                              p: ({ ...props }) => (
-                                <p {...props} className="my-2" />
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                          <AIResponseFormatter content={formatAIResponse(message.content)} variant="chat" />
                         ) : (
                           <p>{message.content}</p>
                         )}

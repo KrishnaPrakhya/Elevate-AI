@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       const sessions = await db.mentorshipSession.findMany({
         where: {
           mentorId,
-          status: status ? (status as any) : "SCHEDULED",
+          status: status ? (status as "SCHEDULED" | "COMPLETED" | "CANCELLED" | "RESCHEDULED") : "SCHEDULED",
         },
         include: {
           mentor: {

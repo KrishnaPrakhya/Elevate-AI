@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import OpenAI from "openai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,29 +22,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert blob to base64 for API call
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const base64Audio = Buffer.from(arrayBuffer).toString("base64");
+    // Check if Whisper API key is configured
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        {
+          error: "Transcription service not configured",
+          message: "Please add OPENAI_API_KEY to environment variables"
+        },
+        { status: 503 }
+      );
+    }
 
-    // Use Whisper or similar for transcription
-    // For now, return a placeholder - in production, integrate with Whisper API
-    const response = NextResponse.json({
-      transcript: "[Transcription service not configured] This is a placeholder. In production, integrate with OpenAI Whisper or similar speech-to-text API.",
+    // Transcribe audio using OpenAI Whisper
+    const file = new File([audioFile], "audio.wav", { type: "audio/wav" });
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+      language: "en",
     });
 
-    // TODO: Implement actual transcription with Whisper API
-    // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    // const transcription = await openai.audio.transcriptions.create({
-    //   file: new File([audioFile], "audio.wav", { type: "audio/wav" }),
-    //   model: "whisper-1",
-    // });
-    // return NextResponse.json({ transcript: transcription.text });
-
-    return response;
+    return NextResponse.json({
+      transcript: transcription.text,
+      questionId,
+    });
   } catch (error) {
     console.error("Error transcribing audio:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to transcribe audio" },
+      { error: "Failed to transcribe audio", details: errorMessage },
       { status: 500 }
     );
   }

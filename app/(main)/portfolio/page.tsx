@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,7 +29,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import ReactMarkdown from "react-markdown";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 import {
   FolderOpen,
   Plus,
@@ -37,7 +43,6 @@ import {
   FileText,
   Code,
   Image,
-  Link as LinkIcon,
   ExternalLink,
   Search,
   Filter,
@@ -68,11 +73,14 @@ export default function PortfolioPage() {
   const [artifacts, setArtifacts] = useState<PortfolioArtifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterPublic, setFilterPublic] = useState<"all" | "public" | "private">("all");
+  const [filterPublic, setFilterPublic] = useState<
+    "all" | "public" | "private"
+  >("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "score">("newest");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
-  const [selectedArtifact, setSelectedArtifact] = useState<PortfolioArtifact | null>(null);
+  const [selectedArtifact, setSelectedArtifact] =
+    useState<PortfolioArtifact | null>(null);
   const [isReviewing, setIsReviewing] = useState(false);
 
   // Form state
@@ -87,6 +95,22 @@ export default function PortfolioPage() {
   useEffect(() => {
     loadArtifacts();
   }, []);
+
+  const normalizeUrl = (url?: string | null): string | null => {
+    if (!url) return null;
+    const trimmed = url.trim();
+    if (!trimmed) return null;
+
+    const withProtocol = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+
+    try {
+      return new URL(withProtocol).toString();
+    } catch {
+      return null;
+    }
+  };
 
   const loadArtifacts = async () => {
     try {
@@ -106,9 +130,18 @@ export default function PortfolioPage() {
       return;
     }
 
+    const normalizedContentUrl = normalizeUrl(formData.contentUrl);
+    if (formData.contentUrl.trim() && !normalizedContentUrl) {
+      toast.error(
+        "Please enter a valid URL (example: https://buildbybrain.vercel.app)",
+      );
+      return;
+    }
+
     try {
-      const response = await axios.post("/api/portfolio", {
+      await axios.post("/api/portfolio", {
         ...formData,
+        contentUrl: normalizedContentUrl,
         skillsDemonstrated: formData.skillsDemonstrated
           .split(",")
           .map((s) => s.trim())
@@ -131,7 +164,10 @@ export default function PortfolioPage() {
     }
   };
 
-  const updateArtifact = async (id: string, updates: Partial<PortfolioArtifact>) => {
+  const updateArtifact = async (
+    id: string,
+    updates: Partial<PortfolioArtifact>,
+  ) => {
     try {
       await axios.patch(`/api/portfolio/${id}`, updates);
       toast.success("Artifact updated");
@@ -173,26 +209,32 @@ export default function PortfolioPage() {
     .filter((artifact) => {
       const matchesSearch =
         artifact.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        artifact.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        artifact.description
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
         artifact.skillsDemonstrated.some((skill) =>
-          skill.toLowerCase().includes(searchQuery.toLowerCase())
+          skill.toLowerCase().includes(searchQuery.toLowerCase()),
         );
 
       const matchesFilter =
         filterPublic === "all"
           ? true
           : filterPublic === "public"
-          ? artifact.isPublic
-          : !artifact.isPublic;
+            ? artifact.isPublic
+            : !artifact.isPublic;
 
       return matchesSearch && matchesFilter;
     })
     .sort((a, b) => {
       switch (sortBy) {
         case "newest":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
         case "oldest":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
         case "score":
           return (b.aiReview?.score || 0) - (a.aiReview?.score || 0);
         default:
@@ -204,20 +246,26 @@ export default function PortfolioPage() {
     total: artifacts.length,
     public: artifacts.filter((a) => a.isPublic).length,
     reviewed: artifacts.filter((a) => a.aiReview).length,
-    avgScore: artifacts.filter((a) => a.aiReview).length > 0
-      ? Math.round(
-          artifacts.reduce((sum, a) => sum + (a.aiReview?.score || 0), 0) /
-            artifacts.filter((a) => a.aiReview).length
-        )
-      : 0,
+    avgScore:
+      artifacts.filter((a) => a.aiReview).length > 0
+        ? Math.round(
+            artifacts.reduce((sum, a) => sum + (a.aiReview?.score || 0), 0) /
+              artifacts.filter((a) => a.aiReview).length,
+          )
+        : 0,
   };
 
   const getArtifactIcon = (artifact: PortfolioArtifact) => {
-    if (artifact.contentUrl?.includes("github.com")) return <Code className="w-5 h-5" />;
-    if (artifact.contentUrl?.match(/\.(png|jpg|jpeg|gif|svg)$/i)) return <Image className="w-5 h-5" />;
-    if (artifact.contentUrl?.includes("drive.google.com") || artifact.contentUrl?.includes("dropbox.com"))
-      return <FileText className="w-5 h-5" />;
-    return <FolderOpen className="w-5 h-5" />;
+    if (artifact.contentUrl?.includes("github.com"))
+      return <Code className="w-5 h-5" aria-hidden />;
+    if (artifact.contentUrl?.match(/\.(png|jpg|jpeg|gif|svg)$/i))
+      return <Image className="w-5 h-5" alt="" aria-hidden />;
+    if (
+      artifact.contentUrl?.includes("drive.google.com") ||
+      artifact.contentUrl?.includes("dropbox.com")
+    )
+      return <FileText className="w-5 h-5" aria-hidden />;
+    return <FolderOpen className="w-5 h-5" aria-hidden />;
   };
 
   if (loading) {
@@ -318,26 +366,46 @@ export default function PortfolioPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Filter className="w-4 h-4" />
-                {filterPublic === "all" ? "All" : filterPublic === "public" ? "Public" : "Private"}
+                {filterPublic === "all"
+                  ? "All"
+                  : filterPublic === "public"
+                    ? "Public"
+                    : "Private"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => setFilterPublic("all")}>All</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilterPublic("public")}>Public</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilterPublic("private")}>Private</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilterPublic("all")}>
+                All
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilterPublic("public")}>
+                Public
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilterPublic("private")}>
+                Private
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Clock className="w-4 h-4" />
-                {sortBy === "newest" ? "Newest" : sortBy === "oldest" ? "Oldest" : "Score"}
+                {sortBy === "newest"
+                  ? "Newest"
+                  : sortBy === "oldest"
+                    ? "Oldest"
+                    : "Score"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => setSortBy("newest")}>Newest First</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("oldest")}>Oldest First</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("score")}>Highest Score</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("newest")}>
+                Newest First
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("oldest")}>
+                Oldest First
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("score")}>
+                Highest Score
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -354,38 +422,58 @@ export default function PortfolioPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Title *</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Title *
+                </label>
                 <Input
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
                   placeholder="My Awesome Project"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">Description *</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Description *
+                </label>
                 <Textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   placeholder="Describe your project, what you built, and the impact..."
                   rows={4}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">Content URL</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Content URL
+                </label>
                 <Input
                   value={formData.contentUrl}
-                  onChange={(e) => setFormData({ ...formData, contentUrl: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, contentUrl: e.target.value })
+                  }
                   placeholder="https://github.com/..."
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Link to GitHub, live demo, Google Drive, Dropbox, or any relevant URL
+                  Link to GitHub, live demo, Google Drive, Dropbox, or any
+                  relevant URL
                 </p>
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">Skills Demonstrated</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Skills Demonstrated
+                </label>
                 <Input
                   value={formData.skillsDemonstrated}
-                  onChange={(e) => setFormData({ ...formData, skillsDemonstrated: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      skillsDemonstrated: e.target.value,
+                    })
+                  }
                   placeholder="React, TypeScript, Node.js (comma-separated)"
                 />
               </div>
@@ -398,7 +486,9 @@ export default function PortfolioPage() {
                 </div>
                 <Switch
                   checked={formData.isPublic}
-                  onCheckedChange={(checked) => setFormData({ ...formData, isPublic: checked })}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, isPublic: checked })
+                  }
                 />
               </div>
               <Button onClick={createArtifact} className="w-full">
@@ -415,7 +505,9 @@ export default function PortfolioPage() {
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No portfolio artifacts yet</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              No portfolio artifacts yet
+            </h3>
             <p className="text-muted-foreground mb-4">
               Start building your portfolio by adding your first project
             </p>
@@ -449,21 +541,34 @@ export default function PortfolioPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                          <DropdownMenuItem onClick={() => updateArtifact(artifact.id, { isPublic: !artifact.isPublic })}>
-                            {artifact.isPublic ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+                          <DropdownMenuItem
+                            onClick={() =>
+                              updateArtifact(artifact.id, {
+                                isPublic: !artifact.isPublic,
+                              })
+                            }
+                          >
+                            {artifact.isPublic ? (
+                              <EyeOff className="w-4 h-4 mr-2" />
+                            ) : (
+                              <Eye className="w-4 h-4 mr-2" />
+                            )}
                             {artifact.isPublic ? "Make Private" : "Make Public"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setFormData({
-                              title: artifact.title,
-                              description: artifact.description,
-                              contentUrl: artifact.contentUrl || "",
-                              skillsDemonstrated: artifact.skillsDemonstrated.join(", "),
-                              isPublic: artifact.isPublic,
-                            });
-                            setSelectedArtifact(artifact);
-                            setIsCreateDialogOpen(true);
-                          }}>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setFormData({
+                                title: artifact.title,
+                                description: artifact.description,
+                                contentUrl: artifact.contentUrl || "",
+                                skillsDemonstrated:
+                                  artifact.skillsDemonstrated.join(", "),
+                                isPublic: artifact.isPublic,
+                              });
+                              setSelectedArtifact(artifact);
+                              setIsCreateDialogOpen(true);
+                            }}
+                          >
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
@@ -477,18 +582,22 @@ export default function PortfolioPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <CardTitle className="text-lg mt-3">{artifact.title}</CardTitle>
+                    <CardTitle className="text-lg mt-3">
+                      {artifact.title}
+                    </CardTitle>
                     <CardDescription className="line-clamp-2">
                       {artifact.description}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex-1 flex flex-col">
                     <div className="flex flex-wrap gap-1 mb-4">
-                      {artifact.skillsDemonstrated.slice(0, 4).map((skill, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          {skill}
-                        </Badge>
-                      ))}
+                      {artifact.skillsDemonstrated
+                        .slice(0, 4)
+                        .map((skill, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {skill}
+                          </Badge>
+                        ))}
                       {artifact.skillsDemonstrated.length > 4 && (
                         <Badge variant="outline" className="text-xs">
                           +{artifact.skillsDemonstrated.length - 4}
@@ -505,8 +614,12 @@ export default function PortfolioPage() {
                         <div className="flex items-center gap-2">
                           <div className="flex-1">
                             <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="text-muted-foreground">Score</span>
-                              <span className="font-medium">{artifact.aiReview.score}%</span>
+                              <span className="text-muted-foreground">
+                                Score
+                              </span>
+                              <span className="font-medium">
+                                {artifact.aiReview.score}%
+                              </span>
                             </div>
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div
@@ -525,13 +638,20 @@ export default function PortfolioPage() {
                         {new Date(artifact.createdAt).toLocaleDateString()}
                       </div>
                       <div className="flex gap-2">
-                        {artifact.contentUrl && (
-                          <Button variant="ghost" size="sm" asChild>
-                            <a href={artifact.contentUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          </Button>
-                        )}
+                        {artifact.contentUrl &&
+                          normalizeUrl(artifact.contentUrl) && (
+                            <Button variant="ghost" size="sm" asChild>
+                              <a
+                                href={normalizeUrl(artifact.contentUrl) ?? "#"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Open ${artifact.title} link`}
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" />
+                                Visit Site
+                              </a>
+                            </Button>
+                          )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -585,11 +705,15 @@ export default function PortfolioPage() {
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold">{selectedArtifact.aiReview.score}%</span>
+                    <span className="text-2xl font-bold">
+                      {selectedArtifact.aiReview.score}%
+                    </span>
                   </div>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">{selectedArtifact.title}</h3>
+                  <h3 className="font-semibold text-lg">
+                    {selectedArtifact.title}
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     {selectedArtifact.skillsDemonstrated.join(", ")}
                   </p>
@@ -601,20 +725,22 @@ export default function PortfolioPage() {
                   <CheckCircle className="w-4 h-4 text-primary" />
                   Overall Feedback
                 </h4>
-                <ReactMarkdown className="prose prose-sm dark:prose-invert">
-                  {selectedArtifact.aiReview.feedback}
-                </ReactMarkdown>
+                <AIResponseFormatter content={formatAIResponse(selectedArtifact.aiReview.feedback)} variant="chat" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3">Suggestions for Improvement</h4>
+                <h4 className="font-semibold mb-3">
+                  Suggestions for Improvement
+                </h4>
                 <ul className="space-y-2">
-                  {selectedArtifact.aiReview.suggestions.map((suggestion, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <TrendingUp className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      {suggestion}
-                    </li>
-                  ))}
+                  {selectedArtifact.aiReview.suggestions.map(
+                    (suggestion, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <TrendingUp className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        {suggestion}
+                      </li>
+                    ),
+                  )}
                 </ul>
               </div>
             </div>

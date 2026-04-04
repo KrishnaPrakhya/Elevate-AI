@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
@@ -18,8 +17,6 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
-  Video,
-  MessageSquare,
   Filter,
   Search,
   Award,
@@ -110,7 +107,7 @@ export default function MentorsPage() {
     setIsBooking(true);
     try {
       const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`).toISOString();
-      const response = await axios.post("/api/academy/mentorship", {
+      await axios.post("/api/academy/mentorship", {
         mentorId: selectedMentor.id,
         scheduledAt,
         durationMinutes: 30,

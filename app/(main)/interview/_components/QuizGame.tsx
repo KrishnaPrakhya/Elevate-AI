@@ -11,10 +11,10 @@ import {
   Award,
   Home,
   Share2,
+  BookOpen,
 } from "lucide-react";
 import Confetti from "react-confetti";
 import { Button } from "@/components/ui/button";
-import { BookOpen } from "lucide-react"; // Import BookOpen
 import { useWindowSize } from "@/hooks/use-window-size";
 import { QuizResponse } from "../types";
 
@@ -115,22 +115,20 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-2xl mx-auto p-8 bg-white rounded-2xl shadow-xl text-center"
+        className="max-w-2xl mx-auto p-8 bg-background rounded-2xl shadow-xl text-center border border-primary/20"
       >
-        <h2 className="text-2xl font-bold mb-4 text-red-600">
+        <h2 className="text-2xl font-bold mb-4 text-destructive">
           Error Loading Quiz
         </h2>
-        <p className="text-lg text-gray-700">
+        <p className="text-lg text-muted-foreground">
           No questions available. Please try again.
         </p>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <Button
           onClick={() => setQuizStarted(false)}
-          className="mt-6 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-xl hover:from-blue-600 hover:to-purple-700 transition shadow-md"
+          className="mt-6 bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90"
         >
           Go Back
-        </motion.button>
+        </Button>
       </motion.div>
     );
   }
@@ -161,7 +159,7 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="max-w-2xl mx-auto p-8 bg-white rounded-2xl shadow-xl text-center"
+        className="max-w-2xl mx-auto p-8 bg-background rounded-2xl shadow-xl text-center border border-primary/20"
       >
         {showConfetti && (
           <Confetti
@@ -179,26 +177,26 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
           className="mb-6"
         >
           {scorePercentage >= 70 ? (
-            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-full flex items-center justify-center shadow-lg">
+            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-yellow-400 to-amber-500 rounded-full flex items-center justify-center shadow-lg">
               <Award className="w-12 h-12 text-white" />
             </div>
           ) : scorePercentage >= 50 ? (
-            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
+            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-primary to-cyan-600 rounded-full flex items-center justify-center shadow-lg">
               <CheckCircle className="w-12 h-12 text-white" />
             </div>
           ) : (
-            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+            <div className="w-24 h-24 mx-auto bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
               <BookOpen className="w-12 h-12 text-white" />
             </div>
           )}
         </motion.div>
 
-        <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+        <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-primary to-cyan-600 bg-clip-text text-transparent">
           Quiz Completed!
         </h2>
 
         <motion.p
-          className="text-lg text-gray-700 mb-6"
+          className="text-lg text-muted-foreground mb-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
@@ -210,13 +208,13 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mb-8 p-4 bg-gray-50 rounded-xl border border-gray-200"
+          className="mb-8 p-4 bg-muted/50 rounded-xl border border-primary/10"
         >
           <div className="flex justify-center mb-4">
             <div className="relative w-32 h-32">
               <svg className="w-full h-full" viewBox="0 0 100 100">
                 <circle
-                  className="text-gray-200"
+                  className="text-muted"
                   strokeWidth="10"
                   stroke="currentColor"
                   fill="transparent"
@@ -225,7 +223,7 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                   cy="50"
                 />
                 <motion.circle
-                  className="text-purple-600"
+                  className="text-primary"
                   strokeWidth="10"
                   strokeLinecap="round"
                   stroke="currentColor"
@@ -247,7 +245,7 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                   y="50"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="font-bold text-2xl fill-purple-600"
+                  className="font-bold text-2xl fill-primary"
                 >
                   {scorePercentage}%
                 </text>
@@ -260,10 +258,10 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.6 }}
-              className="bg-green-50 p-4 rounded-xl border border-green-100"
+              className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20"
             >
-              <p className="text-lg font-medium text-green-800">Correct</p>
-              <p className="text-3xl font-bold text-green-600">
+              <p className="text-lg font-medium text-emerald-600">Correct</p>
+              <p className="text-3xl font-bold text-emerald-500">
                 {score.correct}
               </p>
             </motion.div>
@@ -272,33 +270,34 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
               initial={{ x: 20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.6 }}
-              className="bg-red-50 p-4 rounded-xl border border-red-100"
+              className="bg-red-500/10 p-4 rounded-xl border border-red-500/20"
             >
-              <p className="text-lg font-medium text-red-800">Wrong</p>
-              <p className="text-3xl font-bold text-red-600">{score.wrong}</p>
+              <p className="text-lg font-medium text-red-600">Wrong</p>
+              <p className="text-3xl font-bold text-red-500">{score.wrong}</p>
             </motion.div>
           </div>
         </motion.div>
 
         <motion.div
-          className="flex flex-col sm:flex-row justify-center gap-4"
+          className="flex flex-col sm:flex-row justify-center gap-3"
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.8 }}
         >
           <Button
             onClick={handleRestart}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-xl hover:from-blue-600 hover:to-purple-700 transition shadow-md"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90"
           >
-            <RotateCcw className="w-5 h-5" />
+            <RotateCcw className="w-4 h-4" />
             Restart Quiz
           </Button>
 
           <Button
             onClick={() => setQuizStarted(false)}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-3 px-6 rounded-xl hover:from-gray-600 hover:to-gray-700 transition shadow-md"
+            variant="outline"
+            className="flex items-center justify-center gap-2"
           >
-            <Home className="w-5 h-5" />
+            <Home className="w-4 h-4" />
             Home
           </Button>
 
@@ -315,9 +314,9 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                 alert("Sharing not supported on this browser");
               }
             }}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-6 rounded-xl hover:from-green-600 hover:to-green-700 transition shadow-md"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
           >
-            <Share2 className="w-5 h-5" />
+            <Share2 className="w-4 h-4" />
             Share Results
           </Button>
         </motion.div>
@@ -332,22 +331,24 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
       transition={{ duration: 0.5 }}
       className="w-full max-w-2xl"
     >
-      <div className="p-8 bg-white rounded-2xl shadow-xl border border-gray-100">
+      <div className="p-6 bg-background rounded-2xl shadow-xl border border-primary/20">
         <div className="mb-6">
           {/* Progress bar */}
           <div className="flex justify-between items-center mb-2">
-            <p className="text-sm font-medium text-gray-600">
+            <p className="text-sm font-medium text-muted-foreground">
               Question {currentQuestionIndex + 1} of {quizData.length}
             </p>
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-600" />
-              <p className="text-sm font-medium text-gray-600">{timeLeft}s</p>
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <p className={`text-sm font-medium ${timeLeft < 10 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                {timeLeft}s
+              </p>
             </div>
           </div>
 
-          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
             <motion.div
-              className="h-full bg-gradient-to-r from-blue-500 to-purple-600"
+              className="h-full bg-gradient-to-r from-primary to-cyan-600"
               initial={{
                 width: `${(currentQuestionIndex / quizData.length) * 100}%`,
               }}
@@ -357,12 +358,12 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
           </div>
 
           {/* Timer bar */}
-          <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden mt-2">
+          <div className="w-full h-1 bg-muted rounded-full overflow-hidden mt-2">
             <motion.div
               className={`h-full ${
                 timeLeft < 10
-                  ? "bg-gradient-to-r from-red-400 to-red-600"
-                  : "bg-gradient-to-r from-yellow-400 to-red-500"
+                  ? "bg-gradient-to-r from-red-500 to-red-600"
+                  : "bg-gradient-to-r from-primary to-cyan-500"
               }`}
               initial={{ width: "100%" }}
               animate={{ width: `${timePercentage}%` }}
@@ -379,46 +380,46 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
             exit={{ opacity: 0, x: -100 }}
             transition={{ duration: 0.3 }}
           >
-            <h2 className="text-xl font-semibold mb-6 text-gray-800">
+            <h2 className="text-lg font-semibold mb-6">
               {currentQuestion.question}
             </h2>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {currentQuestion.options.map((option, index) => (
                 <motion.button
                   key={index}
                   onClick={() => !showExplanation && handleOptionSelect(option)}
                   disabled={!!showExplanation}
-                  className={`w-full p-4 text-left rounded-xl border transition-all ${
+                  className={`w-full p-4 text-left rounded-xl border-2 transition-all ${
                     showExplanation && option === currentQuestion.correctAnswer
-                      ? "bg-green-50 border-green-500"
+                      ? "bg-emerald-500/10 border-emerald-500"
                       : showExplanation &&
                         selectedOption === option &&
                         option !== currentQuestion.correctAnswer
-                      ? "bg-red-50 border-red-500"
+                      ? "bg-red-500/10 border-red-500"
                       : selectedOption === option
-                      ? "bg-purple-50 border-purple-500"
-                      : "border-gray-200 hover:bg-gray-50"
+                      ? "bg-primary/10 border-primary"
+                      : "border-border hover:bg-muted/50"
                   }`}
-                  whileHover={!showExplanation ? { scale: 1.02 } : {}}
-                  whileTap={!showExplanation ? { scale: 0.98 } : {}}
+                  whileHover={!showExplanation ? { scale: 1.01 } : {}}
+                  whileTap={!showExplanation ? { scale: 0.99 } : {}}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  transition={{ delay: index * 0.05 }}
                 >
                   <div className="flex items-center">
                     <div
                       className={`w-6 h-6 rounded-full mr-3 flex items-center justify-center ${
                         showExplanation &&
                         option === currentQuestion.correctAnswer
-                          ? "bg-green-500"
+                          ? "bg-emerald-500"
                           : showExplanation &&
                             selectedOption === option &&
                             option !== currentQuestion.correctAnswer
                           ? "bg-red-500"
                           : selectedOption === option
-                          ? "bg-purple-500"
-                          : "bg-gray-200"
+                          ? "bg-primary"
+                          : "bg-muted"
                       }`}
                     >
                       <span className="text-white text-xs font-bold">
@@ -429,12 +430,12 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                       className={`${
                         showExplanation &&
                         option === currentQuestion.correctAnswer
-                          ? "text-green-800"
+                          ? "text-emerald-600"
                           : showExplanation &&
                             selectedOption === option &&
                             option !== currentQuestion.correctAnswer
-                          ? "text-red-800"
-                          : "text-gray-700"
+                          ? "text-red-600"
+                          : "text-foreground"
                       }`}
                     >
                       {option}
@@ -452,7 +453,7 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                           }}
                           className="ml-auto"
                         >
-                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
                         </motion.div>
                       )}
 
@@ -480,65 +481,59 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
         </AnimatePresence>
 
         {!showExplanation ? (
-          <motion.button
+          <Button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
             onClick={handleAnswer}
-            className={`mt-8 w-full py-3 rounded-xl text-white font-medium transition-all ${
-              !selectedOption
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-md"
-            }`}
             disabled={!selectedOption}
-            whileHover={selectedOption ? { scale: 1.02 } : {}}
-            whileTap={selectedOption ? { scale: 0.98 } : {}}
+            className="w-full mt-6 py-6 rounded-xl font-medium bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90 shadow-lg"
           >
             Submit Answer
-          </motion.button>
+          </Button>
         ) : (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             transition={{ duration: 0.3 }}
-            className="mt-8"
+            className="mt-6"
           >
             <div
-              className={`p-4 rounded-xl mb-4 ${
+              className={`p-4 rounded-xl mb-4 border-2 ${
                 selectedOption === currentQuestion.correctAnswer
-                  ? "bg-green-50 border border-green-200"
-                  : "bg-red-50 border border-red-200"
+                  ? "bg-emerald-500/10 border-emerald-500"
+                  : "bg-red-500/10 border-red-500"
               }`}
             >
               <div className="flex items-center mb-2">
                 {selectedOption === currentQuestion.correctAnswer ? (
                   <>
-                    <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                    <p className="font-semibold text-green-800">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 mr-2" />
+                    <p className="font-semibold text-emerald-700">
                       {feedbackMessage}
                     </p>
                   </>
                 ) : (
                   <>
                     <XCircle className="w-5 h-5 text-red-600 mr-2" />
-                    <p className="font-semibold text-red-800">
+                    <p className="font-semibold text-red-700">
                       {feedbackMessage}
                     </p>
                   </>
                 )}
               </div>
-              <p className="text-gray-700">{currentQuestion.explanation}</p>
+              <p className="text-sm text-muted-foreground">{currentQuestion.explanation}</p>
             </div>
 
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <Button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={handleNextQuestion}
-              className="w-full py-3 rounded-xl text-white font-medium bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all shadow-md flex items-center justify-center gap-2"
+              className="w-full py-6 rounded-xl font-medium bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90 shadow-lg flex items-center justify-center gap-2"
             >
               Next Question
               <ArrowRight className="w-5 h-5" />
-            </motion.button>
+            </Button>
           </motion.div>
         )}
 
@@ -549,25 +544,25 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
           transition={{ delay: 0.6 }}
         >
           <div className="flex items-center gap-4">
-            <div className="flex items-center">
-              <div className="w-3 h-3 rounded-full bg-green-500 mr-1"></div>
-              <p className="text-sm text-gray-600">Correct: {score.correct}</p>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+              <p className="text-sm text-muted-foreground">Correct: {score.correct}</p>
             </div>
-            <div className="flex items-center">
-              <div className="w-3 h-3 rounded-full bg-red-500 mr-1"></div>
-              <p className="text-sm text-gray-600">Wrong: {score.wrong}</p>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+              <p className="text-sm text-muted-foreground">Wrong: {score.wrong}</p>
             </div>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleRestart}
-            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            className="text-muted-foreground hover:text-foreground"
           >
-            <RotateCcw className="w-3 h-3" />
+            <RotateCcw className="w-3 h-3 mr-1" />
             Restart
-          </motion.button>
+          </Button>
         </motion.div>
       </div>
     </motion.div>

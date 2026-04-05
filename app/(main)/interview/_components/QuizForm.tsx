@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, X, BookOpen, Brain, Loader2 } from "lucide-react";
 import Confetti from "react-confetti";
 import { useWindowSize } from "@/hooks/use-window-size";
-import { generateTopicContent, generateTopicQuiz } from "@/actions/topicQuiz";
+import { generateTopicQuiz } from "@/actions/topicQuiz";
 import { QuizResponse } from "../types";
 
 interface Topics {
@@ -56,9 +57,9 @@ export default function QuizForm({
   setQuizStarted,
   Topics,
 }: QuizFormProps) {
+  const router = useRouter();
   const [selectedSubtopics, setSelectedSubtopics] = useState<string[]>([]);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-  const [content, setContent] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const { width, height } = useWindowSize();
   console.log(Topics);
@@ -86,37 +87,14 @@ export default function QuizForm({
     setQuizStarted(true);
   };
 
-  const handleLearnTopics = async () => {
+  const handleLearnTopics = () => {
     if (selectedSubtopics.length === 0) {
       alert("Please select at least one subtopic to learn.");
       return;
     }
 
-    try {
-      setIsGeneratingContent(true);
-      const generatedContent = await generateTopicContent(selectedSubtopics);
-      setContent(generatedContent);
-    } catch (error) {
-      console.error(error);
-      alert("Failed to generate content. Please try again.");
-    } finally {
-      setIsGeneratingContent(false);
-    }
-  };
-
-  // Function to format plain text with line breaks
-  const formatContent = (text: string) => {
-    return text.split("\n").map((paragraph, index) => (
-      <motion.p
-        key={index}
-        className="mb-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.05 }}
-      >
-        {paragraph.trim() === "" ? <br /> : paragraph}
-      </motion.p>
-    ));
+    const topicsParam = selectedSubtopics.join(",");
+    router.push(`/interview/learn?topics=${encodeURIComponent(topicsParam)}`);
   };
 
   return (
@@ -218,24 +196,12 @@ export default function QuizForm({
           <Button
             type="button"
             onClick={handleLearnTopics}
-            disabled={isGeneratingContent}
-            className={`flex-1 py-2.5 rounded-xl text-white font-medium transition-all shadow-md ${
-              isGeneratingContent
-                ? "bg-muted cursor-not-allowed text-muted-foreground"
-                : "bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
-            }`}
+            className="flex-1 py-2.5 rounded-xl text-white font-medium bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 transition-all shadow-md"
           >
-            {isGeneratingContent ? (
-              <div className="flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating...
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2">
-                <BookOpen className="w-4 h-4" />
-                Learn Topics
-              </div>
-            )}
+            <div className="flex items-center justify-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              Learn Topics
+            </div>
           </Button>
 
           <Button
@@ -248,36 +214,6 @@ export default function QuizForm({
             </div>
           </Button>
         </motion.div>
-
-        <AnimatePresence>
-          {content && (
-            <motion.div
-              className="mt-6 p-4 bg-muted/50 rounded-xl border border-primary/20"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-primary" />
-                  Learning Content
-                </h3>
-                <Button
-                  onClick={() => setContent(null)}
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="whitespace-pre-wrap text-sm overflow-auto max-h-[400px] pr-2 custom-scrollbar">
-                {formatContent(content)}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </form>
     </motion.div>
   );

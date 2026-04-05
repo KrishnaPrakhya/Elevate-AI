@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate new conversation ID (in production, use actual conversation tracking)
-    const newConversationId = conversationId || `conv-${Date.now()}`;
+    const newConversationId = `conv-${Date.now()}`;
 
     return NextResponse.json({
       response: response.response,

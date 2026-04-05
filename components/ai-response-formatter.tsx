@@ -213,11 +213,99 @@ export function formatAIResponse(content: string): string {
 
   let formatted = content;
 
+  const normalizeBrokenPipeTables = (text: string): string => {
+    // Some model outputs compact full table rows into one line separated by "||".
+    // Expand those separators first so row-level normalization can work reliably.
+    const expanded = text.includes("||") ? text.replace(/\s*\|\|\s*/g, "\n") : text;
+
+    const lines = expanded.split(/\r?\n/);
+    const likelyBrokenTable = lines.some((line) => {
+      const t = line.trim();
+      return (
+        t.includes("||") ||
+        /^-+\|/.test(t) ||
+        /^\|\s*\|/.test(t) ||
+        /^-\|$/.test(t)
+      );
+    });
+
+    if (!likelyBrokenTable) return text;
+
+    const normalized: string[] = [];
+    for (const line of lines) {
+      const t = line.trim();
+
+      if (!t) {
+        normalized.push("");
+        continue;
+      }
+
+      // Drop table separator-only rows from malformed markdown.
+      if (/^[-:|\s]+$/.test(t)) {
+        continue;
+      }
+
+      if (t.includes("|")) {
+        const cells = t
+          .split("|")
+          .map((cell) => cell.trim())
+          .map((cell) => cell.replace(/^[-*]+\s*/, "").trim())
+          .filter(Boolean);
+
+        if (cells.length === 0) {
+          continue;
+        }
+
+        const isHeaderRow =
+          cells.length >= 2 &&
+          /observation|area|strength|recommendation|example/i.test(cells[0]) &&
+          /why|evidence|detail|rationale|example/i.test(cells.slice(1).join(" "));
+
+        if (isHeaderRow) {
+          continue;
+        }
+
+        if (cells.length === 1) {
+          normalized.push(cells[0]);
+        } else if (cells.length === 2) {
+          normalized.push(`- ${cells[0]}: ${cells[1]}`);
+        } else {
+          normalized.push(`- ${cells[0]}: ${cells.slice(1).join(" | ")}`);
+        }
+        continue;
+      }
+
+      normalized.push(line);
+    }
+
+    return normalized.join("\n");
+  };
+
+  formatted = normalizeBrokenPipeTables(formatted);
+
+  // Normalize HTML line breaks that frequently appear in model output.
+  formatted = formatted.replace(/<br\s*\/?\s*>/gi, "\n");
+
+  // Ensure markdown horizontal rules are on their own lines.
+  formatted = formatted.replace(/(^|\n)\s*---\s*(?=\n|$)/g, "$1---");
+
+  // Ensure markdown headings start on a new line.
+  formatted = formatted.replace(/([^\n])\s*(#{1,6}\s+)/g, "$1\n\n$2");
+
+  // Ensure numbered section labels begin on a new line.
+  formatted = formatted.replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n\n$2");
+
   // Fix tables without proper spacing
   formatted = formatted.replace(
     /(\|[^|]+\|)\n(\|[-| ]+\|)\n/g,
     "$1\n$2\n"
   );
+
+  // Break table separator rows onto their own line if they are inline.
+  formatted = formatted.replace(/\s+(\|\s*[-:]{2,}[-|:\s]*\|)/g, "\n$1");
+
+  // Ensure each table row starts on a new line when multiple rows are compacted.
+  formatted = formatted.replace(/\|\s+(?=\|)/g, "|\n|");
 
   // Ensure blank lines before headings
   formatted = formatted.replace(

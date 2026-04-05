@@ -4,15 +4,40 @@ import json
 import logging
 import os
 import re
+import datetime
 import uuid
 from typing import Any, Literal, TypedDict, List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode # Added for URL manipulation
+from datetime import timedelta
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, URLSafeSerializer
+from collections.abc import AsyncGenerator
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Google Calendar imports
+try:
+    from tools.calendar import CalendarTool, SCOPES
+    from google_auth_oauthlib.flow import Flow
+    GOOGLE_CALENDAR_AVAILABLE = True
+except ImportError:
+    GOOGLE_CALENDAR_AVAILABLE = False
+    logger.warning("Google Calendar API not installed. Calendar features will be limited.")
+
+# Resend email imports
+try:
+    import resend
+    RESEND_AVAILABLE = True
+except ImportError:
+    RESEND_AVAILABLE = False
+    logger.warning("Resend SDK not installed. Email features will be limited.")
 
 
 def format_markdown_response(content: str) -> str:
@@ -50,9 +75,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session, selectinload
 from sqlalchemy.future import select
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # LiveKit imports for voice interview
 try:
     from livekit.api import AccessToken
@@ -61,7 +83,16 @@ except ImportError:
     LIVEKIT_AVAILABLE = False
     logger.warning("LiveKit SDK not installed. Voice interview features will be limited.")
 
-load_dotenv()
+# Load env files explicitly so backend works whether started from repo root or server/.
+_SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_SERVER_DIR)
+for _env_file in (
+    os.path.join(_PROJECT_ROOT, ".env"),
+    os.path.join(_PROJECT_ROOT, ".env.local"),
+    os.path.join(_SERVER_DIR, ".env"),
+    os.path.join(_SERVER_DIR, ".env.local"),
+):
+    load_dotenv(_env_file, override=False)
 
 # FastAPI App Initialization
 app = FastAPI()
@@ -159,6 +190,8 @@ class User(Base):
     experience = Column(Integer)
     skills = Column(ARRAY(String)) # Assuming PostgreSQL ARRAY, adjust if different DB
     bio = Column(String)
+    googleCalendarRefreshToken = Column(Text, nullable=True)
+    googleCalendarConnectedAt = Column(DateTime, nullable=True)
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -313,6 +346,68 @@ class VoiceInterviewStartRequest(BaseModel):
     role: str = Field(description="Target job role")
     level: str = Field(description="Experience level")
     numQuestions: Optional[int] = Field(5, description="Number of questions")
+
+
+# ============================================
+# Agentic AI - Action Execution Models
+# ============================================
+
+class SendEmailInput(BaseModel):
+    to: str = Field(description="Recipient email address")
+    subject: str = Field(description="Email subject")
+    html: str = Field(description="HTML email body")
+    text: Optional[str] = Field(None, description="Plain text alternative")
+    from_name: str = Field("ElevateAI", description="Sender name")
+    email_type: Optional[str] = Field("general", description="Type of email")
+    user_name: Optional[str] = Field(None, description="Recipient name")
+    schedule_title: Optional[str] = Field(None, description="Schedule title (for schedule emails)")
+    schedule_details: Optional[str] = Field(None, description="Schedule details (for schedule emails)")
+    role: Optional[str] = Field(None, description="Job role (for interview emails)")
+    interview_time: Optional[str] = Field(None, description="Interview time (for interview emails)")
+    mentor_name: Optional[str] = Field(None, description="Mentor name (for mentorship emails)")
+    session_time: Optional[str] = Field(None, description="Session time (for mentorship emails)")
+    achievement_title: Optional[str] = Field(None, description="Achievement title")
+    achievement_description: Optional[str] = Field(None, description="Achievement description")
+    points_earned: Optional[int] = Field(0, description="Points earned")
+
+class CreateCalendarEventInput(BaseModel):
+    user_id: str = Field(description="User ID for OAuth token lookup")
+    title: str = Field(description="Event title")
+    start_time: str = Field(description="Start time (ISO 8601)")
+    end_time: str = Field(description="End time (ISO 8601)")
+    description: Optional[str] = Field(None, description="Event description")
+    location: Optional[str] = Field(None, description="Event location")
+    attendees: Optional[List[str]] = Field(default=[], description="Attendee emails")
+    timezone: str = Field("UTC", description="Timezone")
+    event_type: Optional[str] = Field("custom", description="Event type")
+    recurrence: Optional[str] = Field(None, description="Recurrence rule")
+
+class TrackJobApplicationInput(BaseModel):
+    user_id: str = Field(description="User ID")
+    company: str = Field(description="Company name")
+    role: str = Field(description="Job title")
+    job_url: str = Field(description="Job posting URL")
+    location: Optional[str] = Field(None, description="Job location")
+    salary_range: Optional[str] = Field(None, description="Salary range")
+    remote: bool = Field(False, description="Is remote position")
+    notes: Optional[str] = Field(None, description="Additional notes")
+
+class ScheduleMentorshipInput(BaseModel):
+    student_id: str = Field(description="Student user ID")
+    mentor_id: str = Field(description="Mentor user ID")
+    scheduled_time: str = Field(description="Session time (ISO 8601)")
+    duration_minutes: int = Field(30, description="Duration in minutes")
+    topic: Optional[str] = Field(None, description="Session topic")
+    notes: Optional[str] = Field(None, description="Additional notes")
+
+class UpdateProgressInput(BaseModel):
+    user_id: str = Field(description="User ID")
+    progress_type: str = Field(description="Type of progress update")
+    lesson_id: Optional[str] = Field(None, description="Lesson ID")
+    skill_name: Optional[str] = Field(None, description="Skill name")
+    mastery_delta: Optional[int] = Field(None, description="Mastery points to add")
+    metadata: Optional[dict] = Field(default=None, description="Additional metadata")
+
 
 # Core Logic Functions (Async)
 async def improve_document(input_data: DocumentInput, doc_type: str = "resume") -> str:
@@ -562,68 +657,114 @@ Please provide numbered interview questions, each ending with a question mark.""
         logger.error(f"Error in generate_interview_questions: {str(e)}")
         raise
 
-# Agent State (Unchanged)
+# Agent State with pending actions support
 class AgentState(TypedDict):
     messages: list[dict[str, Any]]
     user_profile: dict[str, Any]
     next_agent: str | None
     intent: str | None
+    intent_params: dict[str, Any]  # Parameters extracted by intent detection
     task_completed: bool
+    pending_actions: List[dict[str, Any]]  # Actions awaiting user confirmation
 
 # Intent Detection (Async)
-async def detect_intent(user_message: str) -> str:
-    message = user_message.lower().strip()
-
-    # Fast keyword routing avoids unnecessary LLM calls and works during model quota limits.
-    if any(k in message for k in ["job", "jobs", "openings", "hiring", "opportunity"]):
-        return "job_search"
-    if any(k in message for k in ["interview", "questions", "mock interview"]):
-        return "interview_preparation"
-    if any(k in message for k in ["plan", "roadmap", "schedule", "timeline"]):
-        return "preparation_schedule"
-    if any(k in message for k in ["resume", "cv", "cover letter", "improve my resume"]):
-        return "document_improvement"
-
+async def detect_intent(user_message: str) -> dict:
+    """
+    LLM-based intent detection that returns both intent AND extracted parameters.
+    This is scalable and handles any phrasing the user might use.
+    """
     try:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Classify the user's intent into one of:
-            - document_improvement
-            - job_search
-            - career_advice
-            - preparation_schedule
-            - interview_preparation
-            Return only the intent name."""),
-            ("user", "{user_message_val}") # Renamed for clarity
+            ("system", """You are an intent classifier and parameter extractor for a career assistant.
+
+Classify the user's message into ONE of these intents:
+- calendar_event: Adding/creating events to calendar (highest priority for "add to calendar" requests)
+- preparation_schedule: Creating study/prep plans with timeline (e.g., "4-week schedule")
+- interview_preparation: Practice interview questions, mock interviews (NOT calendar-related)
+- document_improvement: Resume, CV, cover letter improvements
+- job_search: Finding job opportunities
+- career_advice: General career guidance, tips, questions
+
+IMPORTANT RULES:
+1. If user mentions adding ANYTHING "to calendar" or "to my calendar" → calendar_event (even if it's about interviews)
+2. "Schedule" + time period (weeks/months) → preparation_schedule
+3. Just "interview questions" or "mock interview" → interview_preparation
+
+Extract relevant parameters based on intent:
+- For calendar_event: {title, description, start_time (ISO 8601), end_time (ISO 8601), event_type}
+- For preparation_schedule: {topic, duration_weeks, goal, daily_time_commitment}
+- For interview_preparation: {role, experience_level, topics}
+- For document_improvement: {document_type, focus_area}
+- For job_search: {role, location, remote_ok}
+
+Current time: {current_time}
+
+Return ONLY a JSON object with this structure:
+{
+    "intent": "<intent_name>",
+    "confidence": <0.0-1.0>,
+    "params": {<extracted_params>}
+}"""),
+            ("user", "{user_message}")
         ])
-        # Ensure the output is stripped and lowercased
-        result = await invoke_prompt_template(prompt, {"user_message_val": user_message})
-        return str(result).lower().strip()
+
+        current_time = datetime.datetime.utcnow().isoformat() + "Z"
+        result = await invoke_prompt_template(prompt, {
+            "user_message": user_message,
+            "current_time": current_time
+        })
+
+        # Parse the JSON result
+        result_str = str(result).strip()
+        if result_str.startswith("```json"):
+            result_str = result_str[7:]
+        elif result_str.startswith("```"):
+            result_str = result_str[3:]
+        if result_str.endswith("```"):
+            result_str = result_str[:-3]
+        result_str = result_str.strip()
+
+        parsed = json.loads(result_str)
+        return parsed
+
     except Exception as e:
         logger.error(f"Error in detect_intent: {str(e)}")
-        return "career_advice"
+        # Fallback: simple keyword check for calendar (most critical)
+        message = user_message.lower()
+        if "calendar" in message and ("add" in message or "create" in message):
+            return {"intent": "calendar_event", "confidence": 0.5, "params": {}}
+        return {"intent": "career_advice", "confidence": 0.3, "params": {}}
 
 # Supervisor Agent (Async)
 async def supervisor_agent(state: AgentState) -> AgentState:
     try:
         latest_message_content = state["messages"][-1]["content"]
-        intent_val = await detect_intent(latest_message_content)
+        intent_result = await detect_intent(latest_message_content)
+
+        # intent_result is now a dict: {"intent": "...", "confidence": X, "params": {...}}
+        intent_name = intent_result.get("intent", "career_advice")
+        extracted_params = intent_result.get("params", {})
+
         intent_to_agent = {
             "document_improvement": "document_improver",
             "job_search": "job_searcher",
             "career_advice": "career_advisor",
             "preparation_schedule": "schedule_generator",
-            "interview_preparation": "interview_preparer"
+            "interview_preparation": "interview_preparer",
+            "calendar_event": "calendar_event_creator"
         }
-        state["intent"] = intent_val
-        state["next_agent"] = intent_to_agent.get(intent_val, "career_advisor") # Default to career_advisor
-        state["task_completed"] = False # This agent's task is to route, not complete the user's request
-        logger.info(f"Supervisor assigned intent: {intent_val}, routing to: {state['next_agent']}")
+        state["intent"] = intent_name
+        state["intent_params"] = extracted_params  # Store extracted params for downstream agents
+        state["next_agent"] = intent_to_agent.get(intent_name, "career_advisor")
+        state["task_completed"] = False
+        logger.info(f"Supervisor assigned intent: {intent_name} (confidence: {intent_result.get('confidence', 0):.2f}), routing to: {state['next_agent']}, params: {extracted_params}")
         return state
     except Exception as e:
         logger.error(f"Error in supervisor_agent: {str(e)}")
         state["messages"].append({"role": "assistant", "content": f"Sorry, I had trouble understanding your request. Error: {str(e)}"})
-        state["task_completed"] = True # Mark as completed to go to END
-        state["next_agent"] = None # Ensure no further agent runs
+        state["task_completed"] = True
+        state["next_agent"] = None
+        return state
         return state
 
 # Agent Functions (Async)
@@ -788,6 +929,10 @@ async def schedule_generator(state: AgentState) -> AgentState:
         target_role = user_profile.get("current_role", "your target role") # Default
         timeline_weeks = 4 # Default
 
+        # Detect action requests (email, calendar)
+        wants_email = any(k in latest_message_lower for k in ["email it", "email me", "send email", "send to email"])
+        wants_calendar = any(k in latest_message_lower for k in ["add to calendar", "calendar event", "google calendar", "schedule in calendar"])
+
         # LLM call to extract structured info
         if "target role" in latest_message_lower or "timeline" in latest_message_lower or "schedule for" in latest_message_lower:
             extraction_prompt_text = """From the user's message, extract the following for generating a schedule:
@@ -795,10 +940,10 @@ async def schedule_generator(state: AgentState) -> AgentState:
             - timeline_weeks: The preparation timeline in weeks (as an integer).
             Return this as a JSON string. If a field is not mentioned, use null for target_role and a default (e.g. 4) for timeline_weeks.
             User message: {user_query_for_extraction}"""
-            
+
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
-            
+
             try:
                 extracted_data = json.loads(extracted_str)
                 if extracted_data.get("target_role"):
@@ -807,7 +952,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
                     timeline_weeks = int(extracted_data.get("timeline_weeks"))
             except (json.JSONDecodeError, ValueError): # Catch parsing or int conversion errors
                 logger.warning(f"Could not parse JSON or timeline_weeks for schedule details: {extracted_str}")
-        
+
         if target_role == "your target role" and "target role" not in latest_message_lower: # if default and user didnt specify it
              state["messages"].append({"role": "assistant", "content": "Please specify the target role for which you want a preparation schedule."})
              state["task_completed"] = True
@@ -824,6 +969,59 @@ async def schedule_generator(state: AgentState) -> AgentState:
         ))
 
         state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
+
+        # Initialize pending_actions if not exists
+        if "pending_actions" not in state:
+            state["pending_actions"] = []
+
+        # Create pending action for email
+        if wants_email:
+            user_email = user_profile.get("email", "user@example.com")
+            user_name = user_profile.get("name", "User")
+            state["pending_actions"].append({
+                "type": "SEND_EMAIL",
+                "title": "Send Schedule via Email",
+                "description": f"Email the {target_role} preparation schedule to {user_email}",
+                "params": {
+                    "to": user_email,
+                    "subject": f"{target_role} Preparation Schedule - ElevateAI",
+                    "html": f"<h2>Your {target_role} Preparation Schedule</h2><p>Hi {user_name},</p><p>Here is your personalized {timeline_weeks}-week preparation schedule.</p>{result}",
+                    "email_type": "schedule",
+                    "schedule_title": f"{target_role} Prep Schedule",
+                    "schedule_details": result,
+                    "user_name": user_name
+                },
+                "metadata": {
+                    "priority": "high",
+                    "icon": "mail"
+                }
+            })
+            logger.info(f"Created pending email action for schedule")
+
+        # Create pending action for calendar (create multiple events)
+        if wants_calendar:
+            # For now, create a single summary event - in production you'd create weekly events
+            start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
+            end_time = start_time + datetime.timedelta(hours=1)
+            state["pending_actions"].append({
+                "type": "CREATE_CALENDAR_EVENT",
+                "title": "Add Study Session to Calendar",
+                "description": f"Create calendar event for {target_role} study session",
+                "params": {
+                    "user_id": user_profile.get("clerkUserId"),
+                    "title": f"{target_role} Study Session",
+                    "start_time": start_time.isoformat() + "Z",
+                    "end_time": end_time.isoformat() + "Z",
+                    "description": f"Study session for {target_role} preparation. Timeline: {timeline_weeks} weeks.",
+                    "event_type": "study_session"
+                },
+                "metadata": {
+                    "priority": "medium",
+                    "icon": "calendar"
+                }
+            })
+            logger.info(f"Created pending calendar action for schedule")
+
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -845,10 +1043,10 @@ async def interview_preparer(state: AgentState) -> AgentState:
             extraction_prompt_text = """From the user's message, extract the target_role for interview preparation.
             Return this as a JSON string with a single key "target_role". If not mentioned, use null.
             User message: {user_query_for_extraction}"""
-            
+
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
-            
+
             try:
                 extracted_data = json.loads(extracted_str)
                 if extracted_data.get("target_role"):
@@ -876,11 +1074,83 @@ async def interview_preparer(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
 
+async def calendar_event_creator(state: AgentState) -> AgentState:
+    """
+    Creates a single calendar event based on user request.
+    Uses pre-extracted params from intent detection for accurate time parsing.
+    """
+    try:
+        user_profile = state.get("user_profile", {})
+        intent_params = state.get("intent_params", {})
+
+        # Get params from intent detection (already extracted by LLM)
+        title = intent_params.get("title", "Calendar Event")
+        description = intent_params.get("description", "Scheduled event")
+        start_time_str = intent_params.get("start_time")
+        end_time_str = intent_params.get("end_time")
+        event_type = intent_params.get("event_type", "custom")
+
+        # Parse times from extracted strings
+        try:
+            if start_time_str:
+                # Normalize: remove existing timezone suffix before parsing
+                normalized_start = start_time_str.replace("+00:00", "").replace("Z", "")
+                start_time = datetime.datetime.fromisoformat(normalized_start)
+            else:
+                start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
+            if end_time_str:
+                normalized_end = end_time_str.replace("+00:00", "").replace("Z", "")
+                end_time = datetime.datetime.fromisoformat(normalized_end)
+            else:
+                end_time = start_time + datetime.timedelta(hours=1)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Time parsing failed: {e}, using default")
+            start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
+            end_time = start_time + datetime.timedelta(hours=1)
+
+        # Create pending calendar action
+        if "pending_actions" not in state:
+            state["pending_actions"] = []
+
+        state["pending_actions"].append({
+            "type": "CREATE_CALENDAR_EVENT",
+            "title": f"Add {title} to Calendar",
+            "description": f"Create calendar event: {title}",
+            "params": {
+                "user_id": user_profile.get("clerkUserId"),
+                "title": title,
+                "start_time": start_time.isoformat() + "Z",
+                "end_time": end_time.isoformat() + "Z",
+                "description": description,
+                "event_type": event_type
+            },
+            "metadata": {
+                "priority": "medium",
+                "icon": "calendar"
+            }
+        })
+
+        logger.info(f"Created pending calendar event action: {title}")
+
+        state["messages"].append({
+            "role": "assistant",
+            "content": f"I've created a calendar event for **{title}**.\n\n**Event Details:**\n- **Time:** {start_time.strftime('%B %d, %Y at %I:%M %p UTC')} to {end_time.strftime('%I:%M %p UTC')}\n- **Description:** {description}\n\nPlease confirm the action below to add this to your Google Calendar."
+        })
+
+        state["task_completed"] = True
+        return state
+    except Exception as e:
+        logger.error(f"Error in calendar_event_creator: {str(e)}")
+        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while creating the calendar event: {str(e)}"})
+        state["task_completed"] = True
+        return state
+
 
 # Router: Decides the next step in the graph
 def router_logic(state: AgentState) -> Literal[
-    "supervisor", "document_improver", "job_searcher", 
-    "career_advisor", "schedule_generator", "interview_preparer", "__end__"
+    "supervisor", "document_improver", "job_searcher",
+    "career_advisor", "schedule_generator", "interview_preparer",
+    "calendar_event_creator", "__end__"
 ]:
     if state.get("task_completed"): # If any agent marked task as completed (or errored out)
         return "__end__"
@@ -902,7 +1172,8 @@ def create_career_advisor_graph():
         workflow.add_node("career_advisor", career_advisor)
         workflow.add_node("schedule_generator", schedule_generator)
         workflow.add_node("interview_preparer", interview_preparer)
-        
+        workflow.add_node("calendar_event_creator", calendar_event_creator)
+
         logger.info("Nodes added to workflow.")
 
         # Set entry point
@@ -917,6 +1188,7 @@ def create_career_advisor_graph():
             "career_advisor": "career_advisor",
             "schedule_generator": "schedule_generator",
             "interview_preparer": "interview_preparer",
+            "calendar_event_creator": "calendar_event_creator",
             "__end__": "__end__" # Ensure supervisor can also route to end
         }
         workflow.add_conditional_edges(
@@ -928,7 +1200,7 @@ def create_career_advisor_graph():
 
         # After each agent runs, it goes to the router_logic, which decides if it should end or go back to supervisor
         # (typically, agents set task_completed=True, so router_logic sends to "__end__")
-        agent_node_names = ["document_improver", "job_searcher", "career_advisor", "schedule_generator", "interview_preparer"]
+        agent_node_names = ["document_improver", "job_searcher", "career_advisor", "schedule_generator", "interview_preparer", "calendar_event_creator"]
         for node_name in agent_node_names:
             workflow.add_conditional_edges(
                 node_name,
@@ -939,7 +1211,7 @@ def create_career_advisor_graph():
                 }
             )
             logger.info(f"Added conditional edges for {node_name}")
-        
+
         logger.info("Compiling workflow...")
         career_graph = workflow.compile()
         logger.info("Workflow compiled successfully.")
@@ -959,7 +1231,7 @@ class ChatRequest(BaseModel):
     clerkUserId: str
 
 # FastAPI Dependency for DB Session
-async def get_db_session() -> AsyncSession: # Changed to async generator
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         async with session.begin(): # Optional: Use begin for auto-rollback on error within session block
             yield session
@@ -998,6 +1270,8 @@ async def chat_endpoint(
 
         user_profile = {
             'clerkUserId': clerk_user_id,
+            'email': user.email,
+            'name': user.name or user.email.split('@')[0],
             'resume_content': user_resume_content,
             'cover_letter_content': user_cover_letter_content,
             'skills': user.skills or [],
@@ -1027,7 +1301,8 @@ async def chat_endpoint(
             user_profile=user_profile,
             next_agent=None, # Supervisor will determine this
             intent=None, # Supervisor will determine this
-            task_completed=False
+            task_completed=False,
+            pending_actions=[]  # Initialize empty pending actions
         )
         print(user_profile)
         logger.info(f"Invoking graph with initial state. Messages count: {len(initial_state['messages'])}")
@@ -1079,10 +1354,14 @@ async def chat_endpoint(
             # Don't let DB error stop the response to user, but they should know
             # assistant_response_content += " (Warning: Could not save this interaction to history)" # Optional warning
 
+        # Get pending actions from final state
+        pending_actions = final_state.get("pending_actions", [])
+
         return {
             'status': 'success',
             'response': format_markdown_response(assistant_response_content),
-            'history': final_state["messages"] # Full history from the graph
+            'history': final_state["messages"], # Full history from the graph
+            'pending_actions': pending_actions  # Return pending actions for UI confirmation
         }
 
     except HTTPException as he:
@@ -1321,6 +1600,575 @@ async def finish_voice_interview(request_data: dict):
     except Exception as e:
         logger.error(f"Error finishing voice interview: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate feedback: {str(e)}")
+
+
+# ============================================
+# Agentic AI - Action Execution Endpoints
+# ============================================
+
+@app.post("/api/tools/send_email")
+async def send_email_tool(input_data: SendEmailInput):
+    """Send email via Resend. Used by AI agents for notifications."""
+    try:
+        if not RESEND_AVAILABLE:
+            logger.warning("Resend SDK not installed in backend runtime; returning mock response")
+            return {
+                "success": True,
+                "mock": True,
+                "message_id": f"mock_{os.urandom(8).hex()}",
+                "to": input_data.to,
+                "subject": input_data.subject
+            }
+
+        if not os.getenv("RESEND_API_KEY"):
+            logger.warning("RESEND_API_KEY missing for backend process; returning mock response")
+            return {
+                "success": True,
+                "mock": True,
+                "message_id": f"mock_{os.urandom(8).hex()}",
+                "to": input_data.to,
+                "subject": input_data.subject
+            }
+
+        resend.api_key = os.getenv("RESEND_API_KEY")
+        from_email = os.getenv("RESEND_FROM_EMAIL", "notifications@elevateai.com")
+
+        email = resend.Emails.send({
+            "from": f"{input_data.from_name} <{from_email}>",
+            "to": input_data.to,
+            "subject": input_data.subject,
+            "html": input_data.html,
+            "text": input_data.text,
+        })
+
+        return {
+            "success": True,
+            "message_id": email.get("id") if isinstance(email, dict) else str(email),
+            "to": input_data.to,
+            "subject": input_data.subject
+        }
+    except Exception as e:
+        logger.error(f"Error sending email: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _google_oauth_redirect_uri() -> str:
+    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:5000/api/google/callback")
+
+
+def _google_state_serializer() -> URLSafeSerializer:
+    secret = os.getenv("GOOGLE_OAUTH_STATE_SECRET") or os.getenv("CLERK_SECRET_KEY") or os.getenv("OLLAMA_API_KEY", "dev-secret")
+    return URLSafeSerializer(secret_key=secret, salt="google-oauth-state")
+
+
+def _google_oauth_client_config() -> Optional[dict[str, Any]]:
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    if client_id and client_secret:
+        return {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+                "redirect_uris": [_google_oauth_redirect_uri()],
+            }
+        }
+
+    credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE")
+    if not credentials_file:
+        return None
+
+    if not os.path.exists(credentials_file):
+        logger.warning("GOOGLE_CREDENTIALS_FILE not found: %s", credentials_file)
+        return None
+
+    try:
+        with open(credentials_file, "r", encoding="utf-8") as f:
+            config = json.load(f)
+
+        if not isinstance(config, dict) or ("web" not in config and "installed" not in config):
+            logger.warning("GOOGLE_CREDENTIALS_FILE must contain 'web' or 'installed' OAuth client config")
+            return None
+
+        return config
+    except Exception as exc:
+        logger.warning("Failed to parse GOOGLE_CREDENTIALS_FILE: %s", exc)
+        return None
+
+
+def _append_query_params(base_url: str, params: dict[str, str]) -> str:
+    parsed = urlparse(base_url)
+    existing = parse_qs(parsed.query)
+    for key, value in params.items():
+        existing[key] = [value]
+    new_query = urlencode(existing, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+@app.get("/api/google/connect")
+async def google_connect(
+    clerk_user_id: str = Query(..., description="Clerk user id to bind Google OAuth connection"),
+    next_url: Optional[str] = Query(None, description="Optional frontend URL to redirect to after callback"),
+    auto_redirect: bool = Query(True, description="When true, immediately redirect browser to Google consent screen"),
+):
+    """Start Google OAuth consent flow for calendar access."""
+    if not GOOGLE_CALENDAR_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Google OAuth dependencies are not installed")
+
+    client_config = _google_oauth_client_config()
+    if not client_config:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth client configuration missing. Set GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET or GOOGLE_CREDENTIALS_FILE.",
+        )
+
+    state_payload = {
+        "clerk_user_id": clerk_user_id,
+        "next_url": next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "http://localhost:3000/profile?google_calendar=connected"),
+    }
+    state = _google_state_serializer().dumps(state_payload)
+
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, state=state)
+    flow.redirect_uri = _google_oauth_redirect_uri()
+
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+
+    if auto_redirect:
+        return RedirectResponse(url=auth_url)
+
+    return {"success": True, "auth_url": auth_url}
+
+
+@app.get("/api/google/callback")
+async def google_callback(
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    """Handle Google OAuth callback, exchange code, and persist refresh token to DB."""
+    if error:
+        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "http://localhost:3000/profile?google_calendar=failed")
+        return RedirectResponse(url=_append_query_params(failure_url, {"reason": error}))
+
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth code or state")
+
+    try:
+        state_data = _google_state_serializer().loads(state)
+    except BadSignature:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+    clerk_user_id = state_data.get("clerk_user_id") if isinstance(state_data, dict) else None
+    next_url = state_data.get("next_url") if isinstance(state_data, dict) else None
+    if not clerk_user_id:
+        raise HTTPException(status_code=400, detail="Missing user context in OAuth state")
+
+    client_config = _google_oauth_client_config()
+    if not client_config:
+        raise HTTPException(status_code=500, detail="Google OAuth client configuration is missing")
+
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, state=state)
+    flow.redirect_uri = _google_oauth_redirect_uri()
+    flow.fetch_token(code=code)
+
+    credentials = flow.credentials
+    if not credentials or not credentials.refresh_token:
+        # This can happen if consent was previously granted without prompt=consent.
+        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "http://localhost:3000/profile?google_calendar=failed")
+        return RedirectResponse(
+            url=_append_query_params(
+                failure_url,
+                {"reason": "no_refresh_token", "hint": "revoke_app_access_and_reconnect"},
+            )
+        )
+
+    async with AsyncSessionLocal() as db:
+        stmt = select(User).where(User.clerkUserId == clerk_user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found for provided clerk_user_id")
+
+        user.googleCalendarRefreshToken = credentials.refresh_token
+        user.googleCalendarConnectedAt = datetime.datetime.utcnow()
+        await db.commit()
+
+    success_url = next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "http://localhost:3000/profile?google_calendar=connected")
+    return RedirectResponse(url=_append_query_params(success_url, {"google_calendar": "connected"}))
+
+
+@app.post("/api/tools/create_calendar_event")
+async def create_calendar_event_tool(input_data: CreateCalendarEventInput):
+    """Create Google Calendar event. Used by AI agents for scheduling."""
+    try:
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            logger.warning("Google Calendar not configured, returning mock response")
+            return {
+                "success": True,
+                "mock": True,
+                "event": {
+                    "title": input_data.title,
+                    "start_time": input_data.start_time,
+                    "end_time": input_data.end_time,
+                    "description": input_data.description,
+                    "attendees": input_data.attendees,
+                }
+            }
+
+        calendar_tool = CalendarTool()
+        start_time = datetime.datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+        end_time = datetime.datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+
+        result = await calendar_tool.create_event(
+            title=input_data.title,
+            start_time=start_time,
+            end_time=end_time,
+            description=input_data.description,
+            location=input_data.location,
+            attendees=input_data.attendees,
+            timezone=input_data.timezone,
+            recurrence=input_data.recurrence,
+            user_id=input_data.user_id,
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"Error creating calendar event: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/tools/track_job_application")
+async def track_job_application_tool(input_data: TrackJobApplicationInput):
+    """Track a job application in the database."""
+    try:
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                # Import the model
+                from app import JobApplication, ApplicationStatus
+
+                application = JobApplication(
+                    userId=input_data.user_id,
+                    company=input_data.company,
+                    role=input_data.role,
+                    jobUrl=input_data.job_url,
+                    location=input_data.location,
+                    salaryRange=input_data.salary_range,
+                    remote=input_data.remote,
+                    status=ApplicationStatus.TRACKING,
+                    notes=input_data.notes,
+                    followUpDate=datetime.datetime.utcnow() + timedelta(days=7)
+                )
+
+                db.add(application)
+                await db.commit()
+                await db.refresh(application)
+
+                return {
+                    "success": True,
+                    "application_id": application.id,
+                    "application": {
+                        "id": application.id,
+                        "company": input_data.company,
+                        "role": input_data.role,
+                        "status": "TRACKING",
+                        "follow_up_date": application.followUpDate.isoformat() if application.followUpDate else None
+                    }
+                }
+    except Exception as e:
+        logger.error(f"Error tracking job application: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/tools/schedule_mentorship")
+async def schedule_mentorship_tool(input_data: ScheduleMentorshipInput):
+    """Schedule a mentorship session."""
+    try:
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                from app import MentorshipSession, SessionStatus
+
+                session = MentorshipSession(
+                    mentorId=input_data.mentor_id,
+                    studentId=input_data.student_id,
+                    scheduledAt=datetime.datetime.fromisoformat(input_data.scheduled_time.replace("Z", "+00:00")),
+                    durationMinutes=input_data.duration_minutes,
+                    status=SessionStatus.SCHEDULED,
+                    notes=input_data.notes
+                )
+
+                db.add(session)
+                await db.commit()
+                await db.refresh(session)
+
+                return {
+                    "success": True,
+                    "session_id": session.id,
+                    "session": {
+                        "id": session.id,
+                        "mentor_id": input_data.mentor_id,
+                        "student_id": input_data.student_id,
+                        "scheduled_at": session.scheduledAt.isoformat(),
+                        "duration_minutes": input_data.duration_minutes
+                    }
+                }
+    except Exception as e:
+        logger.error(f"Error scheduling mentorship: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/tools/update_progress")
+async def update_user_progress_tool(input_data: UpdateProgressInput):
+    """Update user learning progress."""
+    try:
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                from app import LessonProgress, Enrollment, UserSkillProgress, SkillNode, ProgressStatus
+
+                result = {"success": True, "updates": []}
+
+                # Handle lesson completion
+                if input_data.progress_type == "lesson_completed" and input_data.lesson_id:
+                    enrollment = await db.execute(
+                        select(Enrollment).where(Enrollment.userId == input_data.user_id)
+                    )
+                    enrollment = enrollment.scalar_one_or_none()
+
+                    if enrollment:
+                        progress = await db.execute(
+                            select(LessonProgress).where(
+                                LessonProgress.enrollmentId == enrollment.id,
+                                LessonProgress.lessonId == input_data.lesson_id
+                            )
+                        )
+                        progress = progress.scalar_one_or_none()
+
+                        if progress:
+                            progress.status = ProgressStatus.COMPLETED
+                            progress.completedAt = datetime.datetime.utcnow()
+                        else:
+                            progress = LessonProgress(
+                                enrollmentId=enrollment.id,
+                                lessonId=input_data.lesson_id,
+                                status=ProgressStatus.COMPLETED,
+                                completedAt=datetime.datetime.utcnow()
+                            )
+                            db.add(progress)
+
+                        result["updates"].append({"type": "lesson_completed", "lesson_id": input_data.lesson_id})
+
+                # Handle skill mastery update
+                if input_data.progress_type == "skill_mastery" and input_data.skill_name and input_data.mastery_delta:
+                    skill = await db.execute(
+                        select(SkillNode).where(SkillNode.name == input_data.skill_name)
+                    )
+                    skill = skill.scalar_one_or_none()
+
+                    if skill:
+                        user_skill = await db.execute(
+                            select(UserSkillProgress).where(
+                                UserSkillProgress.userId == input_data.user_id,
+                                UserSkillProgress.skillId == skill.id
+                            )
+                        )
+                        user_skill = user_skill.scalar_one_or_none()
+
+                        if user_skill:
+                            user_skill.masteryLevel += input_data.mastery_delta
+                            user_skill.lastPracticed = datetime.datetime.utcnow()
+                        else:
+                            user_skill = UserSkillProgress(
+                                userId=input_data.user_id,
+                                skillId=skill.id,
+                                masteryLevel=input_data.mastery_delta,
+                                lastPracticed=datetime.datetime.utcnow()
+                            )
+                            db.add(user_skill)
+
+                        result["updates"].append({
+                            "type": "skill_mastery",
+                            "skill": input_data.skill_name,
+                            "delta": input_data.mastery_delta
+                        })
+
+                await db.commit()
+                return result
+    except Exception as e:
+        logger.error(f"Error updating progress: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/tools/list")
+async def list_available_tools():
+    """List all available agentic AI tools."""
+    return {
+        "tools": [
+            {
+                "name": "send_email",
+                "endpoint": "/api/tools/send_email",
+                "method": "POST",
+                "description": "Send email notifications via Resend"
+            },
+            {
+                "name": "create_calendar_event",
+                "endpoint": "/api/tools/create_calendar_event",
+                "method": "POST",
+                "description": "Create Google Calendar events"
+            },
+            {
+                "name": "track_job_application",
+                "endpoint": "/api/tools/track_job_application",
+                "method": "POST",
+                "description": "Track job applications in the database"
+            },
+            {
+                "name": "schedule_mentorship",
+                "endpoint": "/api/tools/schedule_mentorship",
+                "method": "POST",
+                "description": "Schedule mentorship sessions"
+            },
+            {
+                "name": "update_progress",
+                "endpoint": "/api/tools/update_progress",
+                "method": "POST",
+                "description": "Update user learning progress"
+            }
+        ]
+    }
+
+
+# ============================================
+# Simulation Endpoints
+# ============================================
+
+class SimulationInput(BaseModel):
+    scenario_id: str = Field(description="Simulation scenario ID")
+    user_response: str = Field(description="User's response to the scenario")
+    context: Optional[dict] = Field(default=None, description="Additional context")
+
+class SimulationResponse(BaseModel):
+    feedback: str
+    score: Optional[int] = None
+    suggestions: List[str] = []
+    next_prompt: Optional[str] = None
+
+@app.post("/api/simulation/evaluate")
+async def evaluate_simulation(input_data: SimulationInput):
+    """Evaluate a simulation response and provide feedback."""
+    try:
+        # Generate AI feedback based on the scenario and response
+        evaluation_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert evaluator for technical simulations.
+            Analyze the user's response and provide:
+            1. Constructive feedback on their approach
+            2. A score from 0-100
+            3. Specific suggestions for improvement
+            4. A follow-up question to deepen the discussion
+
+            Be encouraging but honest. Focus on practical engineering trade-offs."""),
+            ("user", """Scenario: {scenario}
+            User Response: {response}
+
+            Provide detailed evaluation and feedback.""")
+        ])
+
+        # Get scenario details based on scenario_id
+        scenarios = {
+            "api-design": "Design a rate-limiter for a public API. Consider algorithms like Token Bucket or Leaky Bucket, and where to store state.",
+            "system-design": "Design a URL shortening service like bit.ly. Consider scalability, database choices, and caching strategies.",
+            "debugging": "Debug a production issue where API latency spikes randomly. Describe your debugging approach.",
+            "negotiation": "Negotiate a technical decision with a stakeholder who wants to cut corners on testing.",
+        }
+
+        scenario = scenarios.get(input_data.scenario_id, input_data.scenario_id)
+
+        feedback = await invoke_prompt_template(evaluation_prompt, {
+            "scenario": scenario,
+            "response": input_data.user_response
+        })
+
+        # Parse feedback to extract score and suggestions
+        score = None
+        suggestions = []
+        next_prompt = None
+
+        # Try to extract score from feedback
+        score_match = re.search(r'score[:\s]+(\d+)', feedback.lower())
+        if score_match:
+            score = int(score_match.group(1))
+        else:
+            # Estimate score based on response quality (simple heuristic)
+            if len(input_data.user_response) > 200:
+                score = min(85, 60 + len(input_data.user_response) // 50)
+            else:
+                score = max(40, len(input_data.user_response) // 10)
+
+        # Extract suggestions (look for numbered or bulleted lists)
+        suggestion_patterns = [
+            r'[\d\.]+\s+([A-Z][^.!?]+[.!?])',
+            r'[-*•]\s+([A-Z][^.!?]+[.!?])',
+        ]
+        for pattern in suggestion_patterns:
+            matches = re.findall(pattern, feedback)
+            suggestions.extend(matches[:3])  # Limit to 3 suggestions
+
+        # Extract next prompt (look for follow-up questions)
+        question_matches = re.findall(r'[^.!?]+\?', feedback)
+        if question_matches:
+            next_prompt = question_matches[-1].strip()
+
+        return {
+            "feedback": feedback,
+            "score": score,
+            "suggestions": suggestions[:3],
+            "next_prompt": next_prompt
+        }
+    except Exception as e:
+        logger.error(f"Error evaluating simulation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to evaluate: {str(e)}")
+
+
+@app.get("/api/simulation/scenarios")
+async def list_simulation_scenarios():
+    """List available simulation scenarios."""
+    return {
+        "scenarios": [
+            {
+                "id": "api-design",
+                "title": "API Rate Limiter Design",
+                "description": "Design a rate-limiter for a public API",
+                "difficulty": "intermediate",
+                "category": "system-design"
+            },
+            {
+                "id": "system-design",
+                "title": "URL Shortener Service",
+                "description": "Design a scalable URL shortening service",
+                "difficulty": "intermediate",
+                "category": "system-design"
+            },
+            {
+                "id": "debugging",
+                "title": "Production Debugging",
+                "description": "Debug random API latency spikes",
+                "difficulty": "advanced",
+                "category": "technical"
+            },
+            {
+                "id": "negotiation",
+                "title": "Technical Negotiation",
+                "description": "Negotiate testing standards with stakeholders",
+                "difficulty": "intermediate",
+                "category": "soft-skill"
+            }
+        ]
+    }
 
 
 if __name__ == "__main__":

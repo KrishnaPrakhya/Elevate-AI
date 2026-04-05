@@ -25,8 +25,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 import CareerPlanGenerator from "./career-plan-generator";
+import { ActionList, PendingAction } from "@/components/action-confirmation";
 
 interface Message {
   id: string;
@@ -65,6 +69,7 @@ export default function CareerAdvisorChat({
   const [activeView, setActiveView] = useState<"chat" | "plan" | "profile">(
     "chat",
   );
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -177,8 +182,36 @@ export default function CareerAdvisorChat({
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // If the response has a specific category, suggest switching to that tool
+      // Handle pending actions from backend
+      const backendPendingActions = data.pending_actions || [];
+      if (backendPendingActions.length > 0) {
+        // Transform backend actions to frontend format
+        const transformedActions: PendingAction[] = backendPendingActions.map(
+          (action: any, index: number) => ({
+            id: `action-${Date.now()}-${index}`,
+            type: action.type as
+              | "email"
+              | "calendar"
+              | "mentorship"
+              | "job_application"
+              | "schedule",
+            title: action.title,
+            description: action.description,
+            params: action.params,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
+            metadata: action.metadata,
+          }),
+        );
+        setPendingActions((prev) => [...prev, ...transformedActions]);
+        toast.info(
+          `${transformedActions.length} action(s) pending your confirmation`,
+          {
+            duration: 5000,
+          },
+        );
+      }
 
+      // If the response has a specific category, suggest switching to that tool
       if (category === "schedule") {
         toast.info("Would you like to create a Career Plan?", {
           action: {
@@ -219,12 +252,44 @@ export default function CareerAdvisorChat({
     }
   };
 
+  // Handle action confirmation
+  const handleConfirmAction = async (action: PendingAction) => {
+    try {
+      // Call Next.js API endpoint (not Python backend)
+      const response = await axios.post("/api/actions/execute", {
+        actionId: action.id,
+        actionType: action.type,
+        params: action.params,
+        title: action.title,
+        description: action.description,
+      });
+
+      if (response.data.success) {
+        toast.success(`Action completed: ${action.title}`);
+        // Remove confirmed action from pending list
+        setPendingActions((prev) => prev.filter((a) => a.id !== action.id));
+      } else {
+        toast.error(`Action failed: ${response.data.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Action execution error:", error);
+      toast.error("Failed to execute action");
+    }
+  };
+
+  const handleCancelAction = (actionId: string) => {
+    setPendingActions((prev) => prev.filter((a) => a.id !== actionId));
+    toast.info("Action cancelled");
+  };
+
   const suggestedQuestions = [
     "What jobs match my skills?",
     "How can I improve my resume?",
-    "Create a career development plan",
-    "Prepare me for my Interview",
-    "What skills should I develop next?",
+    "Add a mock interview to my Google Calendar",
+    "Track a new job application for me",
+    "Set a follow-up reminder for this job",
+    "Draft a professional follow-up email",
+    "Schedule a mentorship session this week",
   ];
 
   const getCategoryIcon = (category?: string) => {
@@ -343,7 +408,10 @@ export default function CareerAdvisorChat({
                         )}
                       >
                         {message.role === "assistant" ? (
-                          <AIResponseFormatter content={formatAIResponse(message.content)} variant="chat" />
+                          <AIResponseFormatter
+                            content={formatAIResponse(message.content)}
+                            variant="chat"
+                          />
                         ) : (
                           <p>{message.content}</p>
                         )}
@@ -481,6 +549,15 @@ export default function CareerAdvisorChat({
         <Card className="flex h-full flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
           <CareerPlanGenerator userProfile={userProfile} />
         </Card>
+      )}
+
+      {/* Pending Actions List */}
+      {activeView === "chat" && pendingActions.length > 0 && (
+        <ActionList
+          actions={pendingActions}
+          onConfirm={handleConfirmAction}
+          onCancel={handleCancelAction}
+        />
       )}
     </div>
   );

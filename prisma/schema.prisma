@@ -14,22 +14,24 @@ datasource db {
 }
 
 model User {
-  id              String           @id @default(uuid())
-  clerkUserId     String           @unique
-  email           String           @unique
-  name            String?
-  imageUrl        String?
-  industry        String?
-  industryInsight IndustryInsight? @relation(fields: [industry], references: [industry])
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  bio             String?
-  experience      Int?
-  skills          String[]
-  assessments     Assessments[]
-  resume          Resume?
-  coverLetter     CoverLetter[]
-  ChatMessage     ChatMessage[]
+  id                         String           @id @default(uuid())
+  clerkUserId                String           @unique
+  email                      String           @unique
+  name                       String?
+  imageUrl                   String?
+  industry                   String?
+  industryInsight            IndustryInsight? @relation(fields: [industry], references: [industry])
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  bio                        String?
+  googleCalendarRefreshToken String?          @db.Text
+  googleCalendarConnectedAt  DateTime?
+  experience                 Int?
+  skills                     String[]
+  assessments                Assessments[]
+  resume                     Resume?
+  coverLetter                CoverLetter[]
+  ChatMessage                ChatMessage[]
 
   // Academy relations
   enrollments      Enrollment[]
@@ -44,6 +46,12 @@ model User {
   skillProgress    UserSkillProgress[]
   simulations      SimulationAttempt[]
   portfolio        PortfolioArtifact[]
+
+  // Agentic AI relations
+  pendingActions  PendingAction[]
+  executedActions ExecutedAction[]
+  jobApplications JobApplication[]
+  calendarEvents  CalendarEvent[]
 }
 
 model Resume {
@@ -700,4 +708,146 @@ model PortfolioArtifact {
   updatedAt          DateTime @updatedAt
 
   @@index([userId])
+}
+
+// ============================================
+// AGENTIC AI - Action Execution
+// ============================================
+
+model PendingAction {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ActionType
+  title       String
+  description String       @db.Text
+  params      Json
+  status      ActionStatus @default(PENDING)
+  confirmedAt DateTime?
+  expiresAt   DateTime
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model ExecutedAction {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id])
+  type         ActionType
+  title        String
+  description  String          @db.Text
+  params       Json
+  result       Json?
+  status       ExecutionStatus @default(SUCCESS)
+  errorMessage String?         @db.Text
+  executedAt   DateTime        @default(now())
+  metadata     Json?
+
+  @@index([userId])
+  @@index([executedAt])
+}
+
+model JobApplication {
+  id              String            @id @default(cuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company         String
+  role            String
+  jobUrl          String
+  description     String?           @db.Text
+  location        String?
+  salaryRange     String?
+  remote          Boolean           @default(false)
+  status          ApplicationStatus @default(TRACKING)
+  appliedAt       DateTime?
+  followUpDate    DateTime?
+  responseDate    DateTime?
+  notes           String?           @db.Text
+  resumeVersion   String?
+  coverLetterId   String?
+  calendarEventId String?
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([appliedAt])
+}
+
+model CalendarEvent {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleEventId String?
+  type          CalendarEventType
+  title         String
+  description   String?           @db.Text
+  location      String?
+  startTime     DateTime
+  endTime       DateTime
+  timezone      String            @default("UTC")
+  attendees     String[]
+  recurrence    String?
+  reminders     Json?
+  metadata      Json?
+  status        EventStatus       @default(CONFIRMED)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([startTime])
+  @@index([status])
+}
+
+enum ActionType {
+  SEND_EMAIL
+  CREATE_CALENDAR_EVENT
+  SCHEDULE_MENTORSHIP
+  TRACK_JOB_APPLICATION
+  SEND_NOTIFICATION
+  UPDATE_PROGRESS
+  GENERATE_DOCUMENT
+}
+
+enum ActionStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum ApplicationStatus {
+  TRACKING
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+enum CalendarEventType {
+  STUDY_SESSION
+  INTERVIEW
+  MENTORSHIP
+  DEADLINE
+  ASSESSMENT
+  LIVE_SESSION
+  CUSTOM
+}
+
+enum EventStatus {
+  TENTATIVE
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }

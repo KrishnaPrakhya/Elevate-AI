@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 
 interface QuizResultProps {
   result: {
@@ -190,7 +191,11 @@ export default function QuizResult({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">{result.improvementTip}</p>
+              <AIResponseFormatter
+                content={formatAIResponse(result.improvementTip)}
+                variant="chat"
+                className="text-muted-foreground"
+              />
             </CardContent>
           </Card>
         </motion.div>

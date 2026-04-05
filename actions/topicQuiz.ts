@@ -78,7 +78,7 @@ export async function generateTopicContent(topics: string[]) {
   });
   if (!user) throw new Error("User not Found");
 
-  const cacheKey = `topicContent:${user.id}:${Buffer.from(topics.map((t) => t.trim().toLowerCase()).sort().join(",")).toString("base64").substring(0, 28)}`;
+  const cacheKey = `topicContent:v2:${user.id}:${Buffer.from(topics.map((t) => t.trim().toLowerCase()).sort().join(",")).toString("base64").substring(0, 28)}`;
 
   return getCachedData(
     cacheKey,
@@ -89,8 +89,16 @@ export async function generateTopicContent(topics: string[]) {
       The content should be technical and suitable for a ${user.industry} professional${
       user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
     }.
-      
-      Return the response in Markdown format with clear headings and sections for each topic.
+
+      Output requirements (strict):
+      1. Return valid Markdown only.
+      2. Use headings, short paragraphs, and bullet lists.
+      3. Do NOT use Markdown tables.
+      4. Do NOT use pipe-delimited rows (for example: | A | B | C |).
+      5. For tool comparisons, use this format:
+         - Tool Name: one-line explanation and when to use it.
+      6. Keep code snippets in fenced blocks with a language tag.
+
       Include explanations, examples, and best practices where applicable.
     `;
 

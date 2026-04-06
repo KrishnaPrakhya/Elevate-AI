@@ -40,9 +40,18 @@ async function Header() {
         >
           <div className="relative flex items-center">
             <div className="relative h-8 w-8 overflow-hidden">
-              <div className="absolute inset-0 rounded-md bg-gradient-to-br from-primary to-primary-foreground opacity-90"></div>
-              <div className="absolute inset-0 flex items-center justify-center text-primary-foreground font-bold text-xl">
-                E
+              <div className="absolute inset-0 rounded-md bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 opacity-95"></div>
+              <div className="absolute inset-0 flex items-center justify-center text-white">
+                <svg
+                  viewBox="0 0 32 32"
+                  className="h-5.5 w-5.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M7 23.5a1 1 0 0 1-.95-.68l-1.1-3.3A1 1 0 0 1 5.9 18h2.4a1 1 0 0 1 .95.68l.55 1.65h12.4l.55-1.65a1 1 0 0 1 .95-.68h2.4a1 1 0 0 1 .95 1.32l-1.1 3.3a1 1 0 0 1-.95.68H7Zm2.2-5.4a1 1 0 0 1-.95-1.32l2.85-8.55A1 1 0 0 1 12.05 7h7.9a1 1 0 0 1 .95.68l2.85 8.55a1 1 0 0 1-.95 1.32H9.2Zm4.15-3.17h5.3L16 10.8l-2.65 4.13Z"
+                  />
+                </svg>
               </div>
               <div className="absolute -bottom-4 -right-4 h-8 w-8 bg-primary/20 rounded-full blur-xl"></div>
             </div>

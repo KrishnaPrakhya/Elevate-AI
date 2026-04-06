@@ -32,6 +32,73 @@ export async function getUser() {
   return user;
 }
 
+interface UpdateUserProfileData {
+  industry?: string;
+  targetRole?: string;
+  skills?: string[];
+  bio?: string;
+  experience?: number;
+}
+
+export async function getUserProfile() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  return getCachedData(
+    `user:profile:${userId}`,
+    () =>
+      db.user.findUnique({
+        where: { clerkUserId: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          industry: true,
+          targetRole: true,
+          experience: true,
+          skills: true,
+          bio: true,
+        },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+export async function updateUserProfile(data: UpdateUserProfileData) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  try {
+    const updatedUser = await db.user.update({
+      where: { id: user.id },
+      data: {
+        ...(data.industry && { industry: data.industry }),
+        ...(data.targetRole && { targetRole: data.targetRole }),
+        ...(data.skills !== undefined && { skills: data.skills }),
+        ...(data.bio !== undefined && { bio: data.bio }),
+        ...(data.experience !== undefined && { experience: data.experience }),
+      },
+    });
+
+    await invalidateCachePattern(`user:profile:${userId}`);
+    await invalidateCachePattern(`dashboard:*:${user.id}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/settings");
+    revalidatePath("/academy");
+
+    return { success: true, user: updatedUser };
+  } catch (error) {
+    console.error("Failed to update user profile:", error);
+    throw new Error("Internal Server Error");
+  }
+}
+
 export async function updateUser(data: UpdateUserData) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
@@ -55,7 +122,7 @@ export async function updateUser(data: UpdateUserData) {
       });
 
       if (!industryInsight) {
-           const insights = await generateAIinsights(data.industry);
+           const insights = await generateAIinsights(data.industry, "IN");
             console.log(insights)
            industryInsight=await db.industryInsight.create({
              data:{
@@ -67,7 +134,7 @@ export async function updateUser(data: UpdateUserData) {
                  max: range.max,
                  median: range.median,
                  location: range.location
-               })), 
+               })),
                nextUpdated:new Date(Date.now()+7*24*60*60*1000)
              }
            })
@@ -79,6 +146,7 @@ export async function updateUser(data: UpdateUserData) {
         },
         data: {
           industry: data.industry,
+          targetRole: null, // Will be set separately if provided
           experience: Number(data.experience),
           bio: data.bio,
           skills: data.skills

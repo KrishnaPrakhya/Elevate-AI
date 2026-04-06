@@ -17,13 +17,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Briefcase, Code, FileText, Loader2, Sparkles } from "lucide-react";
+import { Briefcase, Code, FileText, Loader2, Sparkles, Target } from "lucide-react";
 import { onBoardingSchema } from "@/app/lib/schema";
 import { PageHeader } from "@/components/page-header";
 import useFetch from "@/hooks/use-fetch";
 import { completeOnboardingWithAI } from "@/actions/onboarding";
 import { toast } from "sonner";
 import AcademyOnboardingCard from "./academy-onboarding-card";
+import { targetRoles, getRolesByIndustry } from "@/data/targetRoles";
 
 interface Industries {
   id: string;
@@ -38,8 +39,9 @@ interface Props {
 interface OnboardingFormValues {
   industry: string;
   subIndustry: string;
+  targetRole: string;
   experience: number;
-  skills?: string[]; // Made optional
+  skills?: string[];
   bio?: string;
 }
 function OnboardingForm(props: Props) {
@@ -47,6 +49,7 @@ function OnboardingForm(props: Props) {
   const [selectedIndustry, setSelectedIndustry] = useState<Industries | null>(
     null
   );
+  const [availableRoles, setAvailableRoles] = useState<{ id: string; title: string }[]>([]);
   const router = useRouter();
   const {
     register,
@@ -60,6 +63,16 @@ function OnboardingForm(props: Props) {
 
   const watchIndustry = watch("industry");
 
+  // Update available roles when industry changes
+  useEffect(() => {
+    if (watchIndustry) {
+      const roles = getRolesByIndustry(watchIndustry);
+      setAvailableRoles(roles.map((r) => ({ id: r.id, title: r.title })));
+      // Reset target role when industry changes
+      setValue("targetRole", "");
+    }
+  }, [watchIndustry, setValue]);
+
   const {
     loading: updateLoading,
     fn: updateUserFn,
@@ -70,6 +83,8 @@ function OnboardingForm(props: Props) {
       const formattedIndustry = `${values.industry}-${values.subIndustry
         .toLowerCase()
         .replace(/ /g, "-")}`;
+      // Get the full role title from the role ID
+      const selectedRole = targetRoles.find((r) => r.id === values.targetRole);
       await updateUserFn({
         ...values,
         industry: formattedIndustry,
@@ -77,7 +92,7 @@ function OnboardingForm(props: Props) {
         bio: values.bio || "",
         skills: values.skills || [],
         careerGoals: [],
-        targetRole: "",
+        targetRole: selectedRole?.title || values.targetRole,
         availableHoursPerWeek: 8,
         learningTimeline: "3 months",
       });
@@ -215,6 +230,46 @@ function OnboardingForm(props: Props) {
                     {errors.subIndustry.message as string}
                   </p>
                 )}
+              </motion.div>
+            )}
+
+            {watchIndustry && availableRoles.length > 0 && (
+              <motion.div
+                className="space-y-4"
+                variants={itemVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="h-5 w-5 text-primary" />
+                  <Label htmlFor="targetRole" className="text-lg font-medium">
+                    Target Role
+                  </Label>
+                </div>
+                <Select
+                  onValueChange={(value) => {
+                    setValue("targetRole", value);
+                  }}
+                >
+                  <SelectTrigger id="targetRole" className="w-full">
+                    <SelectValue placeholder="Select your target role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.targetRole && (
+                  <p className="text-sm text-destructive mt-1">
+                    {errors.targetRole.message as string}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  This is your primary career focus. You can change it anytime in settings.
+                </p>
               </motion.div>
             )}
 

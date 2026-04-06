@@ -4,7 +4,7 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { analyzeCareerProfile, recommendLearningPath } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
-import { CACHE_TTL, getCachedData } from "@/lib/redis";
+import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
 
 export interface OnboardingData {
   industry: string;
@@ -28,26 +28,36 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
   if (!user) throw new Error("User not found");
 
   try {
-    const result = await db.$transaction(async (tx) => {
-      // Update user profile
-      const updatedUser = await tx.user.update({
-        where: { id: user.id },
-        data: {
-          industry: data.industry,
-          experience: parseInt(data.experience),
-          bio: data.bio,
-          skills: data.skills,
-        },
-      });
+    const parsedExperience = parseInt(data.experience);
 
-      // Generate AI-powered career insights
-      const careerInsight = await analyzeCareerProfile({
+    const [careerInsight, learningPath] = await Promise.all([
+      analyzeCareerProfile({
         industry: data.industry,
-        experience: parseInt(data.experience),
+        experience: parsedExperience,
         skills: data.skills,
         bio: data.bio,
         targetRole: data.targetRole,
         careerGoals: data.careerGoals,
+      }),
+      recommendLearningPath(
+        data.skills,
+        data.targetRole || `Advance in ${data.industry}`,
+        data.availableHoursPerWeek || 8,
+        data.learningTimeline || "3 months"
+      ),
+    ]);
+
+    const result = await db.$transaction(async (tx) => {
+      // Update user profile with target role
+      const updatedUser = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          industry: data.industry,
+          targetRole: data.targetRole || null,
+          experience: parsedExperience,
+          bio: data.bio,
+          skills: data.skills,
+        },
       });
 
       // Create or update industry insight
@@ -86,14 +96,6 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
         update: {},
         create: { userId: user.id },
       });
-
-      // Generate personalized learning path
-      const learningPath = await recommendLearningPath(
-        data.skills,
-        data.targetRole || `Advance in ${data.industry}`,
-        data.availableHoursPerWeek || 8,
-        data.learningTimeline || "3 months"
-      );
 
       // Find matching learning paths in database
       const industryPath = await tx.learningPath.findFirst({
@@ -190,7 +192,11 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
       };
     }, { timeout: 30000 });
 
+    // Ensure onboarding guard reads fresh data after profile completion.
+    await invalidateCache(`user:onboarding:${userId}`);
+
     revalidatePath("/dashboard");
+    revalidatePath("/onboarding");
     revalidatePath("/academy");
 
     return {

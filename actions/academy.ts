@@ -1010,3 +1010,186 @@ export async function getPersonalizedRecommendations() {
     CACHE_TTL.MEDIUM // Cache for 1 hour
   );
 }
+
+// ============================================
+// LLM-POWERED SKILL GAP ANALYSIS
+// ============================================
+
+/**
+ * Generates real-time skill gap analysis using LLM based on:
+ * - User's current enrollments and progress
+ * - Industry insights and market trends
+ * - Active career plan (if exists)
+ * - Completed lessons and assignments
+ */
+export async function getRealTimeSkillAnalysis() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: {
+      industryInsight: true,
+      enrollments: {
+        include: {
+          learningPath: true,
+          lessonProgress: {
+            where: { status: "COMPLETED" },
+            include: { lesson: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) return { topGaps: [], hasData: false };
+
+  // Get active career plan from Redis
+  const activePlan = await redis.get<{
+    targetRole?: string;
+    planDetails?: { topGaps?: { skill: string; importance: number }[] };
+  }>(`career-planner:active:${userId}`).catch(() => null);
+
+  // If career plan exists with gaps, use those (already validated)
+  if (activePlan?.planDetails?.topGaps && activePlan.planDetails.topGaps.length > 0) {
+    return {
+      topGaps: activePlan.planDetails.topGaps,
+      hasData: true,
+      source: "career_plan" as const,
+    };
+  }
+
+  // Otherwise, generate gaps using LLM based on actual user data
+  try {
+    const completedLessons = user.enrollments.flatMap((e: any) => e.lessonProgress.map((lp: any) => lp.lesson));
+    const completedSkillTopics = new Set(
+      completedLessons.map((l: any) => l?.title.toLowerCase() || "")
+    );
+
+    const prompt = `Analyze this professional's skill gaps based on their actual learning progress:
+
+INDUSTRY: ${user.industry || "Technology"}
+EXPERIENCE: ${user.experience || 0} years
+CURRENT SKILLS: ${user.skills?.join(", ") || "Not specified"}
+
+COMPLETED LEARNING TOPICS:
+${Array.from(completedSkillTopics).slice(0, 10).join("\n") || "No completed lessons yet"}
+
+ACTIVE ENROLLMENTS (${user.enrollments.length}):
+${user.enrollments.map((e) => `- ${e.learningPath.title} (${Math.round(e.progress)}% complete)`).join("\n") || "None"}
+
+TARGET ROLE: ${activePlan?.targetRole || "Not specified"}
+
+Return a JSON array of 3-5 skill gaps with this format:
+[
+  {"skill": "Skill Name", "importance": 8, "reason": "Why this gap matters"},
+  ...
+]
+
+IMPORTANT:
+- If user has NO completed lessons and NO enrollments, return empty array []
+- Only include skills that are genuinely missing based on their learning history
+- Importance: 1-10 scale based on industry relevance`;
+
+    const result = await model.chat.completions.create({
+      model: "gpt-oss:20b-cloud",
+      messages: [
+        { role: "system", content: "You are a career development expert. Analyze skill gaps objectively based on actual learning progress." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const content = result.choices[0]?.message?.content?.trim() || "[]";
+    const parsedGaps = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+
+    return {
+      topGaps: Array.isArray(parsedGaps) ? parsedGaps : [],
+      hasData: Array.isArray(parsedGaps) && parsedGaps.length > 0,
+      source: "llm_analysis" as const,
+    };
+  } catch (error) {
+    console.error("Error generating skill gap analysis:", error);
+    return { topGaps: [], hasData: false, source: "error" as const };
+  }
+}
+
+// ============================================
+// AGENTIC LEARNING RECOMMENDATIONS (MCP)
+// ============================================
+
+/**
+ * Uses MCP agents to generate proactive learning recommendations
+ * by analyzing user progress, industry trends, and career goals.
+ */
+export async function getAgentLearningRecommendations() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: {
+      industryInsight: true,
+      enrollments: {
+        include: { learningPath: true },
+      },
+    },
+  });
+
+  if (!user) return { recommendations: [], message: "" };
+
+  try {
+    // Build context from user's actual data
+    const activeEnrollments = user.enrollments.filter((e: any) => e.progress < 100 && e.progress > 0);
+    const completedEnrollments = user.enrollments.filter((e: any) => e.progress >= 100);
+
+    const prompt = `You are an AI learning advisor. Generate personalized learning recommendations based on REAL user data.
+
+USER PROFILE:
+- Industry: ${user.industry || "Technology"}
+- Experience: ${user.experience || 0} years
+- Skills: ${user.skills?.join(", ") || "Not specified"}
+
+CURRENT LEARNING STATUS:
+${activeEnrollments.length > 0
+  ? activeEnrollments.map((e: any) => `  - ${e.learningPath.title}: ${Math.round(e.progress)}% complete`).join("\n")
+  : "  No active enrollments"}
+
+COMPLETED LEARNING:
+${completedEnrollments.length > 0
+  ? completedEnrollments.map((e: any) => `  - ${e.learningPath.title}: Completed`).join("\n")
+  : "  No completed learning yet"}
+
+INDUSTRY INSIGHTS:
+- Market Outlook: ${user.industryInsight?.marketOutLook || "Unknown"}
+- Demand Level: ${user.industryInsight?.demandLevel || "Unknown"}
+
+Based on this REAL data, provide:
+1. If user has active enrollments: Specific encouragement and next-step suggestions
+2. If user has no enrollments: 2-3 specific learning path recommendations with WHY they matter
+3. If user has completed learning: Congratulate and suggest advanced topics
+
+Return JSON:
+{
+  "recommendations": [
+    {"title": "Recommendation title", "description": "Why this matters", "action": "Suggested action", "priority": "high|medium|low"}
+  ],
+  "message": "Personalized encouragement message (1-2 sentences)"
+}`;
+
+    const result = await model.chat.completions.create({
+      model: "gpt-oss:20b-cloud",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const content = result.choices[0]?.message?.content?.trim() || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+
+    return {
+      recommendations: parsed.recommendations || [],
+      message: parsed.message || "",
+    };
+  } catch (error) {
+    console.error("Error generating agent recommendations:", error);
+    return { recommendations: [], message: "Continue your learning journey!" };
+  }
+}

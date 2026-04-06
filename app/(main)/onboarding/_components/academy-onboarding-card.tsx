@@ -103,17 +103,7 @@ export default function AcademyOnboardingCard({ userName }: AcademyOnboardingCar
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Start your learning journey today
-              </p>
-              <Link href="/academy">
-                <Button className="gap-2">
-                  Explore Academy
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </div>
+          
           </div>
         </CardContent>
       </Card>

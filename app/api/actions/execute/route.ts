@@ -2,6 +2,103 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 
+type ExecutedActionType =
+  | "SEND_EMAIL"
+  | "CREATE_CALENDAR_EVENT"
+  | "SCHEDULE_MENTORSHIP"
+  | "TRACK_JOB_APPLICATION"
+  | "SEND_NOTIFICATION"
+  | "UPDATE_PROGRESS"
+  | "GENERATE_DOCUMENT";
+
+type CalendarEventTypeValue =
+  | "STUDY_SESSION"
+  | "INTERVIEW"
+  | "MENTORSHIP"
+  | "DEADLINE"
+  | "ASSESSMENT"
+  | "LIVE_SESSION"
+  | "CUSTOM";
+
+const normalizeActionType = (rawActionType: unknown): ExecutedActionType | null => {
+  if (typeof rawActionType !== "string") return null;
+
+  const normalized = rawActionType.trim();
+  const upper = normalized.toUpperCase();
+
+  const directEnumValues: ExecutedActionType[] = [
+    "SEND_EMAIL",
+    "CREATE_CALENDAR_EVENT",
+    "SCHEDULE_MENTORSHIP",
+    "TRACK_JOB_APPLICATION",
+    "SEND_NOTIFICATION",
+    "UPDATE_PROGRESS",
+    "GENERATE_DOCUMENT",
+  ];
+
+  if (directEnumValues.includes(upper as ExecutedActionType)) {
+    return upper as ExecutedActionType;
+  }
+
+  const aliasMap: Record<string, ExecutedActionType> = {
+    email: "SEND_EMAIL",
+    send_email: "SEND_EMAIL",
+    calendar: "CREATE_CALENDAR_EVENT",
+    create_calendar_event: "CREATE_CALENDAR_EVENT",
+    mentorship: "SCHEDULE_MENTORSHIP",
+    schedule_mentorship: "SCHEDULE_MENTORSHIP",
+    job_application: "TRACK_JOB_APPLICATION",
+    track_job_application: "TRACK_JOB_APPLICATION",
+    notification: "SEND_NOTIFICATION",
+    send_notification: "SEND_NOTIFICATION",
+    schedule: "UPDATE_PROGRESS",
+    update_progress: "UPDATE_PROGRESS",
+    document: "GENERATE_DOCUMENT",
+    generate_document: "GENERATE_DOCUMENT",
+  };
+
+  return aliasMap[normalized.toLowerCase()] || null;
+};
+
+const normalizeCalendarEventType = (
+  rawEventType: unknown,
+): CalendarEventTypeValue => {
+  if (typeof rawEventType !== "string") return "CUSTOM";
+
+  const normalized = rawEventType.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  const directEnumValues: CalendarEventTypeValue[] = [
+    "STUDY_SESSION",
+    "INTERVIEW",
+    "MENTORSHIP",
+    "DEADLINE",
+    "ASSESSMENT",
+    "LIVE_SESSION",
+    "CUSTOM",
+  ];
+
+  if (directEnumValues.includes(normalized as CalendarEventTypeValue)) {
+    return normalized as CalendarEventTypeValue;
+  }
+
+  const aliasMap: Record<string, CalendarEventTypeValue> = {
+    STUDY: "STUDY_SESSION",
+    STUDYSESSION: "STUDY_SESSION",
+    SESSION: "STUDY_SESSION",
+    MOCK_INTERVIEW: "INTERVIEW",
+    INTERVIEW_PREP: "INTERVIEW",
+    MENTOR: "MENTORSHIP",
+    MENTOR_SESSION: "MENTORSHIP",
+    DUE: "DEADLINE",
+    EXAM: "ASSESSMENT",
+    TEST: "ASSESSMENT",
+    LIVE: "LIVE_SESSION",
+    DEFAULT: "CUSTOM",
+    EVENT: "CUSTOM",
+  };
+
+  return aliasMap[normalized] || "CUSTOM";
+};
+
 /**
  * Execute Confirmed Action Endpoint
  *
@@ -18,10 +115,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { actionId, actionType, params, title, description } = body;
+    const normalizedActionType = normalizeActionType(actionType);
 
     if (!actionType) {
       return NextResponse.json(
         { error: "Action type is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!normalizedActionType) {
+      return NextResponse.json(
+        { error: `Unsupported action type: ${String(actionType)}` },
         { status: 400 }
       );
     }
@@ -39,7 +144,7 @@ export async function POST(request: NextRequest) {
     let result: any;
 
     try {
-      switch (actionType) {
+      switch (normalizedActionType) {
         case "SEND_EMAIL":
           result = await executeSendEmail(params, user);
           break;
@@ -61,7 +166,14 @@ export async function POST(request: NextRequest) {
           break;
 
         default:
-          throw new Error(`Unknown action type: ${actionType}`);
+          throw new Error(`Unknown action type: ${normalizedActionType}`);
+      }
+
+      if (result && typeof result === "object" && "success" in result && result.success === false) {
+        const failureMessage =
+          (result as { error?: string }).error ||
+          `Action execution failed for ${normalizedActionType}`;
+        throw new Error(failureMessage);
       }
 
       // Record the executed action (optional, for audit trail)
@@ -69,8 +181,8 @@ export async function POST(request: NextRequest) {
         await db.executedAction.create({
           data: {
             userId: user.id,
-            type: actionType,
-            title: title || actionType,
+            type: normalizedActionType,
+            title: title || normalizedActionType,
             description: description || "",
             params: params,
             result: result,
@@ -96,8 +208,8 @@ export async function POST(request: NextRequest) {
         await db.executedAction.create({
           data: {
             userId: user.id,
-            type: actionType,
-            title: title || actionType,
+            type: normalizedActionType,
+            title: title || normalizedActionType,
             description: description || "",
             params: params,
             result: { error: errorMessage },
@@ -181,11 +293,15 @@ async function executeCreateCalendarEvent(params: any, user: any) {
 
     // Store the calendar event in database if successful
     if (result.success && result.google_event_id) {
+      const normalizedCalendarEventType = normalizeCalendarEventType(
+        params.event_type ?? params.eventType,
+      );
+
       await db.calendarEvent.create({
         data: {
           userId: user.id,
           googleEventId: result.google_event_id,
-          type: params.event_type || "CUSTOM",
+          type: normalizedCalendarEventType,
           title: params.title,
           description: params.description,
           startTime: new Date(params.start_time),
@@ -199,11 +315,13 @@ async function executeCreateCalendarEvent(params: any, user: any) {
 
     return result;
   } catch (error) {
-    console.error("Calendar event error, using fallback:", error);
-    // Return mock success for development
+    console.error("Calendar event error:", error);
     return {
-      success: true,
-      mock: true,
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to create calendar event",
       event: params,
     };
   }

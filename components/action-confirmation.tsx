@@ -81,28 +81,69 @@ export function ActionConfirmation({
   };
 
   const formatParams = (params: Record<string, any>) => {
+    const requestedTimezone =
+      typeof params.timezone === "string" && params.timezone.trim().length > 0
+        ? params.timezone.trim()
+        : Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     return Object.entries(params)
       .filter(([key]) => !key.startsWith("_"))
       .map(([key, value]) => {
         if (key.includes("time") || key.includes("date")) {
           try {
+            const rawValue = String(value).trim();
+            const hasTimezoneInfo = /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(rawValue);
+            const dateValue = new Date(
+              hasTimezoneInfo ? rawValue : `${rawValue}Z`,
+            );
+
+            if (Number.isNaN(dateValue.getTime())) {
+              throw new Error("Invalid date");
+            }
+
+            const localTime = new Intl.DateTimeFormat(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: requestedTimezone,
+            }).format(dateValue);
+
             return (
               <div key={key} className="flex gap-2 text-sm">
-                <span className="text-muted-foreground capitalize">{key.replace(/_/g, " ")}:</span>
+                <span className="text-muted-foreground capitalize">
+                  {key.replace(/_/g, " ")}:
+                </span>
                 <span className="font-medium">
-                  {format(new Date(value), "PPP p")}
+                  {localTime}
+                  <span className="text-xs text-muted-foreground ml-1">
+                    ({requestedTimezone})
+                  </span>
                 </span>
               </div>
             );
-          } catch {
-            return null;
+          } catch (e) {
+            console.error(`Error formatting ${key}:`, e);
+            return (
+              <div key={key} className="flex gap-2 text-sm">
+                <span className="text-muted-foreground capitalize">
+                  {key.replace(/_/g, " ")}:
+                </span>
+                <span className="font-medium text-destructive">
+                  Invalid date: {String(value)}
+                </span>
+              </div>
+            );
           }
         }
         if (typeof value === "boolean") {
           return (
             <div key={key} className="flex gap-2 text-sm">
-              <span className="text-muted-foreground capitalize">{key.replace(/_/g, " ")}:</span>
-              <Badge variant={value ? "default" : "secondary"} className="text-xs">
+              <span className="text-muted-foreground capitalize">
+                {key.replace(/_/g, " ")}:
+              </span>
+              <Badge
+                variant={value ? "default" : "secondary"}
+                className="text-xs"
+              >
                 {value ? "Yes" : "No"}
               </Badge>
             </div>
@@ -111,7 +152,9 @@ export function ActionConfirmation({
         if (typeof value === "string" && value.length < 100) {
           return (
             <div key={key} className="flex gap-2 text-sm">
-              <span className="text-muted-foreground capitalize">{key.replace(/_/g, " ")}:</span>
+              <span className="text-muted-foreground capitalize">
+                {key.replace(/_/g, " ")}:
+              </span>
               <span className="font-medium">{value}</span>
             </div>
           );
@@ -151,7 +194,8 @@ export function ActionConfirmation({
           <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-lg">
             <Clock className="w-4 h-4" />
             <span>
-              This action will expire on {format(new Date(action.expiresAt), "PPP p")}
+              This action will expire on{" "}
+              {format(new Date(action.expiresAt), "PPP p")}
             </span>
           </div>
         )}
@@ -196,7 +240,9 @@ interface ActionListProps {
 }
 
 export function ActionList({ actions, onConfirm, onCancel }: ActionListProps) {
-  const [selectedAction, setSelectedAction] = useState<PendingAction | null>(null);
+  const [selectedAction, setSelectedAction] = useState<PendingAction | null>(
+    null,
+  );
 
   const handleConfirm = (action: PendingAction) => {
     setSelectedAction(action);
@@ -234,7 +280,9 @@ export function ActionList({ actions, onConfirm, onCancel }: ActionListProps) {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 flex-1">
-                    <div className={`p-2 rounded-lg ${actionColors[action.type]}`}>
+                    <div
+                      className={`p-2 rounded-lg ${actionColors[action.type]}`}
+                    >
                       <Icon className="w-4 h-4" />
                     </div>
                     <div className="flex-1">

@@ -80,6 +80,10 @@ export class BrowserAgent {
     console.log('[BrowserAgent] Starting HTTP-based analysis for URL:', url);
 
     try {
+      const controller = new AbortController();
+      const timeoutMs = 20000;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
       // Fetch the page
       const response = await fetch(url, {
         method: 'GET',
@@ -88,6 +92,9 @@ export class BrowserAgent {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
         redirect: 'follow',
+        signal: controller.signal,
+      }).finally(() => {
+        clearTimeout(timeoutId);
       });
 
       const loadTime = Date.now() - startTime;
@@ -208,7 +215,11 @@ export class BrowserAgent {
       };
     } catch (error) {
       console.error('[BrowserAgent] Analysis failed:', error);
-      errors.push(`Analysis failed: ${(error as Error).message}`);
+      if ((error as Error).name === 'AbortError') {
+        errors.push('Analysis timed out after 20 seconds while fetching the URL');
+      } else {
+        errors.push(`Analysis failed: ${(error as Error).message}`);
+      }
       return this.createErrorResult(url, errors);
     }
   }

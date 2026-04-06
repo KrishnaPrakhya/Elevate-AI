@@ -29,7 +29,10 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 import {
   FolderOpen,
   Plus,
@@ -48,6 +51,7 @@ import {
   Filter,
   Star,
   TrendingUp,
+  RefreshCw,
   Clock,
   CheckCircle,
 } from "lucide-react";
@@ -69,6 +73,68 @@ interface PortfolioArtifact {
   } | null;
 }
 
+interface PortfolioArtifactApiResponse extends Omit<
+  PortfolioArtifact,
+  "skillsDemonstrated" | "aiReview"
+> {
+  skillsDemonstrated?: unknown;
+  aiReview?: unknown;
+}
+
+const normalizeAiReview = (
+  rawReview: unknown,
+): PortfolioArtifact["aiReview"] => {
+  if (!rawReview) return null;
+
+  let parsedReview = rawReview;
+  if (typeof rawReview === "string") {
+    try {
+      parsedReview = JSON.parse(rawReview);
+    } catch {
+      return null;
+    }
+  }
+
+  if (
+    !parsedReview ||
+    typeof parsedReview !== "object" ||
+    Array.isArray(parsedReview)
+  ) {
+    return null;
+  }
+
+  const review = parsedReview as Record<string, unknown>;
+  const scoreRaw = review.score;
+  const numericScore =
+    typeof scoreRaw === "number" ? scoreRaw : Number(scoreRaw);
+
+  if (!Number.isFinite(numericScore)) {
+    return null;
+  }
+
+  return {
+    score: Math.max(0, Math.min(100, Math.round(numericScore))),
+    feedback: typeof review.feedback === "string" ? review.feedback : "",
+    suggestions: Array.isArray(review.suggestions)
+      ? review.suggestions.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [],
+  };
+};
+
+const normalizeArtifact = (
+  rawArtifact: PortfolioArtifactApiResponse,
+): PortfolioArtifact => ({
+  ...rawArtifact,
+  skillsDemonstrated: Array.isArray(rawArtifact.skillsDemonstrated)
+    ? rawArtifact.skillsDemonstrated.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [],
+  aiReview: normalizeAiReview(rawArtifact.aiReview),
+});
+
 export default function PortfolioPage() {
   const [artifacts, setArtifacts] = useState<PortfolioArtifact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +148,9 @@ export default function PortfolioPage() {
   const [selectedArtifact, setSelectedArtifact] =
     useState<PortfolioArtifact | null>(null);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewingArtifactId, setReviewingArtifactId] = useState<string | null>(
+    null,
+  );
 
   // Form state
   const [formData, setFormData] = useState({
@@ -115,7 +184,10 @@ export default function PortfolioPage() {
   const loadArtifacts = async () => {
     try {
       const response = await axios.get("/api/portfolio");
-      setArtifacts(response.data.artifacts || []);
+      const normalizedArtifacts = (
+        (response.data.artifacts || []) as PortfolioArtifactApiResponse[]
+      ).map(normalizeArtifact);
+      setArtifacts(normalizedArtifacts);
     } catch (error) {
       console.error("Error loading portfolio:", error);
       toast.error("Failed to load portfolio");
@@ -189,19 +261,52 @@ export default function PortfolioPage() {
     }
   };
 
-  const requestAIReview = async (artifact: PortfolioArtifact) => {
+  const openStoredReview = (artifact: PortfolioArtifact) => {
+    setSelectedArtifact(artifact);
+    setIsReviewDialogOpen(true);
+  };
+
+  const requestAIReview = async (
+    artifact: PortfolioArtifact,
+    options?: { forceRefresh?: boolean },
+  ) => {
+    if (artifact.aiReview && !options?.forceRefresh) {
+      openStoredReview(artifact);
+      return;
+    }
+
     setIsReviewing(true);
+    setReviewingArtifactId(artifact.id);
     try {
       const response = await axios.post(`/api/portfolio/${artifact.id}/review`);
+      const normalizedReviewedArtifact = normalizeArtifact(
+        response.data.artifact as PortfolioArtifactApiResponse,
+      );
+
+      setArtifacts((prevArtifacts) =>
+        prevArtifacts.map((existingArtifact) =>
+          existingArtifact.id === normalizedReviewedArtifact.id
+            ? {
+                ...existingArtifact,
+                ...normalizedReviewedArtifact,
+              }
+            : existingArtifact,
+        ),
+      );
+
       toast.success("AI review completed");
-      loadArtifacts();
-      setSelectedArtifact(response.data.artifact);
+      setSelectedArtifact(normalizedReviewedArtifact);
       setIsReviewDialogOpen(true);
     } catch (error) {
       console.error("Error getting AI review:", error);
-      toast.error("Failed to get AI review");
+      const errorMessage = axios.isAxiosError(error)
+        ? (error.response?.data?.error as string | undefined) ||
+          "Failed to get AI review"
+        : "Failed to get AI review";
+      toast.error(errorMessage);
     } finally {
       setIsReviewing(false);
+      setReviewingArtifactId(null);
     }
   };
 
@@ -637,7 +742,7 @@ export default function PortfolioPage() {
                         <Clock className="w-3 h-3" />
                         {new Date(artifact.createdAt).toLocaleDateString()}
                       </div>
-                      <div className="flex gap-0">
+                      <div className="flex flex-wrap justify-end gap-2">
                         {artifact.contentUrl &&
                           normalizeUrl(artifact.contentUrl) && (
                             <Button variant="ghost" size="sm" asChild>
@@ -652,16 +757,57 @@ export default function PortfolioPage() {
                               </a>
                             </Button>
                           )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => requestAIReview(artifact)}
-                          disabled={isReviewing}
-                          className="cursor-pointer"
-                        >
-                          <Sparkles className="w-3 h-3 mr-1" />
-                          {artifact.aiReview ? "Re-review" : "Get Review"}
-                        </Button>
+                        {artifact.aiReview ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openStoredReview(artifact)}
+                              className="cursor-pointer whitespace-nowrap"
+                            >
+                              <Sparkles className="w-3 h-3 mr-1" />
+                              View Review
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() =>
+                                requestAIReview(artifact, {
+                                  forceRefresh: true,
+                                })
+                              }
+                              disabled={
+                                isReviewing &&
+                                reviewingArtifactId === artifact.id
+                              }
+                              className="cursor-pointer whitespace-nowrap"
+                            >
+                              <RefreshCw
+                                className={`w-3 h-3 mr-1 ${
+                                  isReviewing &&
+                                  reviewingArtifactId === artifact.id
+                                    ? "animate-spin"
+                                    : ""
+                                }`}
+                              />
+                              {isReviewing &&
+                              reviewingArtifactId === artifact.id
+                                ? "Re-reviewing..."
+                                : "Re-review"}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => requestAIReview(artifact)}
+                            disabled={isReviewing}
+                            className="cursor-pointer"
+                          >
+                            <Sparkles className="w-3 h-3 mr-1" />
+                            Get Review
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -716,7 +862,9 @@ export default function PortfolioPage() {
                     {selectedArtifact.title}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {selectedArtifact.skillsDemonstrated.join(", ")}
+                    {Array.isArray(selectedArtifact.skillsDemonstrated)
+                      ? selectedArtifact.skillsDemonstrated.join(", ")
+                      : ""}
                   </p>
                 </div>
               </div>
@@ -726,7 +874,10 @@ export default function PortfolioPage() {
                   <CheckCircle className="w-4 h-4 text-primary" />
                   Overall Feedback
                 </h4>
-                <AIResponseFormatter content={formatAIResponse(selectedArtifact.aiReview.feedback)} variant="chat" />
+                <AIResponseFormatter
+                  content={formatAIResponse(selectedArtifact.aiReview.feedback)}
+                  variant="chat"
+                />
               </div>
 
               <div>

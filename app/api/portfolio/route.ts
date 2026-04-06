@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const normalizeUrl = (url?: string | null): string | null => {
   if (!url) return null;
   const trimmed = url.trim();
@@ -38,7 +41,10 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ artifacts });
+    return NextResponse.json(
+      { artifacts },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (error) {
     console.error("Error loading portfolio:", error);
     return NextResponse.json(

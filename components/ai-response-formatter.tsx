@@ -29,8 +29,9 @@ export function AIResponseFormatter({
   const baseClasses = cn(
     "prose prose-sm max-w-none dark:prose-invert",
     variant === "compact" && "prose-xs",
-    variant === "chat" && "prose-xs leading-relaxed",
-    className
+    variant === "chat" &&
+      "prose-xs leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+    className,
   );
 
   return (
@@ -101,10 +102,18 @@ export function AIResponseFormatter({
           margin-bottom: 0.75rem;
         }
 
-        .prose h1 { font-size: 1.5rem; }
-        .prose h2 { font-size: 1.25rem; }
-        .prose h3 { font-size: 1.1rem; }
-        .prose h4 { font-size: 1rem; }
+        .prose h1 {
+          font-size: 1.5rem;
+        }
+        .prose h2 {
+          font-size: 1.25rem;
+        }
+        .prose h3 {
+          font-size: 1.1rem;
+        }
+        .prose h4 {
+          font-size: 1rem;
+        }
 
         /* List styling */
         .prose ul,
@@ -216,7 +225,9 @@ export function formatAIResponse(content: string): string {
   const normalizeBrokenPipeTables = (text: string): string => {
     // Some model outputs compact full table rows into one line separated by "||".
     // Expand those separators first so row-level normalization can work reliably.
-    const expanded = text.includes("||") ? text.replace(/\s*\|\|\s*/g, "\n") : text;
+    const expanded = text.includes("||")
+      ? text.replace(/\s*\|\|\s*/g, "\n")
+      : text;
 
     const lines = expanded.split(/\r?\n/);
     const likelyBrokenTable = lines.some((line) => {
@@ -259,7 +270,9 @@ export function formatAIResponse(content: string): string {
         const isHeaderRow =
           cells.length >= 2 &&
           /observation|area|strength|recommendation|example/i.test(cells[0]) &&
-          /why|evidence|detail|rationale|example/i.test(cells.slice(1).join(" "));
+          /why|evidence|detail|rationale|example/i.test(
+            cells.slice(1).join(" "),
+          );
 
         if (isHeaderRow) {
           continue;
@@ -296,10 +309,7 @@ export function formatAIResponse(content: string): string {
   formatted = formatted.replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n\n$2");
 
   // Fix tables without proper spacing
-  formatted = formatted.replace(
-    /(\|[^|]+\|)\n(\|[-| ]+\|)\n/g,
-    "$1\n$2\n"
-  );
+  formatted = formatted.replace(/(\|[^|]+\|)\n(\|[-| ]+\|)\n/g, "$1\n$2\n");
 
   // Break table separator rows onto their own line if they are inline.
   formatted = formatted.replace(/\s+(\|\s*[-:]{2,}[-|:\s]*\|)/g, "\n$1");
@@ -308,16 +318,10 @@ export function formatAIResponse(content: string): string {
   formatted = formatted.replace(/\|\s+(?=\|)/g, "|\n|");
 
   // Ensure blank lines before headings
-  formatted = formatted.replace(
-    /([^\n])\n(#{1,6}\s)/g,
-    "$1\n\n$2"
-  );
+  formatted = formatted.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
 
   // Ensure blank lines before code blocks
-  formatted = formatted.replace(
-    /([^\n])\n(```)/g,
-    "$1\n\n$2"
-  );
+  formatted = formatted.replace(/([^\n])\n(```)/g, "$1\n\n$2");
 
   // Normalize multiple blank lines to single blank line
   formatted = formatted.replace(/\n{3,}/g, "\n\n");

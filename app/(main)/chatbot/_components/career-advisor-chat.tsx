@@ -40,6 +40,67 @@ interface Message {
   category?: "job" | "advice" | "schedule" | "analysis";
 }
 
+const normalizeAssistantContent = (rawContent: unknown): string => {
+  if (typeof rawContent !== "string") return "";
+
+  let content = rawContent.trim();
+
+  // Some backend/tool responses arrive as quoted strings with escaped newlines.
+  if (
+    (content.startsWith('"') && content.endsWith('"')) ||
+    (content.startsWith("'") && content.endsWith("'"))
+  ) {
+    content = content.slice(1, -1);
+  }
+
+  content = content
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"');
+
+  // Unwrap plain markdown wrapped inside a fenced code block.
+  const fencedBlockMatch = content.match(
+    /^```(?:md|markdown|text)?\n([\s\S]*?)\n```$/i,
+  );
+  if (fencedBlockMatch?.[1]) {
+    content = fencedBlockMatch[1].trim();
+  }
+
+  return content;
+};
+
+const normalizePendingActionType = (
+  rawType: unknown,
+): PendingAction["type"] => {
+  if (typeof rawType !== "string") return "schedule";
+
+  const normalizedType = rawType.trim().toLowerCase();
+
+  if (normalizedType === "email" || normalizedType === "send_email") {
+    return "email";
+  }
+  if (
+    normalizedType === "calendar" ||
+    normalizedType === "create_calendar_event"
+  ) {
+    return "calendar";
+  }
+  if (
+    normalizedType === "mentorship" ||
+    normalizedType === "schedule_mentorship"
+  ) {
+    return "mentorship";
+  }
+  if (
+    normalizedType === "job_application" ||
+    normalizedType === "track_job_application"
+  ) {
+    return "job_application";
+  }
+
+  return "schedule";
+};
+
 interface CareerAdvisorChatProps {
   userProfile: {
     resume_content: string;
@@ -76,7 +137,7 @@ export default function CareerAdvisorChat({
   // Scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, pendingActions, isLoading]);
 
   // Focus input on load
   useEffect(() => {
@@ -113,10 +174,15 @@ export default function CareerAdvisorChat({
       const baseUrl = backendUrl.endsWith("/")
         ? backendUrl.slice(0, -1)
         : backendUrl;
+      const userTimezone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
 
       const response = await axios.post(`${baseUrl}/api/chat`, {
         message: userMessage.content,
         clerkUserId: userProfile.clerkUserId,
+        timezone: userTimezone,
+        timezoneOffsetMinutes,
       });
       console.log(response);
       if (!response.data) {
@@ -175,7 +241,7 @@ export default function CareerAdvisorChat({
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response,
+        content: normalizeAssistantContent(data.response),
         timestamp: new Date().toISOString(),
         category,
       };
@@ -189,12 +255,7 @@ export default function CareerAdvisorChat({
         const transformedActions: PendingAction[] = backendPendingActions.map(
           (action: any, index: number) => ({
             id: `action-${Date.now()}-${index}`,
-            type: action.type as
-              | "email"
-              | "calendar"
-              | "mentorship"
-              | "job_application"
-              | "schedule",
+            type: normalizePendingActionType(action.type),
             title: action.title,
             description: action.description,
             params: action.params,
@@ -378,7 +439,7 @@ export default function CareerAdvisorChat({
 
       {/* Chat View */}
       {activeView === "chat" && (
-        <Card className="flex h-full flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
           <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
             <ScrollArea className="h-full">
               <div className="space-y-4 px-4 py-5 md:px-6">
@@ -398,7 +459,7 @@ export default function CareerAdvisorChat({
                       </Avatar>
                     )}
 
-                    <div className="flex flex-col gap-1">
+                    <div className="flex min-w-0 flex-col gap-1">
                       <div
                         className={cn(
                           "rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed shadow-sm",
@@ -546,18 +607,20 @@ export default function CareerAdvisorChat({
 
       {/* Career Plan View */}
       {activeView === "plan" && (
-        <Card className="flex h-full flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
           <CareerPlanGenerator userProfile={userProfile} />
         </Card>
       )}
 
       {/* Pending Actions List */}
       {activeView === "chat" && pendingActions.length > 0 && (
-        <ActionList
-          actions={pendingActions}
-          onConfirm={handleConfirmAction}
-          onCancel={handleCancelAction}
-        />
+        <div className="shrink-0">
+          <ActionList
+            actions={pendingActions}
+            onConfirm={handleConfirmAction}
+            onCancel={handleCancelAction}
+          />
+        </div>
       )}
     </div>
   );

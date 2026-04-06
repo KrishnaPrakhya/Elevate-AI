@@ -23,6 +23,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let artifactIdForError: string | null = null;
+  let userDbIdForError: string | null = null;
+  let artifactForFallback: {
+    id: string;
+    title: string;
+    description: string;
+    skillsDemonstrated: string[];
+    contentUrl: string | null;
+    isPublic: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    aiReview?: unknown;
+  } | null = null;
 
   try {
     const { userId } = await auth();
@@ -47,6 +59,8 @@ export async function POST(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    userDbIdForError = user.id;
+
     const artifact = await db.portfolioArtifact.findUnique({
       where: { id, userId: user.id },
     });
@@ -57,6 +71,18 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    artifactForFallback = {
+      id: artifact.id,
+      title: artifact.title,
+      description: artifact.description,
+      skillsDemonstrated: artifact.skillsDemonstrated || [],
+      contentUrl: artifact.contentUrl,
+      isPublic: artifact.isPublic,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+      aiReview: artifact.aiReview,
+    };
 
     // Check if we have a URL to analyze
     const normalizedUrl = normalizeUrl(artifact.contentUrl);
@@ -71,26 +97,20 @@ export async function POST(
 
     console.log("Starting portfolio review for artifact:", artifact.id, "URL:", normalizedUrl);
 
-    // Run the multi-agent portfolio review with timeout
-    const reviewResult = await Promise.race([
-      orchestrator.reviewPortfolio({
-        artifactId: artifact.id,
-        url: normalizedUrl,
-        title: artifact.title,
-        description: artifact.description,
-        skillsDemonstrated: artifact.skillsDemonstrated || [],
-        userContext: {
-          name: user.name,
-          industry: user.industry || "General",
-          experience: user.experience || 0,
-          currentSkills: user.skillProgress.map((sp) => sp.skill.name),
-        },
-      }),
-      // Timeout after 60 seconds
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Portfolio review timed out')), 60000)
-      ),
-    ]);
+    // Run the multi-agent portfolio review and let the orchestrator manage fallbacks.
+    const reviewResult = await orchestrator.reviewPortfolio({
+      artifactId: artifact.id,
+      url: normalizedUrl,
+      title: artifact.title,
+      description: artifact.description,
+      skillsDemonstrated: artifact.skillsDemonstrated || [],
+      userContext: {
+        name: user.name,
+        industry: user.industry || "General",
+        experience: user.experience || 0,
+        currentSkills: user.skillProgress.map((sp) => sp.skill.name),
+      },
+    });
 
     console.log("Portfolio review completed successfully for artifact:", artifact.id);
 
@@ -129,35 +149,36 @@ export async function POST(
   } catch (error) {
     console.error("Error generating AI review:", error);
 
-    // Return fallback review on error
-    const fallbackReview = {
-      score: 75,
-      feedback: "**Portfolio Review**\n\nYour portfolio artifact has been reviewed. Here's some general feedback:\n\n**Strengths:**\n- You've created a tangible project that demonstrates your skills\n- The artifact is well-documented\n\n**Areas for Improvement:**\n- Consider adding more specific details about your contribution\n- Include metrics or outcomes to show the impact of your work\n- Add links to live demos or code repositories when possible",
-      suggestions: [
-        "Add quantifiable results or metrics",
-        "Include links to demos or repositories",
-        "Describe specific challenges and solutions",
-        "Gather testimonials or endorsements",
-      ],
-    };
-
-    if (artifactIdForError) {
-      try {
-        await db.portfolioArtifact.update({
-          where: { id: artifactIdForError },
-          data: { aiReview: fallbackReview },
-        });
-      } catch (persistError) {
-        console.error("Failed to persist fallback AI review:", persistError);
-      }
+    // If an existing review is already stored, return it instead of overwriting with a generic fallback.
+    if (artifactForFallback?.aiReview) {
+      return NextResponse.json(
+        {
+          artifact: {
+            id: artifactForFallback.id,
+            title: artifactForFallback.title,
+            description: artifactForFallback.description,
+            contentUrl: artifactForFallback.contentUrl,
+            skillsDemonstrated: artifactForFallback.skillsDemonstrated,
+            isPublic: artifactForFallback.isPublic,
+            createdAt: artifactForFallback.createdAt,
+            updatedAt: artifactForFallback.updatedAt,
+            aiReview: artifactForFallback.aiReview,
+          },
+          warning:
+            "Detailed re-review failed, showing your previously saved review.",
+          error: (error as Error).message,
+        },
+        { status: 200 },
+      );
     }
 
-    return NextResponse.json({
-      artifact: {
-        id: artifactIdForError,
-        aiReview: fallbackReview,
+    return NextResponse.json(
+      {
+        error:
+          "Unable to generate detailed portfolio review right now. Please verify the URL is publicly accessible and try again.",
+        details: (error as Error).message,
       },
-      error: (error as Error).message,
-    }, { status: 200 }); // Return 200 with fallback instead of error
+      { status: 500 },
+    );
   }
 }

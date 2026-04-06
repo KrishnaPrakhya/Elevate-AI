@@ -108,12 +108,21 @@ function DashBoardView(props: Props) {
   const { insights } = props;
   const [activeTab, setActiveTab] = useState("overview");
   console.log(insights);
+
+  // Salary data can arrive either as absolute yearly values (e.g. 1_800_000)
+  // or already in thousands (e.g. 1800). Normalize to "K" for display.
+  const toSalaryK = (value: number) => {
+    if (!Number.isFinite(value)) return 0;
+    const abs = Math.abs(value);
+    return abs >= 100_000 ? value / 1000 : value;
+  };
+
   const salaryData = insights.salaryRanges.map(
     (range: salaryInsights, index: number) => ({
       name: range.role,
-      min: range.min / 1000,
-      max: range.max / 1000,
-      median: range.median / 1000,
+      min: toSalaryK(range.min),
+      max: toSalaryK(range.max),
+      median: toSalaryK(range.median),
       color: getColorByIndex(index),
     }),
   );
@@ -289,7 +298,8 @@ function DashBoardView(props: Props) {
                         Your Learning Journey
                       </CardTitle>
                       <CardDescription>
-                        Career plan progress, academy activity, and interview prep
+                        Career plan progress, academy activity, and interview
+                        prep
                       </CardDescription>
                     </div>
                   </div>
@@ -308,13 +318,20 @@ function DashBoardView(props: Props) {
                       <h4 className="text-sm font-semibold">Career Plan</h4>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Target Role</p>
+                      <p className="text-xs text-muted-foreground">
+                        Target Role
+                      </p>
                       <p className="text-sm font-medium">
-                        {props.careerInsight?.careerPathSuggestions?.[0]?.role || "Not set"}
+                        {props.careerInsight?.careerPathSuggestions?.[0]
+                          ?.role || "Not set"}
                       </p>
                       <div className="pt-2">
                         <Link href="/chatbot">
-                          <Button size="sm" variant="outline" className="w-full text-xs gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs gap-1"
+                          >
                             <ArrowRight className="w-3 h-3" />
                             View Plan
                           </Button>
@@ -330,26 +347,42 @@ function DashBoardView(props: Props) {
                       <h4 className="text-sm font-semibold">Academy</h4>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Active Courses</p>
+                      <p className="text-xs text-muted-foreground">
+                        Active Courses
+                      </p>
                       <p className="text-sm font-medium">
-                        {props.learningSummary?.activeEnrollments || props.academyData?.enrollments?.length || 0} courses
+                        {props.learningSummary?.activeEnrollments ||
+                          props.academyData?.enrollments?.length ||
+                          0}{" "}
+                        courses
                       </p>
                       {props.learningSummary?.nextLesson && (
                         <div className="pt-1">
                           <p className="text-xs text-muted-foreground truncate">
-                            Next: {props.learningSummary.nextLesson.title.slice(0, 25)}...
+                            Next:{" "}
+                            {props.learningSummary.nextLesson.title.slice(
+                              0,
+                              25,
+                            )}
+                            ...
                           </p>
                           <div className="h-1.5 w-full bg-primary/20 rounded-full overflow-hidden mt-1">
                             <div
                               className="h-full bg-primary rounded-full"
-                              style={{ width: `${props.learningSummary.weeklyProgress}%` }}
+                              style={{
+                                width: `${props.learningSummary.weeklyProgress}%`,
+                              }}
                             />
                           </div>
                         </div>
                       )}
                       <div className="pt-2">
                         <Link href="/academy">
-                          <Button size="sm" variant="outline" className="w-full text-xs gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs gap-1"
+                          >
                             <BookOpen className="w-3 h-3" />
                             Go to Academy
                           </Button>
@@ -365,23 +398,43 @@ function DashBoardView(props: Props) {
                       <h4 className="text-sm font-semibold">Interview Prep</h4>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Weak Areas</p>
+                      <p className="text-xs text-muted-foreground">
+                        Weak Areas
+                      </p>
                       <div className="flex flex-wrap gap-1">
-                        {props.careerInsight?.skillGaps?.slice(0, 2).map((gap, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {gap.skill}
-                          </Badge>
-                        )) || <span className="text-xs text-muted-foreground">None tracked</span>}
+                        {props.careerInsight?.skillGaps
+                          ?.slice(0, 2)
+                          .map((gap, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              {gap.skill}
+                            </Badge>
+                          )) || (
+                          <span className="text-xs text-muted-foreground">
+                            None tracked
+                          </span>
+                        )}
                       </div>
                       <div className="pt-2 grid grid-cols-2 gap-2">
                         <Link href="/interview">
-                          <Button size="sm" variant="outline" className="w-full text-xs gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs gap-1"
+                          >
                             <Brain className="w-3 h-3" />
                             Quiz
                           </Button>
                         </Link>
                         <Link href="/interview/simulator-live">
-                          <Button size="sm" variant="outline" className="w-full text-xs gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs gap-1"
+                          >
                             <Mic className="w-3 h-3 text-emerald-500" />
                             Voice
                           </Button>
@@ -392,23 +445,39 @@ function DashBoardView(props: Props) {
                 </div>
 
                 {/* Action Recommendations */}
-                {props.careerInsight?.recommendedActions && props.careerInsight.recommendedActions.length > 0 && (
-                  <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Lightbulb className="w-4 h-4 text-primary" />
-                      <h4 className="text-sm font-semibold">Next Recommended Action</h4>
+                {props.careerInsight?.recommendedActions &&
+                  props.careerInsight.recommendedActions.length > 0 && (
+                    <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Lightbulb className="w-4 h-4 text-primary" />
+                        <h4 className="text-sm font-semibold">
+                          Next Recommended Action
+                        </h4>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm">
+                          <span className="font-medium">
+                            {props.careerInsight.recommendedActions[0].title}
+                          </span>{" "}
+                          -{" "}
+                          {
+                            props.careerInsight.recommendedActions[0]
+                              .description
+                          }
+                        </p>
+                        <Badge
+                          variant={
+                            props.careerInsight.recommendedActions[0]
+                              .priority === "high"
+                              ? "default"
+                              : "secondary"
+                          }
+                        >
+                          {props.careerInsight.recommendedActions[0].priority}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm">
-                        <span className="font-medium">{props.careerInsight.recommendedActions[0].title}</span>
-                        {" "}- {props.careerInsight.recommendedActions[0].description}
-                      </p>
-                      <Badge variant={props.careerInsight.recommendedActions[0].priority === "high" ? "default" : "secondary"}>
-                        {props.careerInsight.recommendedActions[0].priority}
-                      </Badge>
-                    </div>
-                  </div>
-                )}
+                  )}
               </CardContent>
             </Card>
           </motion.div>
@@ -1007,8 +1076,8 @@ function DashBoardView(props: Props) {
                         <div className="flex items-center gap-2 mt-1">
                           <div className="text-xs">Range:</div>
                           <div className="text-sm font-medium">
-                            {(range.min / 1000).toFixed(0)}K -
-                            {(range.max / 1000).toFixed(0)}K
+                            {toSalaryK(range.min).toFixed(0)}K -
+                            {toSalaryK(range.max).toFixed(0)}K
                           </div>
                         </div>
                       </div>

@@ -20,6 +20,7 @@ model User {
   name                       String?
   imageUrl                   String?
   industry                   String?
+  targetRole                 String?          // Centralized target role for career focus
   industryInsight            IndustryInsight? @relation(fields: [industry], references: [industry])
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt

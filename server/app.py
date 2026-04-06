@@ -187,6 +187,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     name = Column(String)
     industry = Column(String)
+    targetRole = Column(String)  # Centralized target role for career focus
     experience = Column(Integer)
     skills = Column(ARRAY(String)) # Assuming PostgreSQL ARRAY, adjust if different DB
     bio = Column(String)
@@ -667,55 +668,119 @@ class AgentState(TypedDict):
     task_completed: bool
     pending_actions: List[dict[str, Any]]  # Actions awaiting user confirmation
 
-# Intent Detection (Async)
+# Intent Detection (Async) - Hybrid: Deterministic + LLM for ambiguous cases
 async def detect_intent(user_message: str) -> dict:
     """
-    LLM-based intent detection that returns both intent AND extracted parameters.
-    This is scalable and handles any phrasing the user might use.
+    Hybrid intent detection:
+    1. First try deterministic keyword/regex matching (100% accurate for clear cases)
+    2. Fall back to LLM for ambiguous cases
+    Returns: {"intent": str, "confidence": float, "params": {}}
     """
+    import re
+    message = user_message.lower().strip()
+
+    # === PRIORITY 1: Calendar Events (HIGHEST - must check first) ===
+    # Check for ANY calendar-related intent first (including "add to calendar", "google calendar", etc.)
+    calendar_patterns = [
+        r"add.*to (my )?calendar", r"add (my )?.*to calendar",
+        r"create (an? )?event", r"schedule.*calendar",
+        r"put.*on calendar", r"on my calendar", r"to (my )?(google )?calendar",
+        r"google calendar", r"add.*calendar", r"calendar event"
+    ]
+    for pattern in calendar_patterns:
+        if re.search(pattern, message):
+            return {"intent": "calendar_event", "confidence": 0.95, "params": {}}
+
+    # Special case: If message mentions BOTH interview AND calendar/event/schedule,
+    # it's a calendar request (user wants to schedule, not get questions)
+    has_interview = "interview" in message
+    has_calendar_action = any(k in message for k in ["calendar", "schedule", "add event", "create event"])
+    if has_interview and has_calendar_action:
+        return {"intent": "calendar_event", "confidence": 0.98, "params": {}}
+
+    # === PRIORITY 2: Job Search ===
+    job_patterns = [
+        r"search (for )?jobs", r"find (me )?jobs", r"job openings",
+        r"job opportunities", r"hiring", r"job search", r"looking for jobs",
+        r"find (a )?job", r"new job", r"job listings", r"jobs match.*skills"
+    ]
+    for pattern in job_patterns:
+        if re.search(pattern, message):
+            return {"intent": "job_search", "confidence": 0.95, "params": {}}
+
+    # === PRIORITY 2b: Job Application Tracking (check before generic job search) ===
+    if any(k in message for k in ["track application", "log application", "save application", "application for me"]):
+        return {"intent": "job_search", "confidence": 0.85, "params": {"action": "track_application"}}
+
+    # === PRIORITY 3: Mentorship Scheduling → Route to calendar_event_creator ===
+    # Must check BEFORE preparation_schedule (since "schedule" + "week" would match that)
+    if any(k in message for k in ["mentorship session", "mentor session", "schedule mentor", "book mentor", "find a mentor"]):
+        return {"intent": "calendar_event", "confidence": 0.85, "params": {"action": "mentorship"}}
+
+    # === PRIORITY 3b: Follow-up Reminders → Route to Calendar ===
+    if any(k in message for k in ["follow-up reminder", "follow up reminder", "remind me to follow"]):
+        return {"intent": "calendar_event", "confidence": 0.9, "params": {"action": "reminder"}}
+
+    # === PRIORITY 4: Preparation Schedule ===
+    has_schedule = any(k in message for k in ["schedule", "plan", "roadmap", "timeline"])
+    has_timeframe = any(k in message for k in ["week", "month", "day", "30", "60", "90"])
+    has_prep = any(k in message for k in ["prep", "preparation", "study", "learn"])
+    if has_schedule and (has_timeframe or has_prep):
+        return {"intent": "preparation_schedule", "confidence": 0.9, "params": {}}
+
+    # === PRIORITY 4: Document Improvement ===
+    doc_patterns = [
+        r"improve (my )?resume", r"fix (my )?resume", r"resume review",
+        r"cover letter", r"cv review", r"ats score", r"resume feedback",
+        r"resume help", r"resume tips"
+    ]
+    for pattern in doc_patterns:
+        if re.search(pattern, message):
+            return {"intent": "document_improvement", "confidence": 0.95, "params": {}}
+
+    # === PRIORITY 5: Interview Preparation ===
+    interview_patterns = [
+        r"interview questions", r"mock interview", r"interview prep",
+        r"prepare for interview", r"interview practice", r"interview tips",
+        r"common interview", r"behavioral interview", r"technical interview"
+    ]
+    for pattern in interview_patterns:
+        if re.search(pattern, message):
+            return {"intent": "interview_preparation", "confidence": 0.95, "params": {}}
+
+    # === PRIORITY 5b: Email Drafting → Route to career_advisor with email action ===
+    if any(k in message for k in ["draft email", "write email", "send email", "follow-up email", "follow up email"]):
+        return {"intent": "career_advice", "confidence": 0.8, "params": {"action": "draft_email"}}
+
+    # === PRIORITY 6: Career Advice (catch-all for career-related) ===
+    career_patterns = [
+        r"career advice", r"career guidance", r"career path",
+        r"career change", r"career growth", r"career development",
+        r"how to advance", r"salary negotiation", r"promot"
+    ]
+    for pattern in career_patterns:
+        if re.search(pattern, message):
+            return {"intent": "career_advice", "confidence": 0.85, "params": {}}
+
+    # === FALLBACK: LLM for ambiguous cases ===
     try:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an intent classifier and parameter extractor for a career assistant.
+            ("system", """Classify the user request into ONE intent:
+- calendar_event: Add/create calendar events
+- job_search: Find jobs, job opportunities
+- preparation_schedule: Study plans, learning schedules
+- interview_preparation: Interview questions, mock interviews
+- document_improvement: Resume/CV/cover letter help
+- career_advice: General career guidance
 
-Classify the user's message into ONE of these intents:
-- calendar_event: Adding/creating events to calendar (highest priority for "add to calendar" requests)
-- preparation_schedule: Creating study/prep plans with timeline (e.g., "4-week schedule")
-- interview_preparation: Practice interview questions, mock interviews (NOT calendar-related)
-- document_improvement: Resume, CV, cover letter improvements
-- job_search: Finding job opportunities
-- career_advice: General career guidance, tips, questions
-
-IMPORTANT RULES:
-1. If user mentions adding ANYTHING "to calendar" or "to my calendar" → calendar_event (even if it's about interviews)
-2. "Schedule" + time period (weeks/months) → preparation_schedule
-3. Just "interview questions" or "mock interview" → interview_preparation
-
-Extract relevant parameters based on intent:
-- For calendar_event: {title, description, start_time (ISO 8601), end_time (ISO 8601), event_type}
-- For preparation_schedule: {topic, duration_weeks, goal, daily_time_commitment}
-- For interview_preparation: {role, experience_level, topics}
-- For document_improvement: {document_type, focus_area}
-- For job_search: {role, location, remote_ok}
-
-Current time: {current_time}
-
-Return ONLY a JSON object with this structure:
-{
-    "intent": "<intent_name>",
-    "confidence": <0.0-1.0>,
-    "params": {<extracted_params>}
-}"""),
-            ("user", "{user_message}")
+Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
+            ("user", "{message}")
         ])
 
-        current_time = datetime.datetime.utcnow().isoformat() + "Z"
-        result = await invoke_prompt_template(prompt, {
-            "user_message": user_message,
-            "current_time": current_time
-        })
-
-        # Parse the JSON result
+        result = await invoke_prompt_template(prompt, {"message": user_message})
         result_str = str(result).strip()
+
+        # Clean markdown code blocks
         if result_str.startswith("```json"):
             result_str = result_str[7:]
         elif result_str.startswith("```"):
@@ -728,11 +793,19 @@ Return ONLY a JSON object with this structure:
         return parsed
 
     except Exception as e:
-        logger.error(f"Error in detect_intent: {str(e)}")
-        # Fallback: simple keyword check for calendar (most critical)
-        message = user_message.lower()
-        if "calendar" in message and ("add" in message or "create" in message):
+        logger.error(f"LLM intent detection failed: {str(e)}")
+        # Ultimate fallback based on strongest signal
+        if "calendar" in message:
             return {"intent": "calendar_event", "confidence": 0.5, "params": {}}
+        if "job" in message or "hiring" in message:
+            return {"intent": "job_search", "confidence": 0.5, "params": {}}
+        if "interview" in message:
+            return {"intent": "interview_preparation", "confidence": 0.5, "params": {}}
+        if "resume" in message or "cover" in message:
+            return {"intent": "document_improvement", "confidence": 0.5, "params": {}}
+        if "schedule" in message or "plan" in message:
+            return {"intent": "preparation_schedule", "confidence": 0.5, "params": {}}
+
         return {"intent": "career_advice", "confidence": 0.3, "params": {}}
 
 # Supervisor Agent (Async)
@@ -880,6 +953,16 @@ async def career_advisor(state: AgentState) -> AgentState:
         target_role = None
         career_goals = None
 
+        # Detect email sending requests
+        wants_email = any(k in latest_message_lower for k in ["email it", "email me", "send email", "send to email", "send an email"])
+        email_recipient = None
+
+        # Extract email recipient if mentioned
+        import re
+        email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', latest_message_content)
+        if email_match:
+            email_recipient = email_match.group()
+
         # LLM call to extract structured info
         if "target role" in latest_message_lower or "career goal" in latest_message_lower or "advice on" in latest_message_lower:
             extraction_prompt_text = """From the user's message, extract the following for career advice:
@@ -887,10 +970,10 @@ async def career_advisor(state: AgentState) -> AgentState:
             - career_goals: The user's stated career goals.
             Return this as a JSON string. If a field is not mentioned, use null.
             User message: {user_query_for_extraction}"""
-            
+
             extract_prompt = ChatPromptTemplate.from_template(extraction_prompt_text)
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
-            
+
             try:
                 extracted_data = json.loads(extracted_str)
                 target_role = extracted_data.get("target_role")
@@ -912,6 +995,33 @@ async def career_advisor(state: AgentState) -> AgentState:
         ))
 
         state["messages"].append({"role": "assistant", "content": format_markdown_response(result)})
+
+        # Initialize pending_actions if not exists
+        if "pending_actions" not in state:
+            state["pending_actions"] = []
+
+        # Create pending email action if requested
+        if wants_email and email_recipient:
+            state["pending_actions"].append({
+                "type": "SEND_EMAIL",
+                "title": "Send Career Advice via Email",
+                "description": f"Email the career advice to {email_recipient}",
+                "params": {
+                    "to": email_recipient,
+                    "subject": "Your Career Advice from ElevateAI",
+                    "html": f"<html><body><h2>Career Advice</h2>{result.replace(chr(10), '<br>')}</body></html>",
+                    "text": result,
+                    "from_name": "ElevateAI",
+                    "email_type": "career_advice",
+                    "user_name": user_profile.get("name", "User")
+                },
+                "metadata": {
+                    "priority": "medium",
+                    "icon": "mail"
+                }
+            })
+            logger.info(f"Created pending email action to {email_recipient}")
+
         state["task_completed"] = True
         return state
     except Exception as e:
@@ -930,8 +1040,15 @@ async def schedule_generator(state: AgentState) -> AgentState:
         timeline_weeks = 4 # Default
 
         # Detect action requests (email, calendar)
-        wants_email = any(k in latest_message_lower for k in ["email it", "email me", "send email", "send to email"])
+        wants_email = any(k in latest_message_lower for k in ["email it", "email me", "send email", "send to email", "send an email", "email of"])
         wants_calendar = any(k in latest_message_lower for k in ["add to calendar", "calendar event", "google calendar", "schedule in calendar"])
+
+        # Extract email recipient if mentioned
+        import re
+        email_recipient = None
+        email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', latest_message_content)
+        if email_match:
+            email_recipient = email_match.group()
 
         # LLM call to extract structured info
         if "target role" in latest_message_lower or "timeline" in latest_message_lower or "schedule for" in latest_message_lower:
@@ -976,14 +1093,14 @@ async def schedule_generator(state: AgentState) -> AgentState:
 
         # Create pending action for email
         if wants_email:
-            user_email = user_profile.get("email", "user@example.com")
+            email_to = email_recipient or user_profile.get("email", "user@example.com")
             user_name = user_profile.get("name", "User")
             state["pending_actions"].append({
                 "type": "SEND_EMAIL",
                 "title": "Send Schedule via Email",
-                "description": f"Email the {target_role} preparation schedule to {user_email}",
+                "description": f"Email the {target_role} preparation schedule to {email_to}",
                 "params": {
-                    "to": user_email,
+                    "to": email_to,
                     "subject": f"{target_role} Preparation Schedule - ElevateAI",
                     "html": f"<h2>Your {target_role} Preparation Schedule</h2><p>Hi {user_name},</p><p>Here is your personalized {timeline_weeks}-week preparation schedule.</p>{result}",
                     "email_type": "schedule",
@@ -996,7 +1113,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
                     "icon": "mail"
                 }
             })
-            logger.info(f"Created pending email action for schedule")
+            logger.info(f"Created pending email action for schedule to {email_to}")
 
         # Create pending action for calendar (create multiple events)
         if wants_calendar:
@@ -1276,6 +1393,7 @@ async def chat_endpoint(
             'cover_letter_content': user_cover_letter_content,
             'skills': user.skills or [],
             'industry': user.industry or '',
+            'targetRole': user.targetRole or '',  # Centralized target role from DB
             'experience_years': user.experience if user.experience is not None else 0,
             'current_role': user.bio or ''
         }

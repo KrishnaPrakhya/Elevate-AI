@@ -220,7 +220,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const targetRole = (payload.targetRole || user.industry || "Career Growth").trim();
+    // Use centralized targetRole from user profile, fallback to payload or industry
+    const targetRole = (payload.targetRole || user.targetRole || user.industry || "Career Growth").trim();
     const timelineWeeks = Number(payload.timelineWeeks || 8);
     const weeklyHours = Number(payload.weeklyHours || 8);
     const focusArea = payload.focusArea || "";

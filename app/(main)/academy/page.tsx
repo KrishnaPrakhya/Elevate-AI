@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   getAcademyDashboard,
   getPersonalizedRecommendations,
+  getRealTimeSkillAnalysis,
+  getAgentLearningRecommendations,
 } from "@/actions/academy";
 import { AcademySkeleton } from "@/components/loaders/skeleton-loader";
 import {
@@ -157,6 +159,13 @@ export default function AcademyPage() {
     PlanHistoryItem["planDetails"] | null
   >(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+
+  // Real-time skill analysis state
+  const [skillGaps, setSkillGaps] = useState<{ skill: string; importance: number }[]>([]);
+  const [hasRealSkillData, setHasRealSkillData] = useState(false);
+  const [agentRecommendations, setAgentRecommendations] = useState<{ title: string; description: string; action: string; priority: string }[]>([]);
+  const [agentMessage, setAgentMessage] = useState("");
+
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 });
   const [isGraphReady, setIsGraphReady] = useState(false);
@@ -164,12 +173,18 @@ export default function AcademyPage() {
   const [cacheBuster, setCacheBuster] = useState(Date.now());
 
   const refreshAcademyData = async () => {
-    const [dashData, recData] = await Promise.all([
+    const [dashData, recData, skillAnalysis, agentRecs] = await Promise.all([
       getAcademyDashboard(),
       getPersonalizedRecommendations(),
+      getRealTimeSkillAnalysis(),
+      getAgentLearningRecommendations(),
     ]);
     setDashboard(dashData);
     setRecommendations(recData);
+    setSkillGaps(skillAnalysis.topGaps || []);
+    setHasRealSkillData(skillAnalysis.hasData || false);
+    setAgentRecommendations(agentRecs.recommendations || []);
+    setAgentMessage(agentRecs.message || "");
     // Force graph to re-render with new data
     setGraphKey((prev) => prev + 1);
     setCacheBuster(Date.now());
@@ -329,66 +344,53 @@ export default function AcademyPage() {
       });
       return { nodes: [], links: [] } as GraphData<ForceGraphNode, SkillLink>;
     }
+
+    // Use REAL skill gaps from LLM analysis, not fallback data
+    const realSkillGaps = hasRealSkillData ? skillGaps : (planDetails?.topGaps || []);
+
     console.log("[Skill Graph] Computing graph with:", {
       width: graphSize.width,
       height: graphSize.height,
-      nodesCount: planDetails?.topGaps?.length || recommendedPaths.length,
+      nodesCount: realSkillGaps.length,
+      hasRealData: hasRealSkillData,
     });
 
-    const fallbackSkills = recommendedPaths
-      .slice(0, 6)
-      .map((path) => path.title.split(/[-:|]/)[0]?.trim())
-      .filter(Boolean) as string[];
+    // If no real skill data, return empty graph (show empty state in UI instead)
+    if (!hasRealSkillData && (!planDetails?.topGaps || planDetails.topGaps.length === 0)) {
+      return { nodes: [], links: [] } as GraphData<ForceGraphNode, SkillLink>;
+    }
 
-    const baseNodes: Omit<SkillGraphNode, "id" | "color">[] =
-      planDetails?.topGaps?.slice(0, 6).map((gap) => {
-        const relatedLessons = nextLessons.filter((lesson) =>
-          lesson.enrollment.learningPath.title
-            .toLowerCase()
-            .includes(gap.skill.toLowerCase()),
-        );
+    const baseNodes: Omit<SkillGraphNode, "id" | "color">[] = realSkillGaps.slice(0, 6).map((gap) => {
+      const relatedLessons = nextLessons.filter((lesson) =>
+        lesson.enrollment.learningPath.title
+          .toLowerCase()
+          .includes(gap.skill.toLowerCase()),
+      );
 
-        const relatedProgress = relatedLessons.reduce(
-          (sum, lesson) => sum + lesson.enrollment.progress,
-          0,
-        );
+      const relatedProgress = relatedLessons.reduce(
+        (sum, lesson) => sum + lesson.enrollment.progress,
+        0,
+      );
 
-        const progressSignal = relatedLessons.length
-          ? Math.round(relatedProgress / relatedLessons.length)
-          : weeklyGoalProgress;
+      const progressSignal = relatedLessons.length
+        ? Math.round(relatedProgress / relatedLessons.length)
+        : weeklyGoalProgress;
 
-        const mastery = Math.max(
-          15,
-          Math.min(
-            95,
-            Math.round(100 - gap.importance * 7 + progressSignal * 0.35),
-          ),
-        );
+      const mastery = Math.max(
+        15,
+        Math.min(
+          95,
+          Math.round(100 - gap.importance * 7 + progressSignal * 0.35),
+        ),
+      );
 
-        return {
-          label: gap.skill,
-          importance: gap.importance,
-          mastery,
-          progressSignal,
-        };
-      }) ||
-      fallbackSkills.map((skill, idx) => {
-        const importance = Math.max(3, 8 - idx);
-        const progressSignal = Math.round(
-          weeklyGoalProgress * (0.82 + idx * 0.03),
-        );
-        const mastery = Math.max(
-          20,
-          Math.min(90, Math.round(100 - importance * 6 + progressSignal * 0.3)),
-        );
-
-        return {
-          label: skill,
-          importance,
-          mastery,
-          progressSignal,
-        };
-      });
+      return {
+        label: gap.skill,
+        importance: gap.importance,
+        mastery,
+        progressSignal,
+      };
+    });
 
     const palette = [
       "#3b82f6", // Blue
@@ -490,7 +492,7 @@ export default function AcademyPage() {
       graphRef.current.zoom(1, 0);
       // Then zoom to fit after a short delay
       const timer = setTimeout(() => {
-        graphRef.current.zoomToFit(1000);
+        graphRef.current?.zoomToFit(1000);
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -730,84 +732,107 @@ export default function AcademyPage() {
                   Your Skill Constellation
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Skill map arranged by priority and mastery for faster focus
-                  decisions
+                  {hasRealSkillData || planDetails?.topGaps
+                    ? "Real-time skill map based on your learning progress and career goals"
+                    : "Generate a learning plan to visualize your skill gaps"}
                 </p>
               </div>
               <Badge variant="outline" className="bg-primary/10 text-primary">
-                {Math.max(0, skillGraph.nodes.length - 1)} Skills Tracked
+                {hasRealSkillData || planDetails?.topGaps ? `${Math.max(0, skillGraph.nodes.length - 1)} Skills Tracked` : "No Data"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <div
-              ref={graphContainerRef}
-              className="w-full h-[420px] bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-100/20 dark:from-slate-950 dark:via-blue-950/30 dark:to-cyan-950/30 rounded-2xl border border-primary/20 relative overflow-hidden"
-              style={{ contain: "layout" }}
-            >
-              {/* Decorative background grid pattern */}
-              <div
-                className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]"
-                style={{
-                  backgroundImage: `linear-gradient(#3b82f6 1px, transparent 1px), linear-gradient(90deg, #3b82f6 1px, transparent 1px)`,
-                  backgroundSize: "40px 40px",
-                }}
-              />
-              {/* Radial glow effect */}
-              <div className="absolute inset-0 bg-radial-gradient from-blue-500/5 to-transparent pointer-events-none" />
-
-              {/* Loading state while measuring container */}
-              {!isGraphReady && (
-                <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                    <p className="text-sm text-muted-foreground">
-                      Initializing skill graph...
-                    </p>
-                  </div>
+            {/* Empty state when no skill data available */}
+            {(!hasRealSkillData && (!planDetails?.topGaps || planDetails.topGaps.length === 0)) ? (
+              <div className="w-full h-[420px] flex flex-col items-center justify-center text-center p-8">
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                  <BrainCircuit className="w-10 h-10 text-primary/50" />
                 </div>
-              )}
-
-              {/* Force Graph Component - positioned absolutely to fill container */}
+                <h3 className="text-lg font-semibold mb-2">No Skill Data Yet</h3>
+                <p className="text-sm text-muted-foreground max-w-md mb-4">
+                  Generate a personalized learning plan above to see your skill gaps visualized as an interactive constellation.
+                </p>
+                <Button
+                  onClick={() => {
+                    const element = document.getElementById("generate-plan-section");
+                    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                  className="gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Generate Learning Plan
+                </Button>
+              </div>
+            ) : (
               <div
-                className={`absolute inset-0 transition-opacity duration-500 ${isGraphReady ? "opacity-100" : "opacity-0"}`}
+                ref={graphContainerRef}
+                className="w-full h-[420px] bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-100/20 dark:from-slate-950 dark:via-blue-950/30 dark:to-cyan-950/30 rounded-2xl border border-primary/20 relative overflow-hidden"
+                style={{ contain: "layout" }}
               >
-                <ForceGraph2D
-                  key={`skill-graph-${graphKey}-${cacheBuster}`}
-                  ref={graphRef}
-                  width={graphSize.width}
-                  height={graphSize.height}
-                  graphData={skillGraph as unknown as GraphData}
-                  nodeLabel="label"
-                  nodeColor={getNodeColor}
-                  nodeRelSize={6}
-                  nodeVal={getNodeValue}
-                  linkColor={() => "#3b82f6"}
-                  linkWidth={1.5}
-                  linkDirectionalArrowLength={0}
-                  linkDirectionalArrowRelPos={1}
-                  onNodeClick={handleNodeClick}
-                  onNodeHover={handleNodeHover}
-                  backgroundColor="transparent"
-                  enableNodeDrag={false}
-                  d3VelocityDecay={1}
-                  warmupTicks={0}
-                  cooldownTicks={0}
-                  cooldownTime={0}
-                  nodeCanvasObject={renderNode}
-                  linkCanvasObject={renderLink}
+                {/* Decorative background grid pattern */}
+                <div
+                  className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]"
+                  style={{
+                    backgroundImage: `linear-gradient(#3b82f6 1px, transparent 1px), linear-gradient(90deg, #3b82f6 1px, transparent 1px)`,
+                    backgroundSize: "40px 40px",
+                  }}
                 />
-              </div>
+                {/* Radial glow effect */}
+                <div className="absolute inset-0 bg-radial-gradient from-blue-500/5 to-transparent pointer-events-none" />
 
-              {/* Stats overlays */}
-              <div className="absolute left-4 top-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
-                  Mapped Skills
-                </p>
-                <p className="text-lg font-bold text-primary mt-0.5">
-                  {skillGraph.nodes.length - 1} skills
-                </p>
-              </div>
+                {/* Loading state while measuring container */}
+                {!isGraphReady && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <p className="text-sm text-muted-foreground">
+                        Initializing skill graph...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Force Graph Component - positioned absolutely to fill container */}
+                <div
+                  className={`absolute inset-0 transition-opacity duration-500 ${isGraphReady ? "opacity-100" : "opacity-0"}`}
+                >
+                  <ForceGraph2D
+                    key={`skill-graph-${graphKey}-${cacheBuster}`}
+                    ref={graphRef}
+                    width={graphSize.width}
+                    height={graphSize.height}
+                    graphData={skillGraph as unknown as GraphData}
+                    nodeLabel="label"
+                    nodeColor={getNodeColor}
+                    nodeRelSize={6}
+                    nodeVal={getNodeValue}
+                    linkColor={() => "#3b82f6"}
+                    linkWidth={1.5}
+                    linkDirectionalArrowLength={0}
+                    linkDirectionalArrowRelPos={1}
+                    onNodeClick={handleNodeClick}
+                    onNodeHover={handleNodeHover}
+                    backgroundColor="transparent"
+                    enableNodeDrag={false}
+                    d3VelocityDecay={1}
+                    warmupTicks={0}
+                    cooldownTicks={0}
+                    cooldownTime={0}
+                    nodeCanvasObject={renderNode}
+                    linkCanvasObject={renderLink}
+                  />
+                </div>
+
+                {/* Stats overlays */}
+                <div className="absolute left-4 top-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                    Mapped Skills
+                  </p>
+                  <p className="text-lg font-bold text-primary mt-0.5">
+                    {skillGraph.nodes.length - 1} skills
+                  </p>
+                </div>
 
               <div className="absolute right-4 top-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
@@ -882,6 +907,80 @@ export default function AcademyPage() {
                 )}
               </AnimatePresence>
             </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* AI-Powered Learning Recommendations */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        <Card className="border-primary/20 bg-gradient-to-br from-purple-500/10 to-background">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <BrainCircuit className="w-5 h-5 text-purple-600" />
+                  AI Learning Advisor
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Personalized recommendations based on your real-time progress
+                </p>
+              </div>
+              <Badge variant="outline" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                Live
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {agentMessage && (
+              <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                <p className="text-sm text-purple-900 dark:text-purple-100">{agentMessage}</p>
+              </div>
+            )}
+
+            {agentRecommendations.length > 0 ? (
+              <div className="space-y-3">
+                {agentRecommendations.map((rec, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + idx * 0.1 }}
+                    className="p-4 rounded-lg border border-primary/15 bg-background/70"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold">{rec.title}</h4>
+                          <Badge
+                            variant="outline"
+                            className={
+                              rec.priority === "high"
+                                ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                                : rec.priority === "medium"
+                                ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                            }
+                          >
+                            {rec.priority}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{rec.description}</p>
+                        <p className="text-xs text-primary mt-2 font-medium">{rec.action}</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg border border-dashed border-primary/30 text-sm text-muted-foreground">
+                Generate a learning plan or enroll in a course to receive personalized AI recommendations.
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -1099,6 +1198,7 @@ export default function AcademyPage() {
 
       {/* Generate Learning Plan Form */}
       <motion.div
+        id="generate-plan-section"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}

@@ -5,7 +5,7 @@ import { getOnboardingStatus, getUser } from "@/actions/user";
 import { getAcademyDashboard } from "@/actions/academy";
 import { getUserLearningSummary } from "@/lib/integrations/academy-career-bridge";
 import type { CareerInsight } from "@/lib/ai/career-agent";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import DashBoardView, { IndustryInsights } from "./_components/DashBoardView";
 import { IndustryInsight } from "@prisma/client";
@@ -62,6 +62,7 @@ interface DashboardData {
 function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     let isMounted = true;
@@ -96,7 +97,7 @@ function DashboardPage() {
       try {
         const { isOnBoardingStatus } = await getOnboardingStatus();
         if (!isOnBoardingStatus) {
-          redirect("/onboarding");
+          router.replace("/onboarding");
           return;
         }
 
@@ -114,7 +115,10 @@ function DashboardPage() {
             rawInsights.salaryRanges as unknown as SalaryRange[]
           ).filter(Boolean),
           demandLevel: rawInsights.demandLevel as "HIGH" | "MEDIUM" | "LOW",
-          marketOutLook: rawInsights.marketOutLook as "POSITIVE" | "NEUTRAL" | "NEGATIVE",
+          marketOutLook: rawInsights.marketOutLook as
+            | "POSITIVE"
+            | "NEUTRAL"
+            | "NEGATIVE",
         };
 
         if (!isMounted) return;
@@ -140,7 +144,7 @@ function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   if (loading) {
     return <DashboardSkeleton />;

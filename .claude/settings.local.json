@@ -55,7 +55,10 @@
       "Bash(D:/elevate-ai/server/.venv/Scripts/python.exe:*)",
       "Bash(curl:*)",
       "Read(//d D:/elevate-ai/**)",
-      "Bash(.venv/Scripts/python.exe app.py)"
+      "Bash(.venv/Scripts/python.exe app.py)",
+      "Bash(findstr :3000)",
+      "Bash(cd /d D:/elevate-ai)",
+      "Bash(powershell:*)"
     ]
   }
 }

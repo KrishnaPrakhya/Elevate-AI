@@ -9,6 +9,7 @@ import uuid
 from typing import Any, Literal, TypedDict, List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode # Added for URL manipulation
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import uvicorn
 from dotenv import load_dotenv
@@ -63,6 +64,256 @@ def format_markdown_response(content: str) -> str:
     formatted = re.sub(r'\n{3,}', '\n\n', formatted)
 
     return formatted.strip()
+
+
+def _resolve_timezone(
+    tz_name: Optional[str],
+    tz_offset_minutes: Optional[int] = None,
+) -> tuple[str, datetime.tzinfo]:
+    """
+    Resolve user timezone safely.
+
+    Resolution order:
+    1) IANA timezone name (e.g. "Asia/Kolkata")
+    2) Numeric offset in minutes (e.g. 330)
+    3) UTC±HH:MM string
+    4) UTC fallback
+    """
+    normalized_tz = (tz_name or "UTC").strip() or "UTC"
+
+    try:
+        return normalized_tz, ZoneInfo(normalized_tz)
+    except Exception:
+        pass
+
+    if isinstance(tz_offset_minutes, int) and -14 * 60 <= tz_offset_minutes <= 14 * 60:
+        offset = datetime.timedelta(minutes=tz_offset_minutes)
+        sign = "+" if tz_offset_minutes >= 0 else "-"
+        absolute_minutes = abs(tz_offset_minutes)
+        hours = absolute_minutes // 60
+        minutes = absolute_minutes % 60
+        return f"UTC{sign}{hours:02d}:{minutes:02d}", datetime.timezone(offset)
+
+    utc_offset_match = re.match(r"^UTC([+-])(\d{1,2})(?::?(\d{2}))?$", normalized_tz, re.IGNORECASE)
+    if utc_offset_match:
+        sign_char, hours_raw, minutes_raw = utc_offset_match.groups()
+        hours = int(hours_raw)
+        minutes = int(minutes_raw or 0)
+        total_minutes = hours * 60 + minutes
+        if sign_char == "-":
+            total_minutes = -total_minutes
+        if -14 * 60 <= total_minutes <= 14 * 60:
+            offset = datetime.timedelta(minutes=total_minutes)
+            sign = "+" if total_minutes >= 0 else "-"
+            absolute_minutes = abs(total_minutes)
+            return (
+                f"UTC{sign}{absolute_minutes // 60:02d}:{absolute_minutes % 60:02d}",
+                datetime.timezone(offset),
+            )
+
+    logger.warning("Invalid timezone '%s', defaulting to UTC", normalized_tz)
+    return "UTC", datetime.timezone.utc
+
+
+def infer_calendar_time_range_from_text(
+    message: str,
+    user_timezone: str = "UTC",
+    timezone_offset_minutes: Optional[int] = None,
+) -> tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
+    """
+    Infer start/end datetime from natural language calendar text.
+    Returns naive UTC datetimes to match existing API payload convention where "Z" is appended.
+
+    Priority:
+    1. Explicit time (e.g., "6 pm", "18:00") - uses that exact time
+    2. Relative time (e.g., "in 2 hours", "tomorrow at 3pm")
+    3. Default to tomorrow +3 hours if no time specified
+    """
+    if not message:
+        return None, None
+
+    text = message.lower()
+    _, tzinfo = _resolve_timezone(user_timezone, timezone_offset_minutes)
+    now_local = datetime.datetime.now(tzinfo)
+    target_date = now_local.date()
+    has_explicit_date = False
+
+    # Check for explicit date references
+    if "day after tomorrow" in text:
+        target_date = target_date + datetime.timedelta(days=2)
+        has_explicit_date = True
+    elif "tomorrow" in text:
+        target_date = target_date + datetime.timedelta(days=1)
+        has_explicit_date = True
+    elif "today" in text:
+        target_date = target_date
+        has_explicit_date = True
+
+    # Check for weekday names (e.g., "Monday", "next Monday")
+    weekday_map = {
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    }
+    for day_name, day_index in weekday_map.items():
+        if day_name in text:
+            delta_days = (day_index - now_local.weekday()) % 7
+            if delta_days == 0:
+                # If today is Monday and user says "Monday", assume next Monday (7 days)
+                delta_days = 7
+            target_date = now_local.date() + datetime.timedelta(days=delta_days)
+            has_explicit_date = True
+            break
+
+    hour = None
+    minute = 0
+
+    # Try to extract time - AM/PM format
+    am_pm_match = re.search(r"\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm)\b", text)
+    if am_pm_match:
+        hour = int(am_pm_match.group(1)) % 12
+        minute = int(am_pm_match.group(2) or 0)
+        if am_pm_match.group(3) == "pm":
+            hour += 12
+    else:
+        # Try 24-hour format
+        twenty_four_hour_match = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", text)
+        if twenty_four_hour_match:
+            hour = int(twenty_four_hour_match.group(1))
+            minute = int(twenty_four_hour_match.group(2))
+
+    # If no explicit time found, use default
+    if hour is None:
+        # No time specified - return None to let downstream handle default
+        return None, None
+
+    start_local = datetime.datetime.combine(
+        target_date,
+        datetime.time(hour=hour, minute=minute),
+        tzinfo=tzinfo,
+    )
+
+    # CRITICAL FIX: Only add a day if user said "today" AND the time is in the past
+    # For other cases (tomorrow, weekday, etc.), trust the user's explicit date
+    if has_explicit_date and "today" in text and start_local <= now_local:
+        # User said "today" but time is past - move to tomorrow
+        start_local = start_local + datetime.timedelta(days=1)
+    # For "tomorrow" or weekday mentions, don't second-guess the user
+
+    duration_minutes = 60
+    duration_match = re.search(
+        r"\bfor\s+(\d+)\s*(minute|min|minutes|hour|hours|hr|hrs)\b",
+        text,
+    )
+    if duration_match:
+        amount = int(duration_match.group(1))
+        unit = duration_match.group(2)
+        if unit in ["hour", "hours", "hr", "hrs"]:
+            duration_minutes = amount * 60
+        else:
+            duration_minutes = amount
+
+    end_local = start_local + datetime.timedelta(minutes=duration_minutes)
+
+    start_utc = start_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
+
+def extract_calendar_intent_params(
+    message: str,
+    user_timezone: str = "UTC",
+    timezone_offset_minutes: Optional[int] = None,
+) -> dict[str, Any]:
+    """
+    Deterministically extract calendar parameters from user text so common requests
+    like "add a mock interview to my Google Calendar at 10:30 pm today" are reliable.
+    """
+    params: dict[str, Any] = {}
+    if not message:
+        return params
+
+    lower_message = message.lower()
+
+    # Title extraction for common phrasing patterns.
+    title_match = re.search(
+        r"add\s+(?:an?\s+)?(.+?)\s+to\s+(?:my\s+)?(?:google\s+)?calendar",
+        lower_message,
+    )
+    if title_match:
+        raw_title = title_match.group(1).strip()
+        # Remove trailing schedule fragments from title.
+        raw_title = re.split(r"\s+(?:at|on|for|today|tomorrow|next)\b", raw_title)[0].strip()
+        if raw_title:
+            params["title"] = raw_title.title()
+
+    # Event type heuristic.
+    if "interview" in lower_message:
+        params["event_type"] = "interview"
+    elif "mentor" in lower_message or "mentorship" in lower_message:
+        params["event_type"] = "mentorship"
+    elif "reminder" in lower_message:
+        params["event_type"] = "reminder"
+    else:
+        params["event_type"] = "custom"
+
+    resolved_tz_name, _ = _resolve_timezone(user_timezone, timezone_offset_minutes)
+
+    inferred_start, inferred_end = infer_calendar_time_range_from_text(
+        message,
+        user_timezone=resolved_tz_name,
+        timezone_offset_minutes=timezone_offset_minutes,
+    )
+    if inferred_start and inferred_end:
+        params["start_time"] = inferred_start.isoformat() + "Z"
+        params["end_time"] = inferred_end.isoformat() + "Z"
+
+    display_timezone = (user_timezone or "").strip() or resolved_tz_name
+    params["timezone"] = display_timezone
+
+    # Default description based on title when available.
+    if params.get("title"):
+        params["description"] = f"Scheduled event: {params['title']}"
+
+    return params
+
+
+def parse_iso_datetime_to_utc_naive(
+    value: Optional[str],
+    assume_timezone: str = "UTC",
+    timezone_offset_minutes: Optional[int] = None,
+) -> Optional[datetime.datetime]:
+    """Parse ISO datetime strings and return UTC-naive datetime for downstream consistency."""
+    if not value or not isinstance(value, str):
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    parsed: Optional[datetime.datetime] = None
+
+    # Try standard Z/+00:00 handling first.
+    try:
+        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        try:
+            parsed = datetime.datetime.fromisoformat(raw.replace("+00:00", "").replace("Z", ""))
+        except (ValueError, TypeError):
+            return None
+
+    if parsed.tzinfo is None:
+        _, tzinfo = _resolve_timezone(assume_timezone, timezone_offset_minutes)
+        parsed = parsed.replace(tzinfo=tzinfo)
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    return parsed
 
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.output_parsers import StrOutputParser
@@ -669,7 +920,11 @@ class AgentState(TypedDict):
     pending_actions: List[dict[str, Any]]  # Actions awaiting user confirmation
 
 # Intent Detection (Async) - Hybrid: Deterministic + LLM for ambiguous cases
-async def detect_intent(user_message: str) -> dict:
+async def detect_intent(
+    user_message: str,
+    user_timezone: str = "UTC",
+    user_timezone_offset_minutes: Optional[int] = None,
+) -> dict:
     """
     Hybrid intent detection:
     1. First try deterministic keyword/regex matching (100% accurate for clear cases)
@@ -689,14 +944,30 @@ async def detect_intent(user_message: str) -> dict:
     ]
     for pattern in calendar_patterns:
         if re.search(pattern, message):
-            return {"intent": "calendar_event", "confidence": 0.95, "params": {}}
+            return {
+                "intent": "calendar_event",
+                "confidence": 0.95,
+                "params": extract_calendar_intent_params(
+                    user_message,
+                    user_timezone=user_timezone,
+                    timezone_offset_minutes=user_timezone_offset_minutes,
+                ),
+            }
 
     # Special case: If message mentions BOTH interview AND calendar/event/schedule,
     # it's a calendar request (user wants to schedule, not get questions)
     has_interview = "interview" in message
     has_calendar_action = any(k in message for k in ["calendar", "schedule", "add event", "create event"])
     if has_interview and has_calendar_action:
-        return {"intent": "calendar_event", "confidence": 0.98, "params": {}}
+        return {
+            "intent": "calendar_event",
+            "confidence": 0.98,
+            "params": extract_calendar_intent_params(
+                user_message,
+                user_timezone=user_timezone,
+                timezone_offset_minutes=user_timezone_offset_minutes,
+            ),
+        }
 
     # === PRIORITY 2: Job Search ===
     job_patterns = [
@@ -715,11 +986,33 @@ async def detect_intent(user_message: str) -> dict:
     # === PRIORITY 3: Mentorship Scheduling → Route to calendar_event_creator ===
     # Must check BEFORE preparation_schedule (since "schedule" + "week" would match that)
     if any(k in message for k in ["mentorship session", "mentor session", "schedule mentor", "book mentor", "find a mentor"]):
-        return {"intent": "calendar_event", "confidence": 0.85, "params": {"action": "mentorship"}}
+        return {
+            "intent": "calendar_event",
+            "confidence": 0.85,
+            "params": {
+                **extract_calendar_intent_params(
+                    user_message,
+                    user_timezone=user_timezone,
+                    timezone_offset_minutes=user_timezone_offset_minutes,
+                ),
+                "action": "mentorship",
+            },
+        }
 
     # === PRIORITY 3b: Follow-up Reminders → Route to Calendar ===
     if any(k in message for k in ["follow-up reminder", "follow up reminder", "remind me to follow"]):
-        return {"intent": "calendar_event", "confidence": 0.9, "params": {"action": "reminder"}}
+        return {
+            "intent": "calendar_event",
+            "confidence": 0.9,
+            "params": {
+                **extract_calendar_intent_params(
+                    user_message,
+                    user_timezone=user_timezone,
+                    timezone_offset_minutes=user_timezone_offset_minutes,
+                ),
+                "action": "reminder",
+            },
+        }
 
     # === PRIORITY 4: Preparation Schedule ===
     has_schedule = any(k in message for k in ["schedule", "plan", "roadmap", "timeline"])
@@ -796,7 +1089,15 @@ Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
         logger.error(f"LLM intent detection failed: {str(e)}")
         # Ultimate fallback based on strongest signal
         if "calendar" in message:
-            return {"intent": "calendar_event", "confidence": 0.5, "params": {}}
+            return {
+                "intent": "calendar_event",
+                "confidence": 0.5,
+                "params": extract_calendar_intent_params(
+                    user_message,
+                    user_timezone=user_timezone,
+                    timezone_offset_minutes=user_timezone_offset_minutes,
+                ),
+            }
         if "job" in message or "hiring" in message:
             return {"intent": "job_search", "confidence": 0.5, "params": {}}
         if "interview" in message:
@@ -812,7 +1113,13 @@ Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
 async def supervisor_agent(state: AgentState) -> AgentState:
     try:
         latest_message_content = state["messages"][-1]["content"]
-        intent_result = await detect_intent(latest_message_content)
+        user_timezone = state.get("user_profile", {}).get("timezone", "UTC")
+        user_timezone_offset_minutes = state.get("user_profile", {}).get("timezone_offset_minutes")
+        intent_result = await detect_intent(
+            latest_message_content,
+            user_timezone=user_timezone,
+            user_timezone_offset_minutes=user_timezone_offset_minutes,
+        )
 
         # intent_result is now a dict: {"intent": "...", "confidence": X, "params": {...}}
         intent_name = intent_result.get("intent", "career_advice")
@@ -1117,9 +1424,25 @@ async def schedule_generator(state: AgentState) -> AgentState:
 
         # Create pending action for calendar (create multiple events)
         if wants_calendar:
-            # For now, create a single summary event - in production you'd create weekly events
-            start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
-            end_time = start_time + datetime.timedelta(hours=1)
+            user_timezone = user_profile.get("timezone", "UTC")
+            user_timezone_offset_minutes = user_profile.get("timezone_offset_minutes")
+            resolved_tz_name, _ = _resolve_timezone(user_timezone, user_timezone_offset_minutes)
+            display_timezone = (user_timezone or "").strip() or resolved_tz_name
+            # Extract time from user's message if specified
+            inferred_start, inferred_end = infer_calendar_time_range_from_text(
+                latest_message_content,
+                user_timezone=resolved_tz_name,
+                timezone_offset_minutes=user_timezone_offset_minutes,
+            )
+
+            if inferred_start and inferred_end:
+                start_time = inferred_start
+                end_time = inferred_end
+            else:
+                # Fallback: tomorrow +3 hours if no time specified
+                start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
+                end_time = start_time + datetime.timedelta(hours=1)
+
             state["pending_actions"].append({
                 "type": "CREATE_CALENDAR_EVENT",
                 "title": "Add Study Session to Calendar",
@@ -1130,14 +1453,15 @@ async def schedule_generator(state: AgentState) -> AgentState:
                     "start_time": start_time.isoformat() + "Z",
                     "end_time": end_time.isoformat() + "Z",
                     "description": f"Study session for {target_role} preparation. Timeline: {timeline_weeks} weeks.",
-                    "event_type": "study_session"
+                    "event_type": "study_session",
+                    "timezone": display_timezone,
                 },
                 "metadata": {
                     "priority": "medium",
                     "icon": "calendar"
                 }
             })
-            logger.info(f"Created pending calendar action for schedule")
+            logger.info(f"Created pending calendar action for schedule at {start_time.isoformat()}Z")
 
         state["task_completed"] = True
         return state
@@ -1198,32 +1522,86 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
     """
     try:
         user_profile = state.get("user_profile", {})
+        user_timezone = user_profile.get("timezone", "UTC")
+        user_timezone_offset_minutes = user_profile.get("timezone_offset_minutes")
+        resolved_tz_name, resolved_tzinfo = _resolve_timezone(
+            user_timezone,
+            user_timezone_offset_minutes,
+        )
+        display_timezone = (user_timezone or "").strip() or resolved_tz_name
         intent_params = state.get("intent_params", {})
+        latest_message = state["messages"][-1]["content"] if state.get("messages") else ""
+        message_params = extract_calendar_intent_params(
+            latest_message,
+            user_timezone=resolved_tz_name,
+            timezone_offset_minutes=user_timezone_offset_minutes,
+        )
 
-        # Get params from intent detection (already extracted by LLM)
-        title = intent_params.get("title", "Calendar Event")
-        description = intent_params.get("description", "Scheduled event")
-        start_time_str = intent_params.get("start_time")
-        end_time_str = intent_params.get("end_time")
-        event_type = intent_params.get("event_type", "custom")
+        # Resolve params with deterministic user-text extraction taking precedence for reliability.
+        title = message_params.get("title") or intent_params.get("title") or "Calendar Event"
 
-        # Parse times from extracted strings
+        intent_description = (intent_params.get("description") or "").strip()
+        if not intent_description or intent_description.lower() == "scheduled event":
+            description = message_params.get("description") or "Scheduled event"
+        else:
+            description = intent_description
+
+        start_time_str = message_params.get("start_time") or intent_params.get("start_time")
+        end_time_str = message_params.get("end_time") or intent_params.get("end_time")
+        event_type = message_params.get("event_type") or intent_params.get("event_type") or "custom"
+
+        inferred_start_time, inferred_end_time = infer_calendar_time_range_from_text(
+            latest_message,
+            user_timezone=resolved_tz_name,
+            timezone_offset_minutes=user_timezone_offset_minutes,
+        )
+
+        # Parse times from extracted strings; explicit user phrasing should win.
         try:
-            if start_time_str:
-                # Normalize: remove existing timezone suffix before parsing
-                normalized_start = start_time_str.replace("+00:00", "").replace("Z", "")
-                start_time = datetime.datetime.fromisoformat(normalized_start)
+            parsed_start_time = parse_iso_datetime_to_utc_naive(
+                start_time_str,
+                assume_timezone=resolved_tz_name,
+                timezone_offset_minutes=user_timezone_offset_minutes,
+            )
+            parsed_end_time = parse_iso_datetime_to_utc_naive(
+                end_time_str,
+                assume_timezone=resolved_tz_name,
+                timezone_offset_minutes=user_timezone_offset_minutes,
+            )
+
+            if parsed_start_time:
+                start_time = parsed_start_time
+            elif inferred_start_time:
+                start_time = inferred_start_time
             else:
                 start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
-            if end_time_str:
-                normalized_end = end_time_str.replace("+00:00", "").replace("Z", "")
-                end_time = datetime.datetime.fromisoformat(normalized_end)
+
+            if parsed_end_time:
+                end_time = parsed_end_time
+            elif inferred_end_time:
+                end_time = inferred_end_time
             else:
+                end_time = start_time + datetime.timedelta(hours=1)
+
+            if end_time <= start_time:
                 end_time = start_time + datetime.timedelta(hours=1)
         except (ValueError, TypeError) as e:
             logger.warning(f"Time parsing failed: {e}, using default")
-            start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
-            end_time = start_time + datetime.timedelta(hours=1)
+            if inferred_start_time and inferred_end_time:
+                start_time = inferred_start_time
+                end_time = inferred_end_time
+            else:
+                start_time = datetime.datetime.utcnow() + datetime.timedelta(days=1, hours=3)
+                end_time = start_time + datetime.timedelta(hours=1)
+
+        logger.info(
+            "Calendar event resolved params | title=%s | start=%s | end=%s | from_intent=%s | from_message=%s",
+            title,
+            start_time.isoformat(),
+            end_time.isoformat(),
+            intent_params,
+            message_params,
+        )
 
         # Create pending calendar action
         if "pending_actions" not in state:
@@ -1239,7 +1617,8 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
                 "start_time": start_time.isoformat() + "Z",
                 "end_time": end_time.isoformat() + "Z",
                 "description": description,
-                "event_type": event_type
+                "event_type": event_type,
+                "timezone": display_timezone,
             },
             "metadata": {
                 "priority": "medium",
@@ -1249,9 +1628,12 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
 
         logger.info(f"Created pending calendar event action: {title}")
 
+        display_start = start_time.replace(tzinfo=datetime.timezone.utc).astimezone(resolved_tzinfo)
+        display_end = end_time.replace(tzinfo=datetime.timezone.utc).astimezone(resolved_tzinfo)
+
         state["messages"].append({
             "role": "assistant",
-            "content": f"I've created a calendar event for **{title}**.\n\n**Event Details:**\n- **Time:** {start_time.strftime('%B %d, %Y at %I:%M %p UTC')} to {end_time.strftime('%I:%M %p UTC')}\n- **Description:** {description}\n\nPlease confirm the action below to add this to your Google Calendar."
+            "content": f"I've created a calendar event for **{title}**.\n\n**Event Details:**\n- **Time:** {display_start.strftime('%B %d, %Y at %I:%M %p')} to {display_end.strftime('%I:%M %p')} ({display_timezone})\n- **Description:** {description}\n\nPlease confirm the action below to add this to your Google Calendar."
         })
 
         state["task_completed"] = True
@@ -1346,6 +1728,8 @@ graph = create_career_advisor_graph()
 class ChatRequest(BaseModel):
     message: str
     clerkUserId: str
+    timezone: Optional[str] = "UTC"
+    timezoneOffsetMinutes: Optional[int] = None
 
 # FastAPI Dependency for DB Session
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -1361,6 +1745,8 @@ async def chat_endpoint(
     try:
         user_message_content = request_data.message
         clerk_user_id = request_data.clerkUserId
+        request_timezone = (request_data.timezone or "UTC").strip() or "UTC"
+        request_timezone_offset = request_data.timezoneOffsetMinutes
 
         if not clerk_user_id:
             raise HTTPException(status_code=400, detail="clerkUserId is required")
@@ -1395,7 +1781,9 @@ async def chat_endpoint(
             'industry': user.industry or '',
             'targetRole': user.targetRole or '',  # Centralized target role from DB
             'experience_years': user.experience if user.experience is not None else 0,
-            'current_role': user.bio or ''
+            'current_role': user.bio or '',
+            'timezone': request_timezone,
+            'timezone_offset_minutes': request_timezone_offset,
         }
 
         stmt_history = select(ChatHistory).where(ChatHistory.userId == user.id).order_by(ChatHistory.createdAt.asc()).limit(20) # Increased limit slightly

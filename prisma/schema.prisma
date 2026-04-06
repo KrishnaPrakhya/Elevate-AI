@@ -24,6 +24,7 @@ model User {
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt
   bio                        String?
+  targetRole                 String?
   googleCalendarRefreshToken String?          @db.Text
   googleCalendarConnectedAt  DateTime?
   experience                 Int?
@@ -703,6 +704,7 @@ model PortfolioArtifact {
   description        String   @db.Text
   contentUrl         String?
   skillsDemonstrated String[]
+  aiReview           Json?
   isPublic           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

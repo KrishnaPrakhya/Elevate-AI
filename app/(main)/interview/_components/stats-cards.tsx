@@ -48,6 +48,11 @@ function StatsCards(props: assessmentsProps) {
     return assessments[0];
   };
 
+  const getLatestScore = () => {
+    const latestScore = getLatestAssessment()?.quizScore;
+    return Number.isFinite(latestScore) ? latestScore.toFixed(1) : "0.0";
+  };
+
   const getTotalQuestions = () => {
     if (!assessments?.length) return 0;
     return assessments.reduce(
@@ -165,7 +170,7 @@ function StatsCards(props: assessmentsProps) {
           <CardContent>
             <div className="flex items-baseline gap-2">
               <div className="text-2xl font-bold">
-                {Number(getLatestAssessment()?.quizScore).toFixed(1) || 0}%
+                {getLatestScore()}%
               </div>
               <div className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 dark:bg-green-500/30 text-green-600 dark:text-green-400">
                 Recent

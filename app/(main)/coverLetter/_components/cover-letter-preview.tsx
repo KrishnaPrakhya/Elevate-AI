@@ -15,7 +15,7 @@ interface CoverLetterPreviewProps {
   template: string;
 }
 
-export function CoverLetterPreview({ content, template }: CoverLetterPreviewProps) {
+function CoverLetterPreview({ content, template }: CoverLetterPreviewProps) {
   const TemplateComponent = getTemplateComponent(template);
 
   return (
@@ -36,4 +36,6 @@ function getTemplateComponent(template: string) {
 }
 
 // Export templates for selector
+export { CoverLetterPreview };
 export { LATEX_COVER_LETTER_TEMPLATES };
+export default CoverLetterPreview;

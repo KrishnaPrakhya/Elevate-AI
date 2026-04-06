@@ -115,11 +115,15 @@ export async function POST(
       },
     };
 
-    return NextResponse.json({
-      artifact: {
-        ...artifact,
+    const updatedArtifact = await db.portfolioArtifact.update({
+      where: { id: artifact.id, userId: user.id },
+      data: {
         aiReview: detailedReview,
       },
+    });
+
+    return NextResponse.json({
+      artifact: updatedArtifact,
       review: reviewResult, // Return full structured review for potential UI enhancement
     });
   } catch (error) {
@@ -136,6 +140,17 @@ export async function POST(
         "Gather testimonials or endorsements",
       ],
     };
+
+    if (artifactIdForError) {
+      try {
+        await db.portfolioArtifact.update({
+          where: { id: artifactIdForError },
+          data: { aiReview: fallbackReview },
+        });
+      } catch (persistError) {
+        console.error("Failed to persist fallback AI review:", persistError);
+      }
+    }
 
     return NextResponse.json({
       artifact: {

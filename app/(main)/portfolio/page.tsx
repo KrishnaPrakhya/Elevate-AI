@@ -259,7 +259,7 @@ export default function PortfolioPage() {
     if (artifact.contentUrl?.includes("github.com"))
       return <Code className="w-5 h-5" aria-hidden />;
     if (artifact.contentUrl?.match(/\.(png|jpg|jpeg|gif|svg)$/i))
-      return <Image className="w-5 h-5" alt="" aria-hidden />;
+      return <Image className="w-5 h-5" aria-hidden />;
     if (
       artifact.contentUrl?.includes("drive.google.com") ||
       artifact.contentUrl?.includes("dropbox.com")
@@ -637,7 +637,7 @@ export default function PortfolioPage() {
                         <Clock className="w-3 h-3" />
                         {new Date(artifact.createdAt).toLocaleDateString()}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-0">
                         {artifact.contentUrl &&
                           normalizeUrl(artifact.contentUrl) && (
                             <Button variant="ghost" size="sm" asChild>
@@ -657,6 +657,7 @@ export default function PortfolioPage() {
                           size="sm"
                           onClick={() => requestAIReview(artifact)}
                           disabled={isReviewing}
+                          className="cursor-pointer"
                         >
                           <Sparkles className="w-3 h-3 mr-1" />
                           {artifact.aiReview ? "Re-review" : "Get Review"}

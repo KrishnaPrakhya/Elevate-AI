@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   Award,
@@ -17,9 +17,9 @@ import {
   BarChart,
   Users,
   Briefcase,
+  PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import TestimonialCard from "@/components/LandingPage/testimonial-card";
 import FeatureCard from "@/components/LandingPage/feature-card";
 import PricingCard from "@/components/LandingPage/pricing-card";
 import FaqAccordion from "@/components/LandingPage/faq-accordion";
@@ -30,12 +30,24 @@ import { motion } from "framer-motion";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 
+type LandingMetrics = {
+  totalUsers: number;
+  resumesReviewed: number;
+  simulationsRun: number;
+  coverLettersGenerated: number;
+  assessmentsCompleted: number;
+  portfoliosBuilt: number;
+  updatedAt: string;
+};
+
 export default function Home() {
   const currentYear = new Date().getFullYear();
   const isMobile = useMobile();
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState<LandingMetrics | null>(null);
+  const [metricsError, setMetricsError] = useState(false);
 
   const fadeInUpVariants = {
     hidden: { opacity: 0, y: 20 },
@@ -67,6 +79,70 @@ export default function Home() {
       },
     },
   };
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadMetrics = async () => {
+      try {
+        const response = await fetch("/api/landing/metrics", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to load landing metrics");
+        }
+
+        const data = (await response.json()) as LandingMetrics;
+        if (isActive) {
+          setMetrics(data);
+          setMetricsError(false);
+        }
+      } catch (error) {
+        if (isActive) {
+          setMetricsError(true);
+        }
+      }
+    };
+
+    loadMetrics();
+    const refreshInterval = setInterval(loadMetrics, 1000 * 60 * 60 * 4);
+
+    return () => {
+      isActive = false;
+      clearInterval(refreshInterval);
+    };
+  }, []);
+
+  const formatMetric = (value?: number) =>
+    typeof value === "number" ? value.toLocaleString("en-US") : "—";
+
+  const lastSynced = metrics?.updatedAt
+    ? new Date(metrics.updatedAt)
+    : null;
+
+  const statItems = [
+    {
+      value: formatMetric(metrics?.totalUsers),
+      label: "Members onboarded",
+      icon: <Users className="h-5 w-5 text-primary" />,
+    },
+    {
+      value: formatMetric(metrics?.resumesReviewed),
+      label: "Resumes reviewed",
+      icon: <FileText className="h-5 w-5 text-primary" />,
+    },
+    {
+      value: formatMetric(metrics?.simulationsRun),
+      label: "Interview simulations",
+      icon: <MessageSquare className="h-5 w-5 text-primary" />,
+    },
+    {
+      value: formatMetric(metrics?.coverLettersGenerated),
+      label: "Cover letters created",
+      icon: <Briefcase className="h-5 w-5 text-primary" />,
+    },
+  ];
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -121,30 +197,31 @@ export default function Home() {
 
           <div className="container mx-auto relative z-10 px-4 md:px-6 py-10 md:py-14">
             <motion.div
-              className="grid gap-6 items-center lg:grid-cols-2 lg:items-start lg:gap-12"
+              className="grid gap-8 items-center lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:gap-14"
               initial="hidden"
               animate="visible"
               variants={staggerContainerVariants}
             >
               <motion.div
-                className="flex flex-col justify-center space-y-6"
+                className="flex flex-col items-center lg:items-start justify-center space-y-6 text-center lg:text-left"
                 variants={fadeInUpVariants}
               >
-                <div className="inline-block w-fit rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary backdrop-blur-sm border border-primary/20">
+                <div className="inline-block w-fit rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary backdrop-blur-sm border border-primary/20 mx-auto lg:mx-0">
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Built For Serious Job Search
+                    AI Career Command Center
                   </span>
                 </div>
                 <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
-                  Your <span className="text-primary relative">Personal</span>{" "}
-                  AI Career Coach
+                  Turn your experience into{" "}
+                  <span className="gradient-text">interviews</span>.
                 </h1>
-                <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl">
-                  Build stronger resumes, prepare for interviews, and get
-                  practical career direction with clear, actionable guidance.
+                <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl mx-auto lg:mx-0">
+                  ElevateAI turns your resume, goals, and skills into a focused
+                  job-search plan with resume clarity, role targeting, and
+                  interview practice that keeps you moving.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-center lg:items-start justify-center lg:justify-start">
                   <Button
                     onClick={() => {
                       redirect("/dashboard");
@@ -157,23 +234,26 @@ export default function Home() {
                     <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
                   </Button>
                   <Button size="lg" variant="outline" asChild>
-                    <Link href="#features">Explore Features</Link>
+                    <Link href="#product-tour">Watch Product Tour</Link>
                   </Button>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 pt-4">
-                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-                    Resume review workflows
-                  </span>
-                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-                    Interview preparation tracks
-                  </span>
-                  <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-                    Personalized action plans
-                  </span>
+                <div className="grid gap-3 pt-4 sm:grid-cols-2 text-sm text-muted-foreground w-full max-w-xl">
+                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Resume clarity and role alignment
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Interview practice with feedback
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 sm:col-span-2">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Action plans you can execute daily
+                  </div>
                 </div>
               </motion.div>
               <motion.div
-                className="flex w-full justify-center lg:justify-end lg:pl-6 lg:pt-2"
+                className="flex w-full items-center justify-center lg:justify-end lg:pl-4"
                 variants={fadeInUpVariants}
                 {...floatAnimation}
               >
@@ -262,36 +342,51 @@ export default function Home() {
 
           <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
+              className="flex flex-col items-center justify-center space-y-4 text-center mb-12"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: "-100px" }}
+              variants={staggerContainerVariants}
+            >
+              <motion.div className="space-y-2" variants={fadeInUpVariants}>
+                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" />
+                    Live Platform Activity
+                  </span>
+                </div>
+                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
+                  Real usage, updated frequently
+                </h2>
+                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
+                  Live counts from ElevateAI usage. Metrics refresh every few
+                  hours.
+                </p>
+                <div className="text-xs text-muted-foreground">
+                  {metricsError
+                    ? "Live metrics are temporarily unavailable."
+                    : lastSynced
+                    ? `Last synced ${lastSynced.toLocaleTimeString()}`
+                    : "Syncing live metrics..."}
+                </div>
+              </motion.div>
+            </motion.div>
+            <motion.div
               className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8"
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
               variants={staggerContainerVariants}
             >
-              <StatCard
-                value="87%"
-                label="Interview Success Rate"
-                icon={<MessageSquare className="h-5 w-5 text-primary" />}
-                variants={fadeInUpVariants}
-              />
-              <StatCard
-                value="3.2x"
-                label="More Job Offers"
-                icon={<Award className="h-5 w-5 text-primary" />}
-                variants={fadeInUpVariants}
-              />
-              <StatCard
-                value="$12K+"
-                label="Avg. Salary Increase"
-                icon={<Target className="h-5 w-5 text-primary" />}
-                variants={fadeInUpVariants}
-              />
-              <StatCard
-                value="24/7"
-                label="AI Coach Availability"
-                icon={<Star className="h-5 w-5 text-primary" />}
-                variants={fadeInUpVariants}
-              />
+              {statItems.map((item) => (
+                <StatCard
+                  key={item.label}
+                  value={item.value}
+                  label={item.label}
+                  icon={item.icon}
+                  variants={fadeInUpVariants}
+                />
+              ))}
             </motion.div>
           </div>
         </section>
@@ -553,9 +648,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Testimonials Section */}
+        {/* Product Tour Section */}
         <section
-          id="testimonials"
+          id="product-tour"
           className="py-20 md:py-32 relative overflow-hidden"
         >
           {/* Background decoration */}
@@ -564,34 +659,6 @@ export default function Home() {
           {/* Decorative elements */}
           <div className="absolute top-20 right-20 w-40 h-40 rounded-full border border-primary/10 opacity-30"></div>
           <div className="absolute bottom-40 left-20 w-60 h-60 rounded-full border border-primary/10 opacity-20"></div>
-
-          {/* Animated dots */}
-          <motion.div
-            className="absolute top-1/4 right-1/4 w-2 h-2 rounded-full bg-primary/40 hidden lg:block"
-            animate={{
-              opacity: [0.4, 0.8, 0.4],
-              scale: [1, 1.2, 1],
-              transition: {
-                duration: 3,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              },
-            }}
-          />
-
-          <motion.div
-            className="absolute bottom-1/3 left-1/3 w-3 h-3 rounded-full bg-primary/30 hidden lg:block"
-            animate={{
-              opacity: [0.3, 0.7, 0.3],
-              scale: [1, 1.3, 1],
-              transition: {
-                duration: 4,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-                delay: 1,
-              },
-            }}
-          />
 
           <div className="container mx-auto px-4 md:px-6 relative z-10">
             <motion.div
@@ -604,114 +671,65 @@ export default function Home() {
               <motion.div className="space-y-2" variants={fadeInUpVariants}>
                 <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
                   <span className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" />
-                    Success Stories
+                    <PlayCircle className="h-3.5 w-3.5" />
+                    Product Tour
                   </span>
                 </div>
                 <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  Real Outcomes From Real Job Searches
+                  See the workflow end to end
                 </h2>
                 <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Practical results from candidates using ElevateAI to improve
-                  resumes, interview performance, and role targeting.
+                  Follow the full path from resume review to interview practice
+                  and a clear action plan.
                 </p>
               </motion.div>
             </motion.div>
 
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-3 gap-8"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <TestimonialCard
-                quote="The rewrite suggestions made my resume easier to scan and much more relevant to each role I applied for."
-                name="Platform Member"
-                title="Software Engineer"
-                avatarSrc="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                variants={fadeInUpVariants}
-              />
-              <TestimonialCard
-                quote="Interview practice gave me a repeatable structure for answers, and that made my responses clearer and more confident."
-                name="Career Switcher"
-                title="Marketing Professional"
-                avatarSrc="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                variants={fadeInUpVariants}
-              />
-              <TestimonialCard
-                quote="The skill-gap checklist helped me focus my preparation, and I stopped wasting time on roles that were a weak fit."
-                name="Early-Career Candidate"
-                title="Data Analyst"
-                avatarSrc="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=256&q=80"
-                variants={fadeInUpVariants}
-              />
-            </motion.div>
-
-            {/* Video testimonial */}
-            <div className="mt-16 bg-background">
-              <div className="max-w-6xl mx-auto">
-                {/* <motion.h1
-                  className="text-4xl md:text-5xl font-bold text-center text-foreground mb-8"
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8 }}
-                >
-                  Elevate Your Career with AI
-                </motion.h1> */}
-
-                <div className="relative">
-                  <motion.div
-                    className="mt-16 md:mt-24  rounded-2xl overflow-hidden relative"
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
+            <div className="relative">
+              <motion.div
+                className="rounded-2xl overflow-hidden relative"
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+              >
+                <div className="flex justify-center items-center aspect-video relative p-3">
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full max-w-5xl h-full border rounded-lg shadow-2xl"
                   >
-                    <div className="flex justify-center items-center aspect-video relative p-3">
-                      <video
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className="w-[90vh] h-[50vh] border rounded-lg shadow-2xl"
-                      >
-                        <source
-                          src="elevate-ai-showcase.mp4"
-                          type="video/mp4"
-                        />
-                      </video>
-                    </div>
-                  </motion.div>
+                    <source src="elevate-ai-showcase.mp4" type="video/mp4" />
+                  </video>
+                </div>
+              </motion.div>
 
-                  <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="rounded-xl border bg-background p-4 text-left">
-                      <p className="text-sm font-semibold">Resume Refinement</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Structured, ATS-conscious feedback aligned to target
-                        roles.
-                      </p>
-                    </div>
-                    <div className="rounded-xl border bg-background p-4 text-left">
-                      <p className="text-sm font-semibold">
-                        Interview Practice
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Guided question sets with response-quality feedback.
-                      </p>
-                    </div>
-                    <div className="rounded-xl border bg-background p-4 text-left">
-                      <p className="text-sm font-semibold">Role Targeting</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Prioritized job-fit guidance based on profile and goals.
-                      </p>
-                    </div>
-                    <div className="rounded-xl border bg-background p-4 text-left">
-                      <p className="text-sm font-semibold">Action Planning</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Clear next-step checklists to keep your search focused.
-                      </p>
-                    </div>
-                  </div>
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="rounded-xl border bg-background p-4 text-left">
+                  <p className="text-sm font-semibold">Resume Refinement</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Clarity checks and ATS-friendly guidance tied to target
+                    roles.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-background p-4 text-left">
+                  <p className="text-sm font-semibold">Interview Practice</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Timed simulations with structured feedback on responses.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-background p-4 text-left">
+                  <p className="text-sm font-semibold">Role Targeting</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Role-fit insights aligned to skills and experience.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-background p-4 text-left">
+                  <p className="text-sm font-semibold">Action Planning</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Daily checkpoints that keep your search moving.
+                  </p>
                 </div>
               </div>
             </div>
@@ -940,8 +958,8 @@ export default function Home() {
                   Ready to Transform Your Career?
                 </h2>
                 <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed">
-                  Join thousands of professionals who have accelerated their
-                  career growth with Career AI.
+                  Join professionals who want clearer career direction and a
+                  structured job-search plan.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md text-center justify-center items-center">
                   <Button
@@ -1074,10 +1092,10 @@ export default function Home() {
                 Pricing
               </Link>
               <Link
-                href="#testimonials"
+                href="#product-tour"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                Testimonials
+                Product Tour
               </Link>
               <Link
                 href="#faq"

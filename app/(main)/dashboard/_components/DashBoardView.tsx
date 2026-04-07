@@ -151,7 +151,8 @@ function DashBoardView(props: Props) {
   const planStartDate = props.activePlan?.createdAt
     ? new Date(props.activePlan.createdAt)
     : null;
-  const upcomingPlanWeeks = props.activePlan?.planDetails?.weeklyPlan?.slice(0, 3) || [];
+  const upcomingPlanWeeks =
+    props.activePlan?.planDetails?.weeklyPlan?.slice(0, 3) || [];
   const [activeTab, setActiveTab] = useState("overview");
   console.log(insights);
 
@@ -369,7 +370,8 @@ function DashBoardView(props: Props) {
                       </p>
                       <p className="text-sm font-medium">
                         {props.activePlan?.targetRole ||
-                          props.careerInsight?.careerPathSuggestions?.[0]?.role ||
+                          props.careerInsight?.careerPathSuggestions?.[0]
+                            ?.role ||
                           "Not set"}
                       </p>
                       {props.activePlan && (
@@ -385,7 +387,8 @@ function DashBoardView(props: Props) {
                       )}
                       {!props.activePlan && (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Generate your Learning Plan in Academy to unlock plan-driven next steps.
+                          Generate your Learning Plan in Academy to unlock
+                          plan-driven next steps.
                         </p>
                       )}
                       <div className="pt-2">
@@ -553,18 +556,25 @@ function DashBoardView(props: Props) {
                         </h4>
                       </div>
                       <div className="space-y-2 text-xs text-muted-foreground">
-                        {props.activePlan.checkpoints?.slice(0, 2).map((checkpoint, idx) => (
-                          <p key={`${checkpoint.metric}-${idx}`}>
-                            • {checkpoint.label}: {checkpoint.target}
-                          </p>
-                        ))}
+                        {props.activePlan.checkpoints
+                          ?.slice(0, 2)
+                          .map((checkpoint, idx) => (
+                            <p key={`${checkpoint.metric}-${idx}`}>
+                              • {checkpoint.label}: {checkpoint.target}
+                            </p>
+                          ))}
                         {upcomingPlanWeeks.map((week, idx) => {
                           const dueDate =
                             planStartDate && Number.isFinite(week.week)
                               ? format(
                                   new Date(
                                     planStartDate.getTime() +
-                                      Math.max(0, week.week - 1) * 7 * 24 * 60 * 60 * 1000,
+                                      Math.max(0, week.week - 1) *
+                                        7 *
+                                        24 *
+                                        60 *
+                                        60 *
+                                        1000,
                                   ),
                                   "MMM d",
                                 )

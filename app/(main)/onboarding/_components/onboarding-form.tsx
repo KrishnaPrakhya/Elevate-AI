@@ -17,7 +17,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Briefcase, Code, FileText, Loader2, Sparkles, Target } from "lucide-react";
+import {
+  Briefcase,
+  Code,
+  FileText,
+  Loader2,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { onBoardingSchema } from "@/app/lib/schema";
 import { PageHeader } from "@/components/page-header";
 import useFetch from "@/hooks/use-fetch";
@@ -47,9 +54,11 @@ interface OnboardingFormValues {
 function OnboardingForm(props: Props) {
   const { industries } = props;
   const [selectedIndustry, setSelectedIndustry] = useState<Industries | null>(
-    null
+    null,
   );
-  const [availableRoles, setAvailableRoles] = useState<{ id: string; title: string }[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<
+    { id: string; title: string }[]
+  >([]);
   const router = useRouter();
   const {
     register,
@@ -121,7 +130,9 @@ function OnboardingForm(props: Props) {
 
   useEffect(() => {
     if (updateResult?.success && !updateLoading) {
-      toast.success("Profile completed! AI has generated your personalized career plan");
+      toast.success(
+        "Profile completed! AI has generated your personalized career plan",
+      );
       router.push("/dashboard");
     }
   }, [updateResult, updateLoading, router]);
@@ -191,7 +202,7 @@ function OnboardingForm(props: Props) {
                 onValueChange={(value) => {
                   setValue("industry", value);
                   setSelectedIndustry(
-                    industries.find((ind) => ind.id === value) || null
+                    industries.find((ind) => ind.id === value) || null,
                   );
                   setValue("subIndustry", "");
                 }}
@@ -286,7 +297,8 @@ function OnboardingForm(props: Props) {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  This is your primary career focus. You can change it anytime in settings.
+                  This is your primary career focus. You can change it anytime
+                  in settings.
                 </p>
               </motion.div>
             )}

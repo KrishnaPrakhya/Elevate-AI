@@ -3,6 +3,7 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { generatePersonalizedInterviewQuiz } from "@/lib/ai/career-agent";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { CACHE_TTL, getCachedData, invalidateCache, redis } from "@/lib/redis";
 import { z } from "zod";
 
@@ -140,6 +141,28 @@ export const saveQuizResult = async (questions: any[], answers: any[], score: nu
         improvementTip,
       }
     })
+
+    await recordExecutedAction({
+      userId: user.id,
+      type: "UPDATE_PROGRESS",
+      title: "Technical quiz completed",
+      description:
+        "Interview quiz result was recorded and used to refine your next recommended learning actions.",
+      params: {
+        score: validated.score,
+        totalQuestions: validated.questions.length,
+        wrongAnswers: wrongAnswers.length,
+      },
+      result: {
+        assessmentId: assessment.id,
+        improvementTip,
+      },
+      metadata: {
+        source: "interview-quiz",
+        reason:
+          "Quiz performance contributes to interview cadence decisions and targeted weak-area recommendations.",
+      },
+    });
 
     await invalidateCache(`interview:assessments:${user.id}`)
     

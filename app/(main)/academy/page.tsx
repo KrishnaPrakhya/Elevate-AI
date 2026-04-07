@@ -7,6 +7,7 @@ import {
   getRealTimeSkillAnalysis,
   getAgentLearningRecommendations,
 } from "@/actions/academy";
+import { getUser } from "@/actions/user";
 import { AcademySkeleton } from "@/components/loaders/skeleton-loader";
 import {
   BookOpen,
@@ -48,7 +49,10 @@ import type {
   NodeObject,
 } from "react-force-graph-2d";
 import StudyCompanion from "@/components/study-companion";
-import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 
 const ForceGraph2D = dynamic(
   () => import("react-force-graph-2d").then((mod) => mod.default),
@@ -161,9 +165,16 @@ export default function AcademyPage() {
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   // Real-time skill analysis state
-  const [skillGaps, setSkillGaps] = useState<{ skill: string; importance: number }[]>([]);
+  const [skillGaps, setSkillGaps] = useState<
+    { skill: string; importance: number }[]
+  >([]);
   const [hasRealSkillData, setHasRealSkillData] = useState(false);
-  const [agentRecommendations, setAgentRecommendations] = useState<{ title: string; description: string; action: string; priority: string }[]>([]);
+  const [skillDataSource, setSkillDataSource] = useState<
+    "none" | "career_plan" | "llm_analysis" | "error"
+  >("none");
+  const [agentRecommendations, setAgentRecommendations] = useState<
+    { title: string; description: string; action: string; priority: string }[]
+  >([]);
   const [agentMessage, setAgentMessage] = useState("");
 
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
@@ -182,7 +193,14 @@ export default function AcademyPage() {
     setDashboard(dashData);
     setRecommendations(recData);
     setSkillGaps(skillAnalysis.topGaps || []);
-    setHasRealSkillData(skillAnalysis.hasData || false);
+    setSkillDataSource((skillAnalysis.source || "none") as
+      | "none"
+      | "career_plan"
+      | "llm_analysis"
+      | "error");
+    setHasRealSkillData(
+      Boolean(skillAnalysis.hasData) && skillAnalysis.source === "llm_analysis",
+    );
     setAgentRecommendations(agentRecs.recommendations || []);
     setAgentMessage(agentRecs.message || "");
     // Force graph to re-render with new data
@@ -247,7 +265,13 @@ export default function AcademyPage() {
   useEffect(() => {
     async function load() {
       try {
+        const currentUserPromise = getUser().catch(() => null);
         await refreshAcademyData();
+        const currentUser = await currentUserPromise;
+
+        if (currentUser?.targetRole) {
+          setSkillInput((prev) => prev || currentUser.targetRole || "");
+        }
 
         const historyRes = await fetch("/api/career-planner").catch(() => null);
         if (historyRes?.ok) {
@@ -257,6 +281,13 @@ export default function AcademyPage() {
             setGeneratedPlan(historyData.activePlan.planMarkdown || null);
             setPlanCheckpoints(historyData.activePlan.checkpoints || []);
             setPlanDetails(historyData.activePlan.planDetails || null);
+            setSkillInput(
+              (prev) =>
+                prev ||
+                historyData.activePlan.targetRole ||
+                currentUser?.targetRole ||
+                ""
+            );
           }
         }
       } catch (error) {
@@ -304,12 +335,6 @@ export default function AcademyPage() {
         const rect = container.getBoundingClientRect();
         const width = Math.max(400, Math.floor(rect.width));
         const height = 420;
-        console.log("[Skill Graph] Container resized:", {
-          width,
-          height,
-          clientWidth: container.clientWidth,
-          offsetWidth: container.offsetWidth,
-        });
         setGraphSize({ width, height });
         // Delay graph ready to ensure container is fully rendered
         setTimeout(() => setIsGraphReady(true), 100);
@@ -337,60 +362,55 @@ export default function AcademyPage() {
   const skillGraph = useMemo(() => {
     // Don't compute graph until container is measured
     if (!isGraphReady || graphSize.width === 0 || graphSize.height === 0) {
-      console.log("[Skill Graph] Not ready yet:", {
-        isGraphReady,
-        width: graphSize.width,
-        height: graphSize.height,
-      });
       return { nodes: [], links: [] } as GraphData<ForceGraphNode, SkillLink>;
     }
 
-    // Use REAL skill gaps from LLM analysis, not fallback data
-    const realSkillGaps = hasRealSkillData ? skillGaps : (planDetails?.topGaps || []);
+    // Use LLM gaps when present, otherwise use plan-defined gaps.
+    const mappedSkillGaps = hasRealSkillData
+      ? skillGaps
+      : planDetails?.topGaps || [];
 
-    console.log("[Skill Graph] Computing graph with:", {
-      width: graphSize.width,
-      height: graphSize.height,
-      nodesCount: realSkillGaps.length,
-      hasRealData: hasRealSkillData,
-    });
+    const hasLearningEvidence =
+      stats.totalLessonsCompleted > 0 ||
+      nextLessons.some((lesson) => (lesson.enrollment.progress || 0) > 0);
 
     // If no real skill data, return empty graph (show empty state in UI instead)
-    if (!hasRealSkillData && (!planDetails?.topGaps || planDetails.topGaps.length === 0)) {
+    if (
+      !hasRealSkillData &&
+      (!planDetails?.topGaps || planDetails.topGaps.length === 0)
+    ) {
       return { nodes: [], links: [] } as GraphData<ForceGraphNode, SkillLink>;
     }
 
-    const baseNodes: Omit<SkillGraphNode, "id" | "color">[] = realSkillGaps.slice(0, 6).map((gap) => {
-      const relatedLessons = nextLessons.filter((lesson) =>
-        lesson.enrollment.learningPath.title
-          .toLowerCase()
-          .includes(gap.skill.toLowerCase()),
-      );
+    const baseNodes: Omit<SkillGraphNode, "id" | "color">[] = mappedSkillGaps
+      .slice(0, 6)
+      .map((gap) => {
+        const relatedLessons = nextLessons.filter((lesson) =>
+          lesson.enrollment.learningPath.title
+            .toLowerCase()
+            .includes(gap.skill.toLowerCase()),
+        );
 
-      const relatedProgress = relatedLessons.reduce(
-        (sum, lesson) => sum + lesson.enrollment.progress,
-        0,
-      );
+        const relatedProgress = relatedLessons.reduce(
+          (sum, lesson) => sum + lesson.enrollment.progress,
+          0,
+        );
 
-      const progressSignal = relatedLessons.length
-        ? Math.round(relatedProgress / relatedLessons.length)
-        : weeklyGoalProgress;
+        const progressSignal = relatedLessons.length
+          ? Math.round(relatedProgress / relatedLessons.length)
+          : 0;
 
-      const mastery = Math.max(
-        15,
-        Math.min(
-          95,
-          Math.round(100 - gap.importance * 7 + progressSignal * 0.35),
-        ),
-      );
+        const mastery = hasLearningEvidence
+          ? Math.max(0, Math.min(100, Math.round(progressSignal)))
+          : 0;
 
-      return {
-        label: gap.skill,
-        importance: gap.importance,
-        mastery,
-        progressSignal,
-      };
-    });
+        return {
+          label: gap.skill,
+          importance: gap.importance,
+          mastery,
+          progressSignal,
+        };
+      });
 
     const palette = [
       "#3b82f6", // Blue
@@ -466,8 +486,10 @@ export default function AcademyPage() {
     } as GraphData<ForceGraphNode, SkillLink>;
   }, [
     nextLessons,
+    skillGaps,
+    hasRealSkillData,
     planDetails?.topGaps,
-    recommendedPaths,
+    stats.totalLessonsCompleted,
     weeklyGoalProgress,
     isGraphReady,
     graphSize.width,
@@ -482,11 +504,6 @@ export default function AcademyPage() {
       isGraphReady &&
       graphSize.width > 0
     ) {
-      console.log("[Skill Graph] Centering graph:", {
-        width: graphSize.width,
-        height: graphSize.height,
-        nodes: skillGraph.nodes.length,
-      });
       // Center the graph immediately
       graphRef.current.centerAt(graphSize.width / 2, graphSize.height / 2, 0);
       graphRef.current.zoom(1, 0);
@@ -496,7 +513,13 @@ export default function AcademyPage() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isGraphReady, skillGraph.nodes.length, graphKey]);
+  }, [
+    isGraphReady,
+    skillGraph.nodes.length,
+    graphKey,
+    graphSize.width,
+    graphSize.height,
+  ]);
 
   // Handle node click
   const handleNodeClick = useCallback((node: NodeObject) => {
@@ -640,7 +663,7 @@ export default function AcademyPage() {
         ctx.fillText(`${Math.round(typedNode.mastery)}% avg`, x, y + 14);
       }
     },
-    [graphSize.width, hoveredNode],
+    [graphSize.width, graphSize.height, hoveredNode],
   );
 
   if (loading) {
@@ -732,31 +755,44 @@ export default function AcademyPage() {
                   Your Skill Constellation
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {hasRealSkillData || planDetails?.topGaps
-                    ? "Real-time skill map based on your learning progress and career goals"
-                    : "Generate a learning plan to visualize your skill gaps"}
+                  {hasRealSkillData
+                    ? "Evidence-based skill map from your actual learning progress"
+                    : (planDetails?.topGaps?.length || 0) > 0
+                      ? "Plan-seeded skill map. Progress unlocks when you complete lessons"
+                      : "Generate a learning plan to visualize your skill gaps"}
                 </p>
               </div>
               <Badge variant="outline" className="bg-primary/10 text-primary">
-                {hasRealSkillData || planDetails?.topGaps ? `${Math.max(0, skillGraph.nodes.length - 1)} Skills Tracked` : "No Data"}
+                {hasRealSkillData || (planDetails?.topGaps?.length || 0) > 0
+                  ? `${Math.max(0, skillGraph.nodes.length - 1)} Skills ${hasRealSkillData ? "Tracked" : "Planned"}`
+                  : "No Data"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
             {/* Empty state when no skill data available */}
-            {(!hasRealSkillData && (!planDetails?.topGaps || planDetails.topGaps.length === 0)) ? (
+            {!hasRealSkillData &&
+            (!planDetails?.topGaps || planDetails.topGaps.length === 0) ? (
               <div className="w-full h-[420px] flex flex-col items-center justify-center text-center p-8">
                 <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                   <BrainCircuit className="w-10 h-10 text-primary/50" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">No Skill Data Yet</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  No Skill Data Yet
+                </h3>
                 <p className="text-sm text-muted-foreground max-w-md mb-4">
-                  Generate a personalized learning plan above to see your skill gaps visualized as an interactive constellation.
+                  Generate a personalized learning plan above to see your skill
+                  gaps visualized as an interactive constellation.
                 </p>
                 <Button
                   onClick={() => {
-                    const element = document.getElementById("generate-plan-section");
-                    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    const element = document.getElementById(
+                      "generate-plan-section",
+                    );
+                    element?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
                   }}
                   className="gap-2"
                 >
@@ -834,79 +870,83 @@ export default function AcademyPage() {
                   </p>
                 </div>
 
-              <div className="absolute right-4 top-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
-                  Weekly Momentum
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <TrendingUp className="w-4 h-4 text-emerald-500" />
-                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                    {stats?.weeklyGoalProgress || 0}%
+                <div className="absolute right-4 top-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                    Weekly Momentum
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <TrendingUp className="w-4 h-4 text-emerald-500" />
+                    <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                      {stats?.weeklyGoalProgress || 0}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="absolute left-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                    Active Tracks
+                  </p>
+                  <p className="text-lg font-bold mt-0.5">
+                    {nextLessons.length}
                   </p>
                 </div>
-              </div>
 
-              <div className="absolute left-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
-                  Active Tracks
-                </p>
-                <p className="text-lg font-bold mt-0.5">{nextLessons.length}</p>
-              </div>
+                <div className="absolute right-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                        Lessons Completed
+                  </p>
+                  <p className="text-lg font-bold text-primary mt-0.5">
+                    {stats?.totalLessonsCompleted || 0}
+                  </p>
+                </div>
 
-              <div className="absolute right-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
-                  Lessons Done
-                </p>
-                <p className="text-lg font-bold text-primary mt-0.5">
-                  {stats?.totalLessonsCompleted || 0}
-                </p>
-              </div>
-
-              {/* Hover tooltip - positioned relative to graph container */}
-              <AnimatePresence>
-                {hoveredNode && hoveredNode.id !== "center" && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="absolute z-20 pointer-events-none"
-                    style={{
-                      left: `${(hoveredNode.x ?? graphSize.width / 2) + 50}px`,
-                      top: `${(hoveredNode.y ?? graphSize.height / 2) - 80}px`,
-                    }}
-                  >
-                    <div className="bg-background/98 backdrop-blur-md border border-primary/30 rounded-xl px-4 py-3 shadow-2xl min-w-[200px]">
-                      <p className="font-semibold text-sm text-primary">
-                        {hoveredNode.label ?? "Unknown Skill"}
-                      </p>
-                      <div className="mt-2 space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Mastery</span>
-                          <span className="font-medium text-primary">
-                            {Math.round(hoveredNode.mastery ?? 0)}%
-                          </span>
+                {/* Hover tooltip - positioned relative to graph container */}
+                <AnimatePresence>
+                  {hoveredNode && hoveredNode.id !== "center" && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="absolute z-20 pointer-events-none"
+                      style={{
+                        left: `${(hoveredNode.x ?? graphSize.width / 2) + 50}px`,
+                        top: `${(hoveredNode.y ?? graphSize.height / 2) - 80}px`,
+                      }}
+                    >
+                      <div className="bg-background/98 backdrop-blur-md border border-primary/30 rounded-xl px-4 py-3 shadow-2xl min-w-[200px]">
+                        <p className="font-semibold text-sm text-primary">
+                          {hoveredNode.label ?? "Unknown Skill"}
+                        </p>
+                        <div className="mt-2 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">
+                              Progress Signal
+                            </span>
+                            <span className="font-medium text-primary">
+                              {Math.round(hoveredNode.mastery ?? 0)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">
+                              Importance
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {Math.round(hoveredNode.importance ?? 0)}/10
+                            </Badge>
+                          </div>
+                          <Progress
+                            value={hoveredNode.mastery ?? 0}
+                            className="h-2 mt-2"
+                          />
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">
-                            Importance
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            {Math.round(hoveredNode.importance ?? 0)}/10
-                          </Badge>
-                        </div>
-                        <Progress
-                          value={hoveredNode.mastery ?? 0}
-                          className="h-2 mt-2"
-                        />
+                        <p className="text-[10px] text-muted-foreground mt-2 italic">
+                          Click node for detailed analysis
+                        </p>
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-2 italic">
-                        Click node for detailed analysis
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -930,7 +970,10 @@ export default function AcademyPage() {
                   Personalized recommendations based on your real-time progress
                 </p>
               </div>
-              <Badge variant="outline" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+              <Badge
+                variant="outline"
+                className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+              >
                 Live
               </Badge>
             </div>
@@ -938,7 +981,9 @@ export default function AcademyPage() {
           <CardContent className="space-y-4">
             {agentMessage && (
               <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <p className="text-sm text-purple-900 dark:text-purple-100">{agentMessage}</p>
+                <p className="text-sm text-purple-900 dark:text-purple-100">
+                  {agentMessage}
+                </p>
               </div>
             )}
 
@@ -962,15 +1007,19 @@ export default function AcademyPage() {
                               rec.priority === "high"
                                 ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                                 : rec.priority === "medium"
-                                ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                                : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                                  ? "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                  : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300"
                             }
                           >
                             {rec.priority}
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">{rec.description}</p>
-                        <p className="text-xs text-primary mt-2 font-medium">{rec.action}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {rec.description}
+                        </p>
+                        <p className="text-xs text-primary mt-2 font-medium">
+                          {rec.action}
+                        </p>
                       </div>
                     </div>
                   </motion.div>
@@ -978,7 +1027,8 @@ export default function AcademyPage() {
               </div>
             ) : (
               <div className="p-4 rounded-lg border border-dashed border-primary/30 text-sm text-muted-foreground">
-                Generate a learning plan or enroll in a course to receive personalized AI recommendations.
+                Generate a learning plan or enroll in a course to receive
+                personalized AI recommendations.
               </div>
             )}
           </CardContent>
@@ -1365,7 +1415,9 @@ export default function AcademyPage() {
                       </div>
                     </div>
                   ) : (
-                    <AIResponseFormatter content={formatAIResponse(generatedPlan)} />
+                    <AIResponseFormatter
+                      content={formatAIResponse(generatedPlan)}
+                    />
                   )}
 
                   {planCheckpoints.length > 0 && (
@@ -1533,7 +1585,7 @@ export default function AcademyPage() {
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">
-                        Current Mastery
+                        Current Progress Signal
                       </span>
                       <Badge
                         variant="outline"
@@ -1549,13 +1601,24 @@ export default function AcademyPage() {
                     <Progress value={selectedSkill.mastery} className="h-3" />
                     <p className="text-xs text-muted-foreground">
                       {selectedSkill.mastery < 30
-                        ? "Keep practicing to build foundational knowledge"
+                        ? "No meaningful completion evidence yet. Start mapped lessons for this skill"
                         : selectedSkill.mastery < 60
-                          ? "You're making great progress!"
+                          ? "You are building measurable momentum"
                           : "Excellent mastery! Consider teaching others"}
                     </p>
                   </div>
                 </div>
+
+                {!hasRealSkillData &&
+                  skillDataSource === "career_plan" &&
+                  planDetails?.topGaps && (
+                    <div className="rounded-xl border border-amber-300/40 bg-amber-100/40 dark:bg-amber-900/20 p-3">
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        Plan-driven mode: these skills are seeded from your active plan.
+                        Signals remain 0% until you complete related lessons.
+                      </p>
+                    </div>
+                  )}
 
                 {/* Skill Importance */}
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
@@ -1686,8 +1749,8 @@ export default function AcademyPage() {
                     Voice Mock Interview
                   </CardTitle>
                   <CardDescription>
-                    Practice with a local AI interviewer using natural voice
-                    conversation
+                    Practice with an Ollama Cloud interviewer using natural
+                    voice conversation
                   </CardDescription>
                 </div>
               </div>
@@ -1696,7 +1759,7 @@ export default function AcademyPage() {
                 className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
               >
                 <Zap className="w-3 h-3 mr-1" />
-                Local AI
+                Ollama Cloud
               </Badge>
             </div>
           </CardHeader>
@@ -1705,10 +1768,10 @@ export default function AcademyPage() {
               <div className="p-3 rounded-lg bg-background/50 border border-border/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Mic className="w-4 h-4 text-emerald-500" />
-                  <span className="text-sm font-semibold">Local Voice</span>
+                  <span className="text-sm font-semibold">Cloud Voice</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Natural conversation powered by local Ollama and browser
+                  Natural conversation powered by Ollama Cloud and browser
                   speech tools
                 </p>
               </div>

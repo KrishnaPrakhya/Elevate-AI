@@ -3,6 +3,7 @@
 import { getDashboardInsights } from "@/actions/dashboard";
 import { getOnboardingStatus, getUser } from "@/actions/user";
 import { getAcademyDashboard } from "@/actions/academy";
+import { getPerformanceIntelligence } from "@/actions/performance";
 import { getUserLearningSummary } from "@/lib/integrations/academy-career-bridge";
 import type { CareerInsight } from "@/lib/ai/career-agent";
 import { useRouter } from "next/navigation";
@@ -28,6 +29,29 @@ export interface DashboardInsights extends Omit<
 > {
   salaryRanges: SalaryRange[];
 }
+
+type ActivePlan = {
+  id: string;
+  targetRole: string;
+  source: "academy" | "career-tools";
+  createdAt: string;
+  timelineWeeks: number;
+  weeklyHours: number;
+  checkpoints: {
+    label: string;
+    metric: string;
+    target: string;
+  }[];
+  planDetails?: {
+    topActions?: {
+      title: string;
+      priority: "high" | "medium" | "low";
+      description: string;
+    }[];
+    topGaps?: { skill: string; importance: number }[];
+    weeklyPlan?: { week: number; focus: string; goals: string[] }[];
+  };
+};
 
 interface DashboardData {
   rawInsights: DashboardInsights;
@@ -57,6 +81,42 @@ interface DashboardData {
     bio?: string | null;
   } | null;
   careerInsight: CareerInsight | null;
+  performanceInsights: {
+    stats: {
+      technicalQuizAverage: number | null;
+      interviewSimulationAverage: number | null;
+      technicalQuizAttempts14d: number;
+      interviewSimulations14d: number;
+      lessonsCompleted7d: number;
+      activeEnrollments: number;
+      operationsTracked7d: number;
+    };
+    nextActions: CareerInsight["recommendedActions"];
+    recentActions: {
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      status: string;
+      executedAt: string;
+      whyThisWasSuggested: string;
+    }[];
+    rationaleSummary: string[];
+    weakAreas: string[];
+  } | null;
+  activePlan: ActivePlan | null;
+}
+
+function mapPlanActions(activePlan: ActivePlan | null): CareerInsight["recommendedActions"] {
+  const topActions = activePlan?.planDetails?.topActions || [];
+  return topActions.slice(0, 5).map((action) => ({
+    type: "skill",
+    title: action.title,
+    description: action.description,
+    priority: action.priority,
+    reasoning: `From your active ${activePlan?.source || "academy"} plan for ${activePlan?.targetRole || "your target role"}.`,
+    actionUrl: "/academy",
+  }));
 }
 
 function DashboardPage() {
@@ -70,6 +130,8 @@ function DashboardPage() {
     async function loadCareerInsights(
       user: DashboardData["user"],
       learningSummary: DashboardData["learningSummary"],
+      performanceInsights: DashboardData["performanceInsights"],
+      activePlan: DashboardData["activePlan"],
     ) {
       if (!user || !isMounted) return;
 
@@ -81,16 +143,53 @@ function DashboardPage() {
           experience: user.experience,
           skills: user.skills || [],
           bio: user.bio,
+          targetRole: activePlan?.targetRole,
           recentActivity: learningSummary
-            ? `Completed ${learningSummary.activeEnrollments} courses`
+            ? `Active enrollments: ${learningSummary.activeEnrollments}`
             : undefined,
+          weakAreas:
+            (performanceInsights?.weakAreas?.length ?? 0) > 0
+              ? performanceInsights?.weakAreas
+              : activePlan?.planDetails?.topGaps?.map((gap) => gap.skill) ||
+                undefined,
         }),
       }).catch(() => null);
 
       if (!isMounted || !response?.ok) return;
 
       const careerInsight = (await response.json()) as CareerInsight;
-      setData((prev) => (prev ? { ...prev, careerInsight } : prev));
+      const planActions = mapPlanActions(activePlan);
+      const statsActions = performanceInsights?.nextActions || [];
+      const mergedActions = !activePlan
+        ? [
+            {
+              type: "course",
+              title: "Generate your Academy Learning Plan",
+              description:
+                "Create your plan first so all next steps, interview cadence, and deadlines align to one roadmap.",
+              priority: "high",
+              reasoning:
+                "Plan-first mode is required before personalized execution recommendations are finalized.",
+              actionUrl: "/academy#generate-plan-section",
+            },
+          ]
+        : planActions.length > 0
+          ? planActions
+          : statsActions.length > 0
+            ? statsActions
+            : careerInsight.recommendedActions || [];
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              careerInsight: {
+                ...careerInsight,
+                recommendedActions: mergedActions,
+              },
+            }
+          : prev,
+      );
     }
 
     async function load() {
@@ -101,13 +200,25 @@ function DashboardPage() {
           return;
         }
 
-        const [rawInsights, academyData, learningSummary, user] =
-          await Promise.all([
-            getDashboardInsights(),
-            getAcademyDashboard().catch(() => null),
-            getUserLearningSummary().catch(() => null),
-            getUser().catch(() => null),
-          ]);
+        const [
+          rawInsights,
+          academyData,
+          learningSummary,
+          user,
+          performanceInsights,
+          plannerState,
+        ] = await Promise.all([
+          getDashboardInsights(),
+          getAcademyDashboard().catch(() => null),
+          getUserLearningSummary().catch(() => null),
+          getUser().catch(() => null),
+          getPerformanceIntelligence().catch(() => null),
+          fetch("/api/career-planner")
+            .then((res) => (res.ok ? res.json() : null))
+            .catch(() => null),
+        ]);
+
+        const activePlan = plannerState?.activePlan || null;
 
         const insights: IndustryInsights = {
           ...rawInsights,
@@ -129,11 +240,18 @@ function DashboardPage() {
           learningSummary,
           user,
           careerInsight: null,
+          performanceInsights,
+          activePlan,
         });
         setLoading(false);
 
         // Non-blocking AI insights fetch so dashboard loads immediately.
-        void loadCareerInsights(user, learningSummary);
+        void loadCareerInsights(
+          user,
+          learningSummary,
+          performanceInsights,
+          activePlan,
+        );
       } catch (error) {
         console.error("Error loading dashboard:", error);
         if (!isMounted) return;
@@ -158,8 +276,15 @@ function DashboardPage() {
     );
   }
 
-  const { rawInsights, academyData, learningSummary, user, careerInsight } =
-    data;
+  const {
+    rawInsights,
+    academyData,
+    learningSummary,
+    user,
+    careerInsight,
+    performanceInsights,
+    activePlan,
+  } = data;
   const hasActiveEnrollment =
     learningSummary && learningSummary.activeEnrollments > 0;
 
@@ -269,6 +394,8 @@ function DashboardPage() {
       <DashBoardView
         insights={rawInsights}
         careerInsight={careerInsight}
+        performanceInsights={performanceInsights}
+        activePlan={activePlan}
         userId={user?.id}
         academyData={academyData}
         learningSummary={learningSummary}

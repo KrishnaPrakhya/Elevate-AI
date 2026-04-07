@@ -24,7 +24,7 @@ import useFetch from "@/hooks/use-fetch";
 import { completeOnboardingWithAI } from "@/actions/onboarding";
 import { toast } from "sonner";
 import AcademyOnboardingCard from "./academy-onboarding-card";
-import { targetRoles, getRolesByIndustry } from "@/data/targetRoles";
+import { getRoleOptionsByIndustry } from "@/actions/profile-options";
 
 interface Industries {
   id: string;
@@ -65,12 +65,32 @@ function OnboardingForm(props: Props) {
 
   // Update available roles when industry changes
   useEffect(() => {
-    if (watchIndustry) {
-      const roles = getRolesByIndustry(watchIndustry);
-      setAvailableRoles(roles.map((r) => ({ id: r.id, title: r.title })));
-      // Reset target role when industry changes
+    let cancelled = false;
+
+    async function loadRoles() {
+      if (!watchIndustry) {
+        setAvailableRoles([]);
+        return;
+      }
+
       setValue("targetRole", "");
+      try {
+        const roles = await getRoleOptionsByIndustry(watchIndustry);
+        if (!cancelled) {
+          setAvailableRoles(roles);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableRoles([]);
+        }
+      }
     }
+
+    void loadRoles();
+
+    return () => {
+      cancelled = true;
+    };
   }, [watchIndustry, setValue]);
 
   const {
@@ -83,8 +103,6 @@ function OnboardingForm(props: Props) {
       const formattedIndustry = `${values.industry}-${values.subIndustry
         .toLowerCase()
         .replace(/ /g, "-")}`;
-      // Get the full role title from the role ID
-      const selectedRole = targetRoles.find((r) => r.id === values.targetRole);
       await updateUserFn({
         ...values,
         industry: formattedIndustry,
@@ -92,7 +110,7 @@ function OnboardingForm(props: Props) {
         bio: values.bio || "",
         skills: values.skills || [],
         careerGoals: [],
-        targetRole: selectedRole?.title || values.targetRole,
+        targetRole: values.targetRole,
         availableHoursPerWeek: 8,
         learningTimeline: "3 months",
       });
@@ -256,7 +274,7 @@ function OnboardingForm(props: Props) {
                   </SelectTrigger>
                   <SelectContent>
                     {availableRoles.map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
+                      <SelectItem key={role.id} value={role.title}>
                         {role.title}
                       </SelectItem>
                     ))}

@@ -83,6 +83,48 @@ export type IndustryInsights = {
 interface Props {
   insights: IndustryInsights;
   careerInsight?: CareerInsight | null;
+  activePlan?: {
+    targetRole: string;
+    source: "academy" | "career-tools";
+    createdAt: string;
+    timelineWeeks: number;
+    weeklyHours: number;
+    checkpoints: {
+      label: string;
+      metric: string;
+      target: string;
+    }[];
+    planDetails?: {
+      topActions?: {
+        title: string;
+        priority: "high" | "medium" | "low";
+        description: string;
+      }[];
+      weeklyPlan?: { week: number; focus: string; goals: string[] }[];
+    };
+  } | null;
+  performanceInsights?: {
+    stats: {
+      technicalQuizAverage: number | null;
+      interviewSimulationAverage: number | null;
+      technicalQuizAttempts14d: number;
+      interviewSimulations14d: number;
+      lessonsCompleted7d: number;
+      activeEnrollments: number;
+      operationsTracked7d: number;
+    };
+    nextActions: CareerInsight["recommendedActions"];
+    recentActions: {
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      status: string;
+      executedAt: string;
+      whyThisWasSuggested: string;
+    }[];
+    rationaleSummary: string[];
+  } | null;
   userId?: string;
   academyData?: {
     enrollments: unknown[];
@@ -106,6 +148,10 @@ interface Props {
 
 function DashBoardView(props: Props) {
   const { insights } = props;
+  const planStartDate = props.activePlan?.createdAt
+    ? new Date(props.activePlan.createdAt)
+    : null;
+  const upcomingPlanWeeks = props.activePlan?.planDetails?.weeklyPlan?.slice(0, 3) || [];
   const [activeTab, setActiveTab] = useState("overview");
   console.log(insights);
 
@@ -322,18 +368,35 @@ function DashBoardView(props: Props) {
                         Target Role
                       </p>
                       <p className="text-sm font-medium">
-                        {props.careerInsight?.careerPathSuggestions?.[0]
-                          ?.role || "Not set"}
+                        {props.activePlan?.targetRole ||
+                          props.careerInsight?.careerPathSuggestions?.[0]?.role ||
+                          "Not set"}
                       </p>
+                      {props.activePlan && (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Timeline: {props.activePlan.timelineWeeks} weeks •{" "}
+                            {props.activePlan.weeklyHours}h/week
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Plan source: {props.activePlan.source}
+                          </p>
+                        </>
+                      )}
+                      {!props.activePlan && (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          Generate your Learning Plan in Academy to unlock plan-driven next steps.
+                        </p>
+                      )}
                       <div className="pt-2">
-                        <Link href="/chatbot">
+                        <Link href="/academy">
                           <Button
                             size="sm"
                             variant="outline"
                             className="w-full text-xs gap-1"
                           >
                             <ArrowRight className="w-3 h-3" />
-                            View Plan
+                            {props.activePlan ? "Open Plan" : "Create Plan"}
                           </Button>
                         </Link>
                       </div>
@@ -478,6 +541,154 @@ function DashBoardView(props: Props) {
                       </div>
                     </div>
                   )}
+
+                {props.activePlan &&
+                  ((props.activePlan.checkpoints?.length || 0) > 0 ||
+                    upcomingPlanWeeks.length > 0) && (
+                    <div className="mt-4 p-3 rounded-lg bg-background/50 border border-border/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        <h4 className="text-sm font-semibold">
+                          Plan Checkpoints & Deadlines
+                        </h4>
+                      </div>
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        {props.activePlan.checkpoints?.slice(0, 2).map((checkpoint, idx) => (
+                          <p key={`${checkpoint.metric}-${idx}`}>
+                            • {checkpoint.label}: {checkpoint.target}
+                          </p>
+                        ))}
+                        {upcomingPlanWeeks.map((week, idx) => {
+                          const dueDate =
+                            planStartDate && Number.isFinite(week.week)
+                              ? format(
+                                  new Date(
+                                    planStartDate.getTime() +
+                                      Math.max(0, week.week - 1) * 7 * 24 * 60 * 60 * 1000,
+                                  ),
+                                  "MMM d",
+                                )
+                              : "TBD";
+
+                          return (
+                            <p key={`${week.week}-${idx}`}>
+                              • Week {week.week} ({dueDate}): {week.focus}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                {props.performanceInsights && (
+                  <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Lightbulb className="w-4 h-4 text-primary" />
+                        <h4 className="text-sm font-semibold">
+                          Why AI Suggests These Next Steps
+                        </h4>
+                      </div>
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        {props.performanceInsights.rationaleSummary.length >
+                        0 ? (
+                          props.performanceInsights.rationaleSummary
+                            .slice(0, 3)
+                            .map((reason, idx) => <p key={idx}>• {reason}</p>)
+                        ) : (
+                          <p>
+                            • Recommendations are generated from your recent
+                            assessment trends and activity cadence.
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded border border-border/50 p-2">
+                          <p className="text-muted-foreground">Quiz Avg</p>
+                          <p className="font-semibold">
+                            {props.performanceInsights.stats
+                              .technicalQuizAverage ?? "N/A"}
+                            %
+                          </p>
+                        </div>
+                        <div className="rounded border border-border/50 p-2">
+                          <p className="text-muted-foreground">Interview Avg</p>
+                          <p className="font-semibold">
+                            {props.performanceInsights.stats
+                              .interviewSimulationAverage ?? "N/A"}
+                            %
+                          </p>
+                        </div>
+                        <div className="rounded border border-border/50 p-2">
+                          <p className="text-muted-foreground">Quizzes (14d)</p>
+                          <p className="font-semibold">
+                            {
+                              props.performanceInsights.stats
+                                .technicalQuizAttempts14d
+                            }
+                          </p>
+                        </div>
+                        <div className="rounded border border-border/50 p-2">
+                          <p className="text-muted-foreground">
+                            Voice Sims (14d)
+                          </p>
+                          <p className="font-semibold">
+                            {
+                              props.performanceInsights.stats
+                                .interviewSimulations14d
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="w-4 h-4 text-primary" />
+                        <h4 className="text-sm font-semibold">
+                          Your Recent Actions
+                        </h4>
+                      </div>
+                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                        {props.performanceInsights.recentActions.length > 0 ? (
+                          props.performanceInsights.recentActions
+                            .slice(0, 6)
+                            .map((action) => (
+                              <div
+                                key={action.id}
+                                className="rounded border border-border/50 p-2"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-medium">
+                                    {action.title}
+                                  </p>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px]"
+                                  >
+                                    {formatDistanceToNow(
+                                      new Date(action.executedAt),
+                                      {
+                                        addSuffix: true,
+                                      },
+                                    )}
+                                  </Badge>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground mt-1">
+                                  {action.whyThisWasSuggested}
+                                </p>
+                              </div>
+                            ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No tracked actions yet. Complete a quiz, interview,
+                            or lesson to build your performance history.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>

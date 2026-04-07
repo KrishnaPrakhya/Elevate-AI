@@ -107,7 +107,9 @@ interface DashboardData {
   activePlan: ActivePlan | null;
 }
 
-function mapPlanActions(activePlan: ActivePlan | null): CareerInsight["recommendedActions"] {
+function mapPlanActions(
+  activePlan: ActivePlan | null,
+): CareerInsight["recommendedActions"] {
   const topActions = activePlan?.planDetails?.topActions || [];
   return topActions.slice(0, 5).map((action) => ({
     type: "skill",

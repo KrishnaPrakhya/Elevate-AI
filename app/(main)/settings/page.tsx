@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +24,10 @@ import { Loader2, Save, X, Target, Code, Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { industries } from "@/data/industries";
 import { updateUserProfile, getUserProfile } from "@/actions/user";
-import { getIndustryOptions, getRoleOptionsByIndustry } from "@/actions/profile-options";
+import {
+  getIndustryOptions,
+  getRoleOptionsByIndustry,
+} from "@/actions/profile-options";
 import useFetch from "@/hooks/use-fetch";
 
 interface UserProfile {
@@ -38,7 +47,9 @@ export default function SettingsPage() {
   const [editedRole, setEditedRole] = useState<string>("");
   const [editedSkills, setEditedSkills] = useState<string>("");
   const [industryOptions, setIndustryOptions] = useState(industries);
-  const [availableRoles, setAvailableRoles] = useState<{ id: string; title: string }[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<
+    { id: string; title: string }[]
+  >([]);
 
   const { loading: profileLoading, fn: loadProfile } = useFetch(getUserProfile);
   const { loading: saveLoading, fn: saveProfile } = useFetch(updateUserProfile);
@@ -83,15 +94,26 @@ export default function SettingsPage() {
           setAvailableRoles(
             hasCurrentRole
               ? roles
-              : [{ id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`, title: editedRole }, ...roles]
+              : [
+                  {
+                    id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`,
+                    title: editedRole,
+                  },
+                  ...roles,
+                ],
           );
         })
         .catch(() => {
           if (!cancelled) {
             setAvailableRoles(
               editedRole
-                ? [{ id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`, title: editedRole }]
-                : []
+                ? [
+                    {
+                      id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`,
+                      title: editedRole,
+                    },
+                  ]
+                : [],
             );
           }
         });
@@ -129,7 +151,7 @@ export default function SettingsPage() {
               targetRole: editedRole || null,
               skills,
             }
-          : null
+          : null,
       );
 
       toast.success("Profile updated successfully");
@@ -140,13 +162,18 @@ export default function SettingsPage() {
   };
 
   const handleAddSkill = (skill: string) => {
-    if (skill.trim() && !editedSkills.toLowerCase().includes(skill.toLowerCase())) {
+    if (
+      skill.trim() &&
+      !editedSkills.toLowerCase().includes(skill.toLowerCase())
+    ) {
       setEditedSkills((prev) => (prev ? `${prev}, ${skill}` : skill));
     }
   };
 
   const handleRemoveSkill = (skillToRemove: string) => {
-    const skills = editedSkills.split(",").filter((s) => s.trim() !== skillToRemove);
+    const skills = editedSkills
+      .split(",")
+      .filter((s) => s.trim() !== skillToRemove);
     setEditedSkills(skills.join(", "));
   };
 
@@ -179,7 +206,8 @@ export default function SettingsPage() {
               <CardTitle>Target Role</CardTitle>
             </div>
             <CardDescription>
-              Your primary career focus. This drives personalized recommendations across the platform.
+              Your primary career focus. This drives personalized
+              recommendations across the platform.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -221,7 +249,8 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Changing your target role will update your learning recommendations and career plan.
+                  Changing your target role will update your learning
+                  recommendations and career plan.
                 </p>
               </div>
             )}

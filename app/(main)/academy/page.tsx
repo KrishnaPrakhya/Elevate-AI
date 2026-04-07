@@ -193,11 +193,13 @@ export default function AcademyPage() {
     setDashboard(dashData);
     setRecommendations(recData);
     setSkillGaps(skillAnalysis.topGaps || []);
-    setSkillDataSource((skillAnalysis.source || "none") as
-      | "none"
-      | "career_plan"
-      | "llm_analysis"
-      | "error");
+    setSkillDataSource(
+      (skillAnalysis.source || "none") as
+        | "none"
+        | "career_plan"
+        | "llm_analysis"
+        | "error",
+    );
     setHasRealSkillData(
       Boolean(skillAnalysis.hasData) && skillAnalysis.source === "llm_analysis",
     );
@@ -286,7 +288,7 @@ export default function AcademyPage() {
                 prev ||
                 historyData.activePlan.targetRole ||
                 currentUser?.targetRole ||
-                ""
+                "",
             );
           }
         }
@@ -893,7 +895,7 @@ export default function AcademyPage() {
 
                 <div className="absolute right-4 bottom-4 z-10 rounded-xl border border-primary/20 bg-background/90 px-4 py-3 backdrop-blur-sm shadow-lg">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">
-                        Lessons Completed
+                    Lessons Completed
                   </p>
                   <p className="text-lg font-bold text-primary mt-0.5">
                     {stats?.totalLessonsCompleted || 0}
@@ -1614,8 +1616,9 @@ export default function AcademyPage() {
                   planDetails?.topGaps && (
                     <div className="rounded-xl border border-amber-300/40 bg-amber-100/40 dark:bg-amber-900/20 p-3">
                       <p className="text-xs text-amber-800 dark:text-amber-200">
-                        Plan-driven mode: these skills are seeded from your active plan.
-                        Signals remain 0% until you complete related lessons.
+                        Plan-driven mode: these skills are seeded from your
+                        active plan. Signals remain 0% until you complete
+                        related lessons.
                       </p>
                     </div>
                   )}

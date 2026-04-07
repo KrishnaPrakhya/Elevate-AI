@@ -157,7 +157,8 @@ export default function LocalInterviewSimulator({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [selectedRole, setSelectedRole] = useState("Software Engineer");
   const [selectedLevel, setSelectedLevel] = useState("Mid-Level");
-  const [roleOptions, setRoleOptions] = useState<string[]>(DEFAULT_ROLE_OPTIONS);
+  const [roleOptions, setRoleOptions] =
+    useState<string[]>(DEFAULT_ROLE_OPTIONS);
   const [interviewSource, setInterviewSource] = useState("ollama-cloud");
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [lastInterviewerReply, setLastInterviewerReply] = useState("");
@@ -242,7 +243,9 @@ export default function LocalInterviewSimulator({
         setSelectedLevel(toExperienceLevel(profile.experience));
 
         const industryId = profile.industry?.split("-")[0] || "";
-        const dynamicRoles = await getRoleOptionsByIndustry(industryId).catch(() => []);
+        const dynamicRoles = await getRoleOptionsByIndustry(industryId).catch(
+          () => [],
+        );
         if (cancelled) return;
 
         const mergedRoles = Array.from(
@@ -251,8 +254,8 @@ export default function LocalInterviewSimulator({
               ...(profileRole ? [profileRole] : []),
               ...dynamicRoles.map((role) => role.title),
               ...DEFAULT_ROLE_OPTIONS,
-            ].filter(Boolean)
-          )
+            ].filter(Boolean),
+          ),
         );
         if (mergedRoles.length > 0) {
           setRoleOptions(mergedRoles);

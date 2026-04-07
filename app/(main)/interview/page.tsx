@@ -89,7 +89,7 @@ export default function Page() {
                 <div>
                   <h2 className="text-xl font-bold">Live Voice Interview</h2>
                   <p className="text-sm text-muted-foreground">
-                    Real-time voice-to-voice AI interviewer
+                    Local voice interview with Ollama
                   </p>
                 </div>
               </div>
@@ -102,15 +102,15 @@ export default function Page() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>LiveKit + Ollama Cloud</span>
+                  <span>Local Ollama voice agent</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>Natural voice conversation</span>
+                  <span>Browser-based speech capture</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>Real-time transcription</span>
+                  <span>Private, local processing</span>
                 </div>
               </div>
             </div>

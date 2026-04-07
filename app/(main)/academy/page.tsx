@@ -1686,7 +1686,7 @@ export default function AcademyPage() {
                     Voice Mock Interview
                   </CardTitle>
                   <CardDescription>
-                    Practice with real-time AI interviewer using natural voice
+                    Practice with a local AI interviewer using natural voice
                     conversation
                   </CardDescription>
                 </div>
@@ -1696,7 +1696,7 @@ export default function AcademyPage() {
                 className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
               >
                 <Zap className="w-3 h-3 mr-1" />
-                Live AI
+                Local AI
               </Badge>
             </div>
           </CardHeader>
@@ -1705,11 +1705,11 @@ export default function AcademyPage() {
               <div className="p-3 rounded-lg bg-background/50 border border-border/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Mic className="w-4 h-4 text-emerald-500" />
-                  <span className="text-sm font-semibold">Voice-to-Voice</span>
+                  <span className="text-sm font-semibold">Local Voice</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Natural conversation with AI interviewer powered by LiveKit +
-                  Ollama Cloud
+                  Natural conversation powered by local Ollama and browser
+                  speech tools
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-background/50 border border-border/50">

@@ -8,6 +8,7 @@ import OpenAI from "openai";
 import { inngest } from "@/lib/inngest/client";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
 import { redis } from "@/lib/redis";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
 
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
@@ -105,6 +106,22 @@ export async function enrollInPath(learningPathId: string) {
     },
   });
 
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: "Enrolled in learning path",
+    description: `Enrollment created for ${path.title}.`,
+    params: {
+      learningPathId,
+      enrollmentId: enrollment.id,
+    },
+    metadata: {
+      source: "academy",
+      reason:
+        "Enrollment activity is tracked to explain AI recommendations and monitor learning-path adherence.",
+    },
+  });
+
   // Trigger enrollment email via Inngest
   await inngest.send({
     name: "academy/enrollment",
@@ -162,6 +179,9 @@ export async function updateLessonProgress(
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
   const progress = await db.lessonProgress.upsert({
     where: {
       enrollmentId_lessonId: { enrollmentId, lessonId },
@@ -184,6 +204,27 @@ export async function updateLessonProgress(
 
   // Update enrollment progress
   await updateEnrollmentProgress(enrollmentId);
+
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: `Lesson progress ${status.toLowerCase().replace("_", " ")}`,
+    description:
+      status === "COMPLETED"
+        ? "Lesson completion recorded and synced into the learning-performance timeline."
+        : "Lesson status was updated to keep progress analytics up to date.",
+    params: {
+      enrollmentId,
+      lessonId,
+      status,
+      timeSpentMinutes: timeSpentMinutes || 0,
+    },
+    metadata: {
+      source: "academy",
+      reason:
+        "Lesson activity is captured so AI can recommend interview and quiz timing based on real learning momentum.",
+    },
+  });
 
   // Check for achievements
   if (status === "COMPLETED") {

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Transcription handled in the browser",
-        message: "Use the built-in speech recognition instead of this endpoint.",
+        message: "Use /interview/simulator-live where browser speech recognition feeds the Ollama Cloud interview flow.",
       },
       { status: 410 }
     );

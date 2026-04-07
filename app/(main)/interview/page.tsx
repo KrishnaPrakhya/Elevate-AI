@@ -89,7 +89,7 @@ export default function Page() {
                 <div>
                   <h2 className="text-xl font-bold">Live Voice Interview</h2>
                   <p className="text-sm text-muted-foreground">
-                    Local voice interview with Ollama
+                    Real-time voice interview with Ollama Cloud
                   </p>
                 </div>
               </div>
@@ -102,7 +102,7 @@ export default function Page() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>Local Ollama voice agent</span>
+                  <span>Ollama Cloud interview engine</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckIcon />
@@ -110,7 +110,7 @@ export default function Page() {
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>Private, local processing</span>
+                  <span>Adaptive cloud feedback and scoring</span>
                 </div>
               </div>
             </div>

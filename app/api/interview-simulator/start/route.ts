@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { db } from "@/lib/prisma";
 import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || "ollama";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:latest";
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+const ollamaModel = process.env.OLLAMA_MODEL || "gpt-oss:20b-cloud";
 
-const client = new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl });
+const client = ollamaApiKey
+  ? new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl })
+  : null;
+
+const toExperienceLevel = (experience?: number | null) => {
+  if (typeof experience !== "number") return "Mid-Level";
+  if (experience <= 0) return "Intern";
+  if (experience < 2) return "Junior";
+  if (experience < 5) return "Mid-Level";
+  if (experience < 8) return "Senior";
+  if (experience < 12) return "Staff";
+  return "Principal";
+};
 
 const buildFallbackQuestions = (role: string, level: string, numQuestions: number) => {
   const templates = [
@@ -17,13 +30,24 @@ const buildFallbackQuestions = (role: string, level: string, numQuestions: numbe
     "What would your first 90 days look like in this role?",
   ];
 
-  return templates.slice(0, Math.max(1, Math.min(numQuestions, 5))).map((question, index) => ({
-    id: `q-${index + 1}`,
-    question,
-    category: index % 2 === 0 ? "behavioral" : "technical",
-    difficulty: index < 2 ? "easy" : index < 4 ? "medium" : "hard",
-    expectedDuration: 120,
-  }));
+  const safeCount = Math.max(1, Math.min(numQuestions, 10));
+  return Array.from({ length: safeCount }, (_, index) => {
+    const template = templates[index % templates.length];
+    const difficulty =
+      index < Math.ceil(safeCount * 0.3)
+        ? "easy"
+        : index < Math.ceil(safeCount * 0.75)
+        ? "medium"
+        : "hard";
+
+    return {
+      id: `q-${index + 1}`,
+      question: template,
+      category: index % 2 === 0 ? "behavioral" : "technical",
+      difficulty,
+      expectedDuration: difficulty === "hard" ? 150 : 120,
+    };
+  });
 };
 
 const safeJsonParse = (value: string) => {
@@ -32,6 +56,24 @@ const safeJsonParse = (value: string) => {
   } catch {
     return null;
   }
+};
+
+const extractJsonArray = (value: string) => {
+  const cleaned = value.replace(/```json|```/g, "").trim();
+  const direct = safeJsonParse(cleaned);
+  if (Array.isArray(direct)) {
+    return direct;
+  }
+
+  const startIndex = cleaned.indexOf("[");
+  const endIndex = cleaned.lastIndexOf("]");
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return [];
+  }
+
+  const extracted = cleaned.slice(startIndex, endIndex + 1);
+  const parsed = safeJsonParse(extracted);
+  return Array.isArray(parsed) ? parsed : [];
 };
 
 const sanitizeQuestions = (
@@ -64,8 +106,36 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { role, level, mode, numQuestions = 5 } = body;
+    const safeNumQuestions = Math.min(10, Math.max(3, Number(numQuestions) || 5));
+    const user = await db.user.findUnique({
+      where: { clerkUserId: userId },
+      select: { targetRole: true, experience: true },
+    });
 
-    const prompt = `Generate ${numQuestions} interview questions for a ${level} ${role} candidate.
+    const safeRole =
+      typeof role === "string" && role.trim().length > 0
+        ? role.trim()
+        : user?.targetRole?.trim() || "Software Engineer";
+    const safeLevel =
+      typeof level === "string" && level.trim().length > 0
+        ? level.trim()
+        : toExperienceLevel(user?.experience);
+
+    if (!client) {
+      return NextResponse.json({
+        questions: buildFallbackQuestions(
+          safeRole,
+          safeLevel,
+          safeNumQuestions
+        ),
+        role: safeRole,
+        level: safeLevel,
+        mode,
+        source: "fallback-no-cloud-key",
+      });
+    }
+
+    const prompt = `Generate ${safeNumQuestions} interview questions for a ${safeLevel} ${safeRole} candidate.
 Return ONLY a JSON array. Each item must include:
 - id: string
 - question: string
@@ -75,52 +145,61 @@ Return ONLY a JSON array. Each item must include:
 - followUps: string[] (optional)
 Avoid markdown or extra text.`;
 
-    const result = await client.chat.completions.create({
-      model: ollamaModel,
-      messages: [
-        {
-          role: "system",
-          content: "You are a senior interviewer creating realistic mock interview questions.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.6,
-    });
+    try {
+      const result = await client.chat.completions.create({
+        model: ollamaModel,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior interviewer creating realistic, role-specific mock interview questions.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.6,
+      });
 
-    let content = result.choices[0]?.message?.content?.trim() || "";
-    content = content.replace(/```json|```/g, "").trim();
-    const parsed = safeJsonParse(content);
-    const rawQuestions = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.questions)
-      ? parsed.questions
-      : [];
+      const content = result.choices[0]?.message?.content?.trim() || "";
+      const rawQuestions = extractJsonArray(content);
+      const questions = sanitizeQuestions(rawQuestions, safeNumQuestions).filter(
+        (question) => question.question.length > 0
+      );
 
-    const questions = sanitizeQuestions(rawQuestions, numQuestions).filter(
-      (question) => question.question.length > 0
-    );
+      if (!questions.length) {
+        return NextResponse.json({
+          questions: buildFallbackQuestions(
+            safeRole,
+            safeLevel,
+            safeNumQuestions
+          ),
+          role: safeRole,
+          level: safeLevel,
+          mode,
+          source: "fallback-invalid-model-output",
+        });
+      }
 
-    if (!questions.length) {
+      return NextResponse.json({
+        questions,
+        role: safeRole,
+        level: safeLevel,
+        mode,
+        source: "ollama-cloud",
+      });
+    } catch (backendError) {
+      console.warn("Cloud question generation unavailable, using fallback:", backendError);
       return NextResponse.json({
         questions: buildFallbackQuestions(
-          role || "Software Engineer",
-          level || "Mid-Level",
-          numQuestions
+          safeRole,
+          safeLevel,
+          safeNumQuestions
         ),
-        role,
-        level,
+        role: safeRole,
+        level: safeLevel,
         mode,
-        source: "fallback",
+        source: "fallback-cloud-error",
       });
     }
-
-    return NextResponse.json({
-      questions,
-      role,
-      level,
-      mode,
-      source: "ollama",
-    });
   } catch (error) {
     console.error("Error starting interview:", error);
     return NextResponse.json(

@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
 import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || "ollama";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:latest";
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+const ollamaModel = process.env.OLLAMA_MODEL || "gpt-oss:20b-cloud";
 
-const client = new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl });
+const client = ollamaApiKey
+  ? new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl })
+  : null;
+
+type InterviewResponse = {
+  questionId?: string;
+  answer?: string;
+  duration?: number;
+};
 
 const safeJsonParse = (value: string) => {
   try {
@@ -17,33 +26,73 @@ const safeJsonParse = (value: string) => {
   }
 };
 
-const buildFallbackFeedback = (responses: Array<{ answer?: string }>, duration: number) => {
+const extractJsonObject = (value: string) => {
+  const cleaned = value.replace(/```json|```/g, "").trim();
+  const direct = safeJsonParse(cleaned);
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+    return direct as Record<string, unknown>;
+  }
+
+  const startIndex = cleaned.indexOf("{");
+  const endIndex = cleaned.lastIndexOf("}");
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return null;
+  }
+
+  const extracted = cleaned.slice(startIndex, endIndex + 1);
+  const parsed = safeJsonParse(extracted);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : null;
+};
+
+const clampScore = (value: number, min = 0, max = 100) =>
+  Math.max(min, Math.min(max, Math.round(value)));
+
+const toText = (value: unknown) => (typeof value === "string" ? value : "");
+
+const getScore = (value: unknown, fallback: number) =>
+  typeof value === "number" ? clampScore(value) : fallback;
+
+const buildFallbackFeedback = (responses: InterviewResponse[], durationMinutes: number) => {
   const answeredCount = Array.isArray(responses)
     ? responses.filter((r) => (r.answer || "").trim().length > 0).length
     : 0;
   const totalCount = Array.isArray(responses) ? responses.length : 0;
   const completionRatio = totalCount > 0 ? answeredCount / totalCount : 0;
-  const overall = Math.max(55, Math.min(95, Math.round(55 + completionRatio * 40)));
+
+  const allAnswers = responses
+    .map((response) => (response.answer || "").trim())
+    .filter((answer) => answer.length > 0);
+  const avgWordCount =
+    allAnswers.length > 0
+      ? allAnswers
+          .map((answer) => answer.split(/\s+/).filter(Boolean).length)
+          .reduce((sum, count) => sum + count, 0) / allAnswers.length
+      : 0;
+  const depthRatio = Math.min(1, avgWordCount / 80);
+
+  const overall = clampScore(50 + completionRatio * 28 + depthRatio * 20, 45, 94);
 
   return {
     overall,
     categories: {
-      technical: Math.max(45, Math.min(95, overall - 3)),
-      communication: Math.max(45, Math.min(95, overall + 2)),
-      problemSolving: Math.max(45, Math.min(95, overall - 1)),
-      confidence: Math.max(45, Math.min(95, overall + 1)),
+      technical: clampScore(overall - 2, 42, 95),
+      communication: clampScore(overall + 2, 42, 95),
+      problemSolving: clampScore(overall - 1, 42, 95),
+      confidence: clampScore(overall + 1, 42, 95),
     },
     strengths: [
-      "Maintained a steady pace through the interview",
-      "Showed willingness to think through problems",
-      "Answered questions with clear intent",
+      "Maintained a steady pace and answered consistently",
+      "Demonstrated practical reasoning during problem solving",
+      "Communicated ideas with clear intent",
     ],
     improvements: [
-      "Add more measurable outcomes to each answer",
-      "Use STAR structure for behavioral responses",
-      "Summarize each answer with a clear result",
+      "Use STAR structure more explicitly in behavioral examples",
+      "Add measurable outcomes and technical trade-offs",
+      "Close each answer with a concise business impact statement",
     ],
-    summary: `You completed ${answeredCount}/${totalCount} questions in ${duration} minute(s). Focus on structuring answers with Situation, Action, and Result. Add measurable impact in each answer for stronger interviewer confidence.`,
+    summary: `You completed ${answeredCount}/${totalCount} questions in ${durationMinutes} minute(s). Your responses show solid momentum; to improve further, add concrete metrics and articulate trade-offs clearly. Structure each answer with context, action, and outcome for stronger interview impact.`,
   };
 };
 
@@ -55,7 +104,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { responses, mode, duration = 0 } = body;
+    const { responses, mode, duration = 0, durationSeconds = 0 } = body;
+    const responseList: InterviewResponse[] = Array.isArray(responses) ? responses : [];
+    const safeDurationMinutes = Math.max(
+      1,
+      Number(durationSeconds) > 0
+        ? Math.round(Number(durationSeconds) / 60)
+        : Number(duration) || 1
+    );
 
     // Get user info for personalized feedback
     const user = await db.user.findUnique({
@@ -66,7 +122,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let feedbackData = buildFallbackFeedback(responses || [], duration);
+    let feedbackData = buildFallbackFeedback(responseList, safeDurationMinutes);
 
     const prompt = `Analyze the following interview responses and return ONLY valid JSON with this schema:
 {
@@ -83,59 +139,59 @@ export async function POST(request: NextRequest) {
 }
 Use a professional, encouraging tone. Avoid markdown.
 
-Interview duration: ${duration} minutes
-Responses: ${JSON.stringify(responses || [])}`;
+Scoring guidance:
+- High scores require specific examples, technical reasoning, and measurable impact.
+- Mid scores should indicate incomplete structure or limited depth.
+- Low scores should indicate missing clarity or weak relevance.
 
-    try {
-      const result = await client.chat.completions.create({
-        model: ollamaModel,
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert interviewer providing concise performance feedback.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.4,
-      });
+Interview mode: ${mode || "unknown"}
+Interview duration: ${safeDurationMinutes} minutes
+Responses: ${JSON.stringify(responseList)}`;
 
-      let content = result.choices[0]?.message?.content?.trim() || "";
-      content = content.replace(/```json|```/g, "").trim();
-      const parsed = safeJsonParse(content);
+    if (client) {
+      try {
+        const result = await client.chat.completions.create({
+          model: ollamaModel,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert interviewer providing concise, evidence-based performance feedback. Return only JSON.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.3,
+        });
 
-      if (parsed && typeof parsed === "object") {
-        feedbackData = {
-          overall: typeof parsed.overall === "number" ? parsed.overall : feedbackData.overall,
-          categories: {
-            technical:
-              typeof parsed.categories?.technical === "number"
-                ? parsed.categories.technical
-                : feedbackData.categories.technical,
-            communication:
-              typeof parsed.categories?.communication === "number"
-                ? parsed.categories.communication
-                : feedbackData.categories.communication,
-            problemSolving:
-              typeof parsed.categories?.problemSolving === "number"
-                ? parsed.categories.problemSolving
-                : feedbackData.categories.problemSolving,
-            confidence:
-              typeof parsed.categories?.confidence === "number"
-                ? parsed.categories.confidence
-                : feedbackData.categories.confidence,
-          },
-          strengths: Array.isArray(parsed.strengths)
-            ? parsed.strengths.filter((item: unknown) => typeof item === "string")
-            : feedbackData.strengths,
-          improvements: Array.isArray(parsed.improvements)
-            ? parsed.improvements.filter((item: unknown) => typeof item === "string")
-            : feedbackData.improvements,
-          summary:
-            typeof parsed.summary === "string" ? parsed.summary : feedbackData.summary,
-        };
+        const content = result.choices[0]?.message?.content?.trim() || "";
+        const parsed = extractJsonObject(content);
+
+        if (parsed) {
+          const parsedCategories =
+            parsed.categories && typeof parsed.categories === "object"
+              ? (parsed.categories as Record<string, unknown>)
+              : {};
+
+          feedbackData = {
+            overall: getScore(parsed.overall, feedbackData.overall),
+            categories: {
+              technical: getScore(parsedCategories.technical, feedbackData.categories.technical),
+              communication: getScore(parsedCategories.communication, feedbackData.categories.communication),
+              problemSolving: getScore(parsedCategories.problemSolving, feedbackData.categories.problemSolving),
+              confidence: getScore(parsedCategories.confidence, feedbackData.categories.confidence),
+            },
+            strengths: Array.isArray(parsed.strengths)
+              ? parsed.strengths.filter((item) => typeof item === "string")
+              : feedbackData.strengths,
+            improvements: Array.isArray(parsed.improvements)
+              ? parsed.improvements.filter((item) => typeof item === "string")
+              : feedbackData.improvements,
+            summary: toText(parsed.summary) || feedbackData.summary,
+          };
+        }
+      } catch (backendError) {
+        console.warn("Ollama Cloud feedback unavailable, using fallback:", backendError);
       }
-    } catch (backendError) {
-      console.warn("Ollama feedback unavailable, using fallback:", backendError);
     }
 
     // Save assessment to database
@@ -143,13 +199,35 @@ Responses: ${JSON.stringify(responses || [])}`;
       data: {
         userId: user.id,
         quizScore: feedbackData.overall || 75,
-        questions: responses,
+        questions: responseList,
         category: "Interview Simulation",
         improvementTip: feedbackData.summary || "Continue practicing interview questions",
       },
     });
 
-    return NextResponse.json({ feedback: feedbackData });
+    await recordExecutedAction({
+      userId: user.id,
+      type: "UPDATE_PROGRESS",
+      title: "Voice mock interview completed",
+      description:
+        "Interview simulation finished and feedback was generated from your recent responses.",
+      params: {
+        mode,
+        responseCount: responseList.length,
+        durationMinutes: safeDurationMinutes,
+      },
+      result: {
+        overall: feedbackData.overall,
+        categories: feedbackData.categories,
+      },
+      metadata: {
+        source: "interview-simulator",
+        reason:
+          "This result updates interview-readiness trends and drives next interview/quiz recommendations.",
+      },
+    });
+
+    return NextResponse.json({ feedback: feedbackData, source: client ? "ollama-cloud" : "fallback" });
   } catch (error) {
     console.error("Error generating feedback:", error);
     return NextResponse.json(

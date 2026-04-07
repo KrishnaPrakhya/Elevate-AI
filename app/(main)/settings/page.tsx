@@ -16,9 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Save, X, Target, Code, Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { targetRoles, getRolesByIndustry } from "@/data/targetRoles";
 import { industries } from "@/data/industries";
 import { updateUserProfile, getUserProfile } from "@/actions/user";
+import { getIndustryOptions, getRoleOptionsByIndustry } from "@/actions/profile-options";
 import useFetch from "@/hooks/use-fetch";
 
 interface UserProfile {
@@ -37,13 +37,25 @@ export default function SettingsPage() {
   const [editedIndustry, setEditedIndustry] = useState<string>("");
   const [editedRole, setEditedRole] = useState<string>("");
   const [editedSkills, setEditedSkills] = useState<string>("");
+  const [industryOptions, setIndustryOptions] = useState(industries);
   const [availableRoles, setAvailableRoles] = useState<{ id: string; title: string }[]>([]);
 
   const { loading: profileLoading, fn: loadProfile } = useFetch(getUserProfile);
   const { loading: saveLoading, fn: saveProfile } = useFetch(updateUserProfile);
 
   useEffect(() => {
-    loadProfile().then((data) => {
+    let cancelled = false;
+
+    Promise.all([
+      loadProfile(),
+      getIndustryOptions().catch(() => industries),
+    ]).then(([data, dynamicIndustries]) => {
+      if (cancelled) return;
+
+      if (dynamicIndustries.length > 0) {
+        setIndustryOptions(dynamicIndustries);
+      }
+
       if (data) {
         setProfile(data);
         setEditedIndustry(data.industry?.split("-")[0] || "");
@@ -51,18 +63,49 @@ export default function SettingsPage() {
         setEditedSkills(data.skills?.join(", ") || "");
       }
     });
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProfile]);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (editedIndustry) {
-      const roles = getRolesByIndustry(editedIndustry);
-      setAvailableRoles(roles.map((r) => ({ id: r.id, title: r.title })));
+      getRoleOptionsByIndustry(editedIndustry)
+        .then((roles) => {
+          if (cancelled) return;
+
+          const hasCurrentRole =
+            !editedRole || roles.some((role) => role.title === editedRole);
+
+          setAvailableRoles(
+            hasCurrentRole
+              ? roles
+              : [{ id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`, title: editedRole }, ...roles]
+          );
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setAvailableRoles(
+              editedRole
+                ? [{ id: `custom-${editedRole.toLowerCase().replace(/\s+/g, "-")}`, title: editedRole }]
+                : []
+            );
+          }
+        });
+    } else {
+      setAvailableRoles([]);
     }
-  }, [editedIndustry]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editedIndustry, editedRole]);
 
   const handleSave = async () => {
     try {
-      const selectedRole = targetRoles.find((r) => r.id === editedRole);
       const skills = editedSkills
         .split(",")
         .map((s) => s.trim())
@@ -72,7 +115,7 @@ export default function SettingsPage() {
         industry: profile?.industry?.startsWith(editedIndustry)
           ? profile.industry
           : editedIndustry,
-        targetRole: selectedRole?.title || editedRole,
+        targetRole: editedRole || undefined,
         skills,
       });
 
@@ -83,7 +126,7 @@ export default function SettingsPage() {
               industry: prev.industry?.startsWith(editedIndustry)
                 ? prev.industry
                 : editedIndustry,
-              targetRole: selectedRole?.title || editedRole,
+              targetRole: editedRole || null,
               skills,
             }
           : null
@@ -153,7 +196,7 @@ export default function SettingsPage() {
                   <SelectValue placeholder="Select industry" />
                 </SelectTrigger>
                 <SelectContent>
-                  {industries.map((ind) => (
+                  {industryOptions.map((ind) => (
                     <SelectItem key={ind.id} value={ind.id}>
                       {ind.name}
                     </SelectItem>
@@ -171,7 +214,7 @@ export default function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {availableRoles.map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
+                      <SelectItem key={role.id} value={role.title}>
                         {role.title}
                       </SelectItem>
                     ))}

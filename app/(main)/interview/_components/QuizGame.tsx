@@ -340,7 +340,9 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
             </p>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-muted-foreground" />
-              <p className={`text-sm font-medium ${timeLeft < 10 ? 'text-red-500' : 'text-muted-foreground'}`}>
+              <p
+                className={`text-sm font-medium ${timeLeft < 10 ? "text-red-500" : "text-muted-foreground"}`}
+              >
                 {timeLeft}s
               </p>
             </div>
@@ -394,12 +396,12 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                     showExplanation && option === currentQuestion.correctAnswer
                       ? "bg-emerald-500/10 border-emerald-500"
                       : showExplanation &&
-                        selectedOption === option &&
-                        option !== currentQuestion.correctAnswer
-                      ? "bg-red-500/10 border-red-500"
-                      : selectedOption === option
-                      ? "bg-primary/10 border-primary"
-                      : "border-border hover:bg-muted/50"
+                          selectedOption === option &&
+                          option !== currentQuestion.correctAnswer
+                        ? "bg-red-500/10 border-red-500"
+                        : selectedOption === option
+                          ? "bg-primary/10 border-primary"
+                          : "border-border hover:bg-muted/50"
                   }`}
                   whileHover={!showExplanation ? { scale: 1.01 } : {}}
                   whileTap={!showExplanation ? { scale: 0.99 } : {}}
@@ -414,12 +416,12 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                         option === currentQuestion.correctAnswer
                           ? "bg-emerald-500"
                           : showExplanation &&
-                            selectedOption === option &&
-                            option !== currentQuestion.correctAnswer
-                          ? "bg-red-500"
-                          : selectedOption === option
-                          ? "bg-primary"
-                          : "bg-muted"
+                              selectedOption === option &&
+                              option !== currentQuestion.correctAnswer
+                            ? "bg-red-500"
+                            : selectedOption === option
+                              ? "bg-primary"
+                              : "bg-muted"
                       }`}
                     >
                       <span className="text-white text-xs font-bold">
@@ -432,10 +434,10 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                         option === currentQuestion.correctAnswer
                           ? "text-emerald-600"
                           : showExplanation &&
-                            selectedOption === option &&
-                            option !== currentQuestion.correctAnswer
-                          ? "text-red-600"
-                          : "text-foreground"
+                              selectedOption === option &&
+                              option !== currentQuestion.correctAnswer
+                            ? "text-red-600"
+                            : "text-foreground"
                       }`}
                     >
                       {option}
@@ -519,7 +521,9 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
                   </>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">{currentQuestion.explanation}</p>
+              <p className="text-sm text-muted-foreground">
+                {currentQuestion.explanation}
+              </p>
             </div>
 
             <Button
@@ -541,11 +545,15 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-              <p className="text-sm text-muted-foreground">Correct: {score.correct}</p>
+              <p className="text-sm text-muted-foreground">
+                Correct: {score.correct}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-red-500"></div>
-              <p className="text-sm text-muted-foreground">Wrong: {score.wrong}</p>
+              <p className="text-sm text-muted-foreground">
+                Wrong: {score.wrong}
+              </p>
             </div>
           </div>
 

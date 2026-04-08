@@ -38,7 +38,7 @@ function StatsCards(props: assessmentsProps) {
     if (!assessments?.length) return 0;
     const total = assessments.reduce(
       (sum, assessment): number => Number(sum + assessment.quizScore),
-      0
+      0,
     );
     return (total / assessments.length).toFixed(1);
   };
@@ -59,7 +59,7 @@ function StatsCards(props: assessmentsProps) {
     if (!assessments?.length) return 0;
     return assessments.reduce(
       (sum, assessment) => sum + assessment.questions.length,
-      0
+      0,
     );
   };
 
@@ -171,9 +171,7 @@ function StatsCards(props: assessmentsProps) {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <div className="text-2xl font-bold">
-                {getLatestScore()}%
-              </div>
+              <div className="text-2xl font-bold">{getLatestScore()}%</div>
               <div className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 dark:bg-green-500/30 text-green-600 dark:text-green-400">
                 Recent
               </div>

@@ -260,6 +260,11 @@ export async function getUserLearningSummary() {
           },
         },
       },
+      userAchievements: {
+        include: {
+          achievement: true,
+        },
+      },
     },
   });
 

@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import html as html_lib
 import json
 import logging
 import os
@@ -64,6 +65,235 @@ def format_markdown_response(content: str) -> str:
     formatted = re.sub(r'\n{3,}', '\n\n', formatted)
 
     return formatted.strip()
+
+
+def _format_inline_markdown_for_email(text: str) -> str:
+    """Convert inline markdown syntax to safe HTML for email rendering."""
+    escaped = html_lib.escape(text or "", quote=True)
+
+    # Links: [label](https://example.com)
+    escaped = re.sub(
+        r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
+        r'<a href="\2" style="color:#2563eb;text-decoration:underline;">\1</a>',
+        escaped,
+    )
+
+    # Bold, emphasis and inline code.
+    escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", escaped)
+    escaped = re.sub(
+        r"`([^`]+)`",
+        r"<code style=\"background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:Consolas,Monaco,monospace;font-size:0.9em;\">\1</code>",
+        escaped,
+    )
+
+    return escaped
+
+
+def _is_table_separator_line(line: str) -> bool:
+    return bool(
+        re.match(
+            r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$",
+            (line or "").strip(),
+        )
+    )
+
+
+def _looks_like_table_line(line: str) -> bool:
+    trimmed = (line or "").strip()
+    if not trimmed:
+        return False
+    if _is_table_separator_line(trimmed):
+        return True
+    return trimmed.count("|") >= 2
+
+
+def _parse_table_cells(line: str) -> list[str]:
+    row = (line or "").strip()
+    if not row:
+        return []
+
+    if not row.startswith("|"):
+        row = f"| {row}"
+    if not row.endswith("|"):
+        row = f"{row} |"
+
+    cells = [cell.strip() for cell in row.split("|")[1:-1]]
+    while cells and cells[-1] == "":
+        cells.pop()
+    while cells and cells[0] == "":
+        cells = cells[1:]
+    return cells
+
+
+def markdown_to_email_html(markdown_text: str) -> str:
+    """Render a markdown-ish string into email-safe HTML with table support."""
+    if not markdown_text:
+        return "<p style=\"margin:0 0 12px 0;line-height:1.6;color:#111827;\">&nbsp;</p>"
+
+    text = markdown_text.replace("\r\n", "\n").strip()
+
+    fenced = re.match(r"^```(?:md|markdown|text)?\n([\s\S]*?)\n```$", text, re.IGNORECASE)
+    if fenced and fenced.group(1):
+        text = fenced.group(1).strip()
+
+    # Expand compact rows like "|a|b||c|d" into separate lines.
+    text = re.sub(r"\s*\|\|\s*", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    lines = text.split("\n")
+    html_parts: list[str] = []
+    in_ul = False
+    in_ol = False
+
+    def close_lists() -> None:
+        nonlocal in_ul, in_ol
+        if in_ul:
+            html_parts.append("</ul>")
+            in_ul = False
+        if in_ol:
+            html_parts.append("</ol>")
+            in_ol = False
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        if not line:
+            close_lists()
+            i += 1
+            continue
+
+        if _looks_like_table_line(line):
+            close_lists()
+            table_lines: list[str] = []
+
+            while i < len(lines) and _looks_like_table_line(lines[i].strip()):
+                raw = lines[i].strip()
+                for segment in re.split(r"\s*\|\|\s*", raw):
+                    seg = segment.strip()
+                    if seg:
+                        table_lines.append(seg)
+                i += 1
+
+            rows: list[list[str]] = []
+            for row_line in table_lines:
+                if _is_table_separator_line(row_line):
+                    continue
+                cells = _parse_table_cells(row_line)
+                non_empty_count = len([cell for cell in cells if cell])
+                if non_empty_count >= 2:
+                    rows.append(cells)
+
+            if len(rows) >= 2:
+                max_cols = max(len(r) for r in rows)
+                normalized_rows = [r + [""] * (max_cols - len(r)) for r in rows]
+                header = normalized_rows[0]
+                body_rows = normalized_rows[1:]
+
+                table_html = [
+                    "<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;\">",
+                    "<thead>",
+                    "<tr>",
+                ]
+                for cell in header:
+                    table_html.append(
+                        "<th style=\"border:1px solid #d1d5db;background:#f3f4f6;padding:10px 12px;text-align:left;font-weight:600;color:#111827;\">"
+                        + _format_inline_markdown_for_email(cell)
+                        + "</th>"
+                    )
+                table_html.extend(["</tr>", "</thead>", "<tbody>"])
+
+                for row in body_rows:
+                    table_html.append("<tr>")
+                    for cell in row:
+                        table_html.append(
+                            "<td style=\"border:1px solid #d1d5db;padding:10px 12px;vertical-align:top;color:#111827;\">"
+                            + _format_inline_markdown_for_email(cell)
+                            + "</td>"
+                        )
+                    table_html.append("</tr>")
+
+                table_html.extend(["</tbody>", "</table>"])
+                html_parts.append("".join(table_html))
+                continue
+
+            # Not a valid table block; fall back to paragraph rendering.
+            for row_line in table_lines:
+                html_parts.append(
+                    f"<p style=\"margin:0 0 12px 0;line-height:1.6;color:#111827;\">{_format_inline_markdown_for_email(row_line)}</p>"
+                )
+            continue
+
+        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if heading_match:
+            close_lists()
+            level = min(len(heading_match.group(1)), 4)
+            heading_text = _format_inline_markdown_for_email(heading_match.group(2).strip())
+            size_map = {1: "28px", 2: "24px", 3: "20px", 4: "18px"}
+            html_parts.append(
+                f"<h{level} style=\"margin:18px 0 10px 0;line-height:1.3;color:#0f172a;font-size:{size_map[level]};font-weight:700;\">{heading_text}</h{level}>"
+            )
+            i += 1
+            continue
+
+        if re.match(r"^(-{3,}|\*{3,})$", line):
+            close_lists()
+            html_parts.append(
+                "<hr style=\"border:none;border-top:1px solid #d1d5db;margin:16px 0;\"/>"
+            )
+            i += 1
+            continue
+
+        unordered_match = re.match(r"^[-*]\s+(.+)$", line)
+        if unordered_match:
+            if in_ol:
+                html_parts.append("</ol>")
+                in_ol = False
+            if not in_ul:
+                html_parts.append("<ul style=\"margin:8px 0 12px 20px;padding:0;color:#111827;\">")
+                in_ul = True
+            html_parts.append(
+                f"<li style=\"margin:6px 0;line-height:1.6;\">{_format_inline_markdown_for_email(unordered_match.group(1).strip())}</li>"
+            )
+            i += 1
+            continue
+
+        ordered_match = re.match(r"^\d+[\.)]\s+(.+)$", line)
+        if ordered_match:
+            if in_ul:
+                html_parts.append("</ul>")
+                in_ul = False
+            if not in_ol:
+                html_parts.append("<ol style=\"margin:8px 0 12px 20px;padding:0;color:#111827;\">")
+                in_ol = True
+            html_parts.append(
+                f"<li style=\"margin:6px 0;line-height:1.6;\">{_format_inline_markdown_for_email(ordered_match.group(1).strip())}</li>"
+            )
+            i += 1
+            continue
+
+        close_lists()
+        html_parts.append(
+            f"<p style=\"margin:0 0 12px 0;line-height:1.6;color:#111827;\">{_format_inline_markdown_for_email(line)}</p>"
+        )
+        i += 1
+
+    close_lists()
+    return "".join(html_parts)
+
+
+def build_email_html_document(title: str, markdown_content: str) -> str:
+    safe_title = html_lib.escape(title or "ElevateAI Update", quote=True)
+    body_html = markdown_to_email_html(markdown_content)
+
+    return (
+        "<html><body style=\"margin:0;padding:24px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;\">"
+        "<div style=\"max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;\">"
+        f"<h2 style=\"margin:0 0 16px 0;color:#0f172a;font-size:22px;line-height:1.3;\">{safe_title}</h2>"
+        f"{body_html}"
+        "</div></body></html>"
+    )
 
 
 def _resolve_timezone(
@@ -575,6 +805,14 @@ class CareerAdviceInput(BaseModel):
     experience_years: Optional[int] = Field(None, description="Years of experience")
     career_goals: Optional[str] = Field(None, description="User's career goals")
 
+class EmailDraftInput(BaseModel):
+    request_text: str = Field(description="Original user request for drafting the email")
+    recipient: Optional[str] = Field(None, description="Recipient email if provided")
+    sender_name: Optional[str] = Field(None, description="Sender display name")
+    sender_role: Optional[str] = Field(None, description="Sender current role")
+    industry: Optional[str] = Field(None, description="Sender industry")
+    tone: Optional[str] = Field("professional", description="Preferred tone for the email")
+
 class PrepScheduleInput(BaseModel):
     target_role: str = Field(description="Target role")
     timeline_weeks: Optional[int] = Field(None, description="Preparation timeline in weeks")
@@ -802,6 +1040,69 @@ async def provide_career_advice(input_data: CareerAdviceInput) -> str:
         logger.error(f"Error in provide_career_advice: {str(e)}")
         raise
 
+async def generate_email_draft(input_data: EmailDraftInput) -> dict[str, str]:
+    try:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert executive communication assistant.
+Draft a polished email based on the user's request.
+
+Rules:
+1. Write a complete email with greeting, concise body, and sign-off.
+2. Keep tone professional and clear.
+3. If this is a follow-up request, make the email politely action-oriented.
+4. Do not add fake details; use only what is present in the request/context.
+5. Do not use placeholders like [Insert tasks] or [TBD].
+6. If the user provides a plan, organize it with clean headings, bullet points, and a readable weekly structure.
+7. Output MUST follow exactly this format:
+Subject: <one-line subject>
+Body:
+<plain text email body>
+"""),
+            ("user", """Request: {request_text}
+Recipient: {recipient}
+Sender Name: {sender_name}
+Sender Role: {sender_role}
+Industry: {industry}
+Tone: {tone}
+""")
+        ])
+
+        raw = await invoke_prompt_template(prompt, {
+            "request_text": input_data.request_text[:8000],
+            "recipient": input_data.recipient or "Not provided",
+            "sender_name": input_data.sender_name or "Not provided",
+            "sender_role": input_data.sender_role or "Not provided",
+            "industry": input_data.industry or "Not provided",
+            "tone": input_data.tone or "professional",
+        })
+
+        subject_match = re.search(r"(?im)^subject\s*:\s*(.+)$", raw)
+        subject = subject_match.group(1).strip() if subject_match else "Professional Follow-Up"
+
+        body = raw
+        if subject_match:
+            body = re.sub(r"(?im)^subject\s*:\s*.+$", "", body).strip()
+        body = re.sub(r"(?im)^body\s*:\s*", "", body).strip()
+
+        if not body:
+            recipient_name = input_data.recipient or "there"
+            body = (
+                f"Hello {recipient_name},\n\n"
+                "I wanted to follow up and share a quick update. Please let me know if you would like me to send any additional details.\n\n"
+                "Best regards"
+            )
+
+        html = build_email_html_document(subject, body)
+
+        return {
+            "subject": subject,
+            "body": body,
+            "html": html,
+        }
+    except Exception as e:
+        logger.error(f"Error in generate_email_draft: {str(e)}")
+        raise
+
 async def generate_preparation_schedule(input_data: PrepScheduleInput) -> str:
     try:
         timeline_weeks = input_data.timeline_weeks or 4
@@ -919,6 +1220,15 @@ class AgentState(TypedDict):
     task_completed: bool
     pending_actions: List[dict[str, Any]]  # Actions awaiting user confirmation
 
+
+def extract_email_recipient(message: str) -> Optional[str]:
+    if not message:
+        return None
+    email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", message)
+    if not email_match:
+        return None
+    return email_match.group().strip()
+
 # Intent Detection (Async) - Hybrid: Deterministic + LLM for ambiguous cases
 async def detect_intent(
     user_message: str,
@@ -1014,14 +1324,36 @@ async def detect_intent(
             },
         }
 
-    # === PRIORITY 4: Preparation Schedule ===
+    # === PRIORITY 4: Email Drafting (must run before schedule detection) ===
+    has_email_word = any(k in message for k in ["email", "mail"])
+    has_email_verb = bool(
+        re.search(
+            r"\b(draft|write|compose|create|prepare|send)\b.*\b(email|mail)\b|\b(email|mail)\b.*\b(draft|write|compose|create|prepare|send)\b",
+            message,
+        )
+    )
+    recipient = extract_email_recipient(user_message)
+
+    # If user explicitly asks for an email draft or includes a recipient with email intent,
+    # route to email drafter even when the message contains words like "plan" or "week".
+    if has_email_word and (has_email_verb or recipient):
+        return {
+            "intent": "email_drafting",
+            "confidence": 0.99,
+            "params": {
+                "action": "draft_email",
+                "recipient": recipient,
+            },
+        }
+
+    # === PRIORITY 5: Preparation Schedule ===
     has_schedule = any(k in message for k in ["schedule", "plan", "roadmap", "timeline"])
     has_timeframe = any(k in message for k in ["week", "month", "day", "30", "60", "90"])
     has_prep = any(k in message for k in ["prep", "preparation", "study", "learn"])
     if has_schedule and (has_timeframe or has_prep):
         return {"intent": "preparation_schedule", "confidence": 0.9, "params": {}}
 
-    # === PRIORITY 4: Document Improvement ===
+    # === PRIORITY 6: Document Improvement ===
     doc_patterns = [
         r"improve (my )?resume", r"fix (my )?resume", r"resume review",
         r"cover letter", r"cv review", r"ats score", r"resume feedback",
@@ -1031,7 +1363,7 @@ async def detect_intent(
         if re.search(pattern, message):
             return {"intent": "document_improvement", "confidence": 0.95, "params": {}}
 
-    # === PRIORITY 5: Interview Preparation ===
+    # === PRIORITY 7: Interview Preparation ===
     interview_patterns = [
         r"interview questions", r"mock interview", r"interview prep",
         r"prepare for interview", r"interview practice", r"interview tips",
@@ -1041,11 +1373,7 @@ async def detect_intent(
         if re.search(pattern, message):
             return {"intent": "interview_preparation", "confidence": 0.95, "params": {}}
 
-    # === PRIORITY 5b: Email Drafting → Route to career_advisor with email action ===
-    if any(k in message for k in ["draft email", "write email", "send email", "follow-up email", "follow up email"]):
-        return {"intent": "career_advice", "confidence": 0.8, "params": {"action": "draft_email"}}
-
-    # === PRIORITY 6: Career Advice (catch-all for career-related) ===
+    # === PRIORITY 8: Career Advice (catch-all for career-related) ===
     career_patterns = [
         r"career advice", r"career guidance", r"career path",
         r"career change", r"career growth", r"career development",
@@ -1064,6 +1392,7 @@ async def detect_intent(
 - preparation_schedule: Study plans, learning schedules
 - interview_preparation: Interview questions, mock interviews
 - document_improvement: Resume/CV/cover letter help
+- email_drafting: Draft or compose an email
 - career_advice: General career guidance
 
 Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
@@ -1104,6 +1433,15 @@ Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
             return {"intent": "interview_preparation", "confidence": 0.5, "params": {}}
         if "resume" in message or "cover" in message:
             return {"intent": "document_improvement", "confidence": 0.5, "params": {}}
+        if "email" in message:
+            return {
+                "intent": "email_drafting",
+                "confidence": 0.5,
+                "params": {
+                    "action": "draft_email",
+                    "recipient": extract_email_recipient(user_message),
+                },
+            }
         if "schedule" in message or "plan" in message:
             return {"intent": "preparation_schedule", "confidence": 0.5, "params": {}}
 
@@ -1128,6 +1466,7 @@ async def supervisor_agent(state: AgentState) -> AgentState:
         intent_to_agent = {
             "document_improvement": "document_improver",
             "job_search": "job_searcher",
+            "email_drafting": "email_drafter",
             "career_advice": "career_advisor",
             "preparation_schedule": "schedule_generator",
             "interview_preparation": "interview_preparer",
@@ -1251,11 +1590,78 @@ async def job_searcher(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
 
+async def email_drafter(state: AgentState) -> AgentState:
+    try:
+        user_profile = state.get("user_profile", {})
+        latest_message_content = state["messages"][-1]["content"]
+        intent_params = state.get("intent_params", {}) or {}
+
+        recipient = intent_params.get("recipient") or extract_email_recipient(latest_message_content)
+        draft = await generate_email_draft(EmailDraftInput(
+            request_text=latest_message_content,
+            recipient=recipient,
+            sender_name=user_profile.get("name"),
+            sender_role=user_profile.get("current_role"),
+            industry=user_profile.get("industry"),
+            tone="professional",
+        ))
+
+        assistant_message = (
+            "I've drafted a professional email for you.\n\n"
+            f"**Subject:** {draft['subject']}\n\n"
+            f"{draft['body']}"
+        )
+
+        if recipient:
+            assistant_message += f"\n\nI also prepared a send action to **{recipient}**. Please confirm it in the UI to send."
+        else:
+            assistant_message += "\n\nI can also queue this for sending if you share the recipient email address."
+
+        state["messages"].append({"role": "assistant", "content": assistant_message})
+
+        if "pending_actions" not in state:
+            state["pending_actions"] = []
+
+        if recipient:
+            state["pending_actions"].append({
+                "type": "SEND_EMAIL",
+                "title": "Send Drafted Email",
+                "description": f"Send drafted email to {recipient}",
+                "params": {
+                    "to": recipient,
+                    "subject": draft["subject"],
+                    "html": draft["html"],
+                    "text": draft["body"],
+                    "from_name": "ElevateAI",
+                    "email_type": "draft",
+                    "user_name": user_profile.get("name", "User"),
+                },
+                "metadata": {
+                    "priority": "high",
+                    "icon": "mail",
+                }
+            })
+            logger.info(f"Created pending drafted-email action to {recipient}")
+
+        state["task_completed"] = True
+        return state
+    except Exception as e:
+        logger.error(f"Error in email_drafter: {str(e)}")
+        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while drafting the email: {str(e)}"})
+        state["task_completed"] = True
+        return state
+
 async def career_advisor(state: AgentState) -> AgentState:
     try:
         user_profile = state.get("user_profile", {})
         latest_message_content = state["messages"][-1]["content"]
         latest_message_lower = latest_message_content.lower()
+        intent_params = state.get("intent_params", {}) or {}
+
+        # Backward compatibility: if upstream still routes draft email to career_advisor,
+        # delegate to dedicated email_drafter flow.
+        if intent_params.get("action") == "draft_email":
+            return await email_drafter(state)
 
         target_role = None
         career_goals = None
@@ -1265,10 +1671,7 @@ async def career_advisor(state: AgentState) -> AgentState:
         email_recipient = None
 
         # Extract email recipient if mentioned
-        import re
-        email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', latest_message_content)
-        if email_match:
-            email_recipient = email_match.group()
+        email_recipient = extract_email_recipient(latest_message_content)
 
         # LLM call to extract structured info
         if "target role" in latest_message_lower or "career goal" in latest_message_lower or "advice on" in latest_message_lower:
@@ -1316,7 +1719,7 @@ async def career_advisor(state: AgentState) -> AgentState:
                 "params": {
                     "to": email_recipient,
                     "subject": "Your Career Advice from ElevateAI",
-                    "html": f"<html><body><h2>Career Advice</h2>{result.replace(chr(10), '<br>')}</body></html>",
+                    "html": build_email_html_document("Career Advice", result),
                     "text": result,
                     "from_name": "ElevateAI",
                     "email_type": "career_advice",
@@ -1402,6 +1805,11 @@ async def schedule_generator(state: AgentState) -> AgentState:
         if wants_email:
             email_to = email_recipient or user_profile.get("email", "user@example.com")
             user_name = user_profile.get("name", "User")
+            schedule_markdown = (
+                f"Hi {user_name},\n\n"
+                f"Here is your personalized {timeline_weeks}-week preparation schedule for {target_role}.\n\n"
+                f"{result}"
+            )
             state["pending_actions"].append({
                 "type": "SEND_EMAIL",
                 "title": "Send Schedule via Email",
@@ -1409,7 +1817,10 @@ async def schedule_generator(state: AgentState) -> AgentState:
                 "params": {
                     "to": email_to,
                     "subject": f"{target_role} Preparation Schedule - ElevateAI",
-                    "html": f"<h2>Your {target_role} Preparation Schedule</h2><p>Hi {user_name},</p><p>Here is your personalized {timeline_weeks}-week preparation schedule.</p>{result}",
+                    "html": build_email_html_document(
+                        f"{target_role} Preparation Schedule",
+                        schedule_markdown,
+                    ),
                     "email_type": "schedule",
                     "schedule_title": f"{target_role} Prep Schedule",
                     "schedule_details": result,
@@ -1648,7 +2059,7 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
 # Router: Decides the next step in the graph
 def router_logic(state: AgentState) -> Literal[
     "supervisor", "document_improver", "job_searcher",
-    "career_advisor", "schedule_generator", "interview_preparer",
+    "career_advisor", "email_drafter", "schedule_generator", "interview_preparer",
     "calendar_event_creator", "__end__"
 ]:
     if state.get("task_completed"): # If any agent marked task as completed (or errored out)
@@ -1669,6 +2080,7 @@ def create_career_advisor_graph():
         workflow.add_node("document_improver", document_improver)
         workflow.add_node("job_searcher", job_searcher)
         workflow.add_node("career_advisor", career_advisor)
+        workflow.add_node("email_drafter", email_drafter)
         workflow.add_node("schedule_generator", schedule_generator)
         workflow.add_node("interview_preparer", interview_preparer)
         workflow.add_node("calendar_event_creator", calendar_event_creator)
@@ -1685,6 +2097,7 @@ def create_career_advisor_graph():
             "document_improver": "document_improver",
             "job_searcher": "job_searcher",
             "career_advisor": "career_advisor",
+            "email_drafter": "email_drafter",
             "schedule_generator": "schedule_generator",
             "interview_preparer": "interview_preparer",
             "calendar_event_creator": "calendar_event_creator",
@@ -1699,7 +2112,7 @@ def create_career_advisor_graph():
 
         # After each agent runs, it goes to the router_logic, which decides if it should end or go back to supervisor
         # (typically, agents set task_completed=True, so router_logic sends to "__end__")
-        agent_node_names = ["document_improver", "job_searcher", "career_advisor", "schedule_generator", "interview_preparer", "calendar_event_creator"]
+        agent_node_names = ["document_improver", "job_searcher", "career_advisor", "email_drafter", "schedule_generator", "interview_preparer", "calendar_event_creator"]
         for node_name in agent_node_names:
             workflow.add_conditional_edges(
                 node_name,
@@ -1838,7 +2251,7 @@ async def chat_endpoint(
                 userId=user.id,
                 # role="user" #  <-- Would be ideal if schema supported it
                 content=user_message_content,
-                createdAt=datetime.datetime.utcnow() # Ensure timestamp for ordering
+                createdAt=datetime.datetime.now(datetime.UTC) # Ensure timestamp for ordering
             )
             db.add(user_msg_db)
 
@@ -1848,7 +2261,7 @@ async def chat_endpoint(
                     userId=user.id, # Still associating with user ID due to schema
                     content=assistant_response_content,
                     # role="assistant" # <-- Would be ideal
-                    createdAt=datetime.datetime.utcnow() # Ensure it's later or has distinct timestamp
+                    createdAt=datetime.datetime.now(datetime.UTC) # Ensure it's later or has distinct timestamp
                 )
                 db.add(assistant_msg_db)
             
@@ -2139,11 +2552,27 @@ async def send_email_tool(input_data: SendEmailInput):
         resend.api_key = os.getenv("RESEND_API_KEY")
         from_email = os.getenv("RESEND_FROM_EMAIL", "notifications@elevateai.com")
 
+        html_payload = (input_data.html or "").strip()
+        html_lower = html_payload.lower()
+
+        looks_like_raw_markdown = bool(
+            re.search(r"(?m)^\s*#{1,6}\s+", html_payload)
+            or re.search(r"(?m)^\s*\|.+\|\s*$", html_payload)
+            or "||" in html_payload
+            or re.search(r"\*\*[^*]+\*\*", html_payload)
+        )
+
+        has_rich_html_tags = any(tag in html_lower for tag in ["<html", "<table", "<p", "<h1", "<h2", "<ul", "<ol"])
+
+        if not has_rich_html_tags or looks_like_raw_markdown:
+            source_markdown = input_data.text or html_payload or ""
+            html_payload = build_email_html_document(input_data.subject, source_markdown)
+
         email = resend.Emails.send({
             "from": f"{input_data.from_name} <{from_email}>",
             "to": input_data.to,
             "subject": input_data.subject,
-            "html": input_data.html,
+            "html": html_payload,
             "text": input_data.text,
         })
 

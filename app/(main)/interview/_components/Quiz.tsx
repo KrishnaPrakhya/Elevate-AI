@@ -42,6 +42,109 @@ type QuizResult = {
   answers: QuizAnswer[];
 };
 
+const normalizeAnswerText = (value: string | null | undefined) => {
+  if (!value) return "";
+  return value
+    .trim()
+    .replace(/^['\"]|['\"]$/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+};
+
+const stripLeadingOptionLabel = (value: string) => {
+  return value
+    .replace(
+      /^\s*(?:option\s+)?(?:[\[(]?\s*(?:[a-d]|[1-4])\s*[\])\.:\-])\s*/i,
+      "",
+    )
+    .trim();
+};
+
+const extractOptionIndex = (value: string) => {
+  const match = value
+    .trim()
+    .match(/^(?:option\s+)?[\[(]?\s*([a-d]|[1-4])\s*[\])\.:\-]?\s*$/i);
+
+  if (!match) return null;
+
+  const token = match[1].toLowerCase();
+  if (/^[1-4]$/.test(token)) {
+    return Number(token) - 1;
+  }
+
+  return token.charCodeAt(0) - "a".charCodeAt(0);
+};
+
+const resolveAnswerForComparison = (answer: string, options: string[] = []) => {
+  const normalizedOptions = options.map((option) =>
+    normalizeAnswerText(stripLeadingOptionLabel(option)),
+  );
+
+  const normalizedRaw = normalizeAnswerText(answer);
+  const normalizedStripped = normalizeAnswerText(
+    stripLeadingOptionLabel(answer),
+  );
+
+  if (normalizedOptions.includes(normalizedRaw)) {
+    return normalizedRaw;
+  }
+
+  if (normalizedOptions.includes(normalizedStripped)) {
+    return normalizedStripped;
+  }
+
+  const optionIndex = extractOptionIndex(answer);
+  if (
+    optionIndex !== null &&
+    optionIndex >= 0 &&
+    optionIndex < normalizedOptions.length
+  ) {
+    return normalizedOptions[optionIndex];
+  }
+
+  return normalizedRaw || normalizedStripped;
+};
+
+type QuizResultQuestion = {
+  question: string;
+  isCorrect: boolean;
+  userAnswer: string;
+  correctAnswer: string;
+  explanation: string;
+};
+
+const toQuizResultQuestions = (rawQuestions: unknown): QuizResultQuestion[] => {
+  if (!Array.isArray(rawQuestions)) {
+    return [];
+  }
+
+  return rawQuestions
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const question = item as Record<string, unknown>;
+      if (typeof question.question !== "string") {
+        return null;
+      }
+
+      return {
+        question: question.question,
+        isCorrect: Boolean(question.isCorrect),
+        userAnswer:
+          typeof question.userAnswer === "string" ? question.userAnswer : "",
+        correctAnswer:
+          typeof question.correctAnswer === "string"
+            ? question.correctAnswer
+            : "",
+        explanation:
+          typeof question.explanation === "string" ? question.explanation : "",
+      };
+    })
+    .filter((question): question is QuizResultQuestion => question !== null);
+};
+
 export default function Quiz() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
@@ -56,7 +159,10 @@ export default function Quiz() {
         const response = await fetch("/api/career-planner");
         if (response.ok) {
           const data = await response.json();
-          const gaps = data.activePlan?.planDetails?.topGaps?.map((g: { skill: string }) => g.skill) || [];
+          const gaps =
+            data.activePlan?.planDetails?.topGaps?.map(
+              (g: { skill: string }) => g.skill,
+            ) || [];
           setWeakTopics(gaps.slice(0, 5));
         }
       } catch (error) {
@@ -70,7 +176,9 @@ export default function Quiz() {
     loading: generatingQuiz,
     fn: generateQuizFn,
     data: quizData,
-  } = useFetch(() => generateQuiz(undefined, weakTopics.length > 0 ? weakTopics : undefined));
+  } = useFetch(() =>
+    generateQuiz(undefined, weakTopics.length > 0 ? weakTopics : undefined),
+  );
 
   const {
     loading: savingResult,
@@ -101,11 +209,14 @@ export default function Quiz() {
   const handleAnswer = (answer: string) => {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = answer;
-    console.log(answer);
     setAnswers(newAnswers);
   };
 
   const handleNext = () => {
+    if (!quizData || quizData.length === 0) {
+      return;
+    }
+
     if (currentQuestion < quizData.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setShowExplanation(false);
@@ -116,22 +227,46 @@ export default function Quiz() {
   };
 
   const calculateScore = () => {
+    if (!quizData || quizData.length === 0) {
+      return 0;
+    }
+
     let correct = 0;
-    console.log(answers);
-    console.log(quizData);
+
     answers.forEach((answer, index) => {
-      if (answer !== null && answer === quizData[index].correctAnswer) {
+      if (answer === null) {
+        return;
+      }
+
+      const question = quizData[index];
+      const normalizedCorrect = resolveAnswerForComparison(
+        question.correctAnswer,
+        question.options,
+      );
+      const normalizedUser = resolveAnswerForComparison(
+        answer,
+        question.options,
+      );
+
+      if (normalizedCorrect === normalizedUser) {
         correct++;
       }
-      console.log(correct);
     });
+
     return (correct / quizData.length) * 100;
   };
 
   const finishQuiz = async () => {
+    if (!quizData || quizData.length === 0) {
+      toast.error("Quiz data is not available");
+      return;
+    }
+
     const score = calculateScore();
+    const submittedAnswers = answers.map((answer) => answer ?? "");
+
     try {
-      await saveQuizResultFn(quizData, answers, score);
+      await saveQuizResultFn(quizData, submittedAnswers, score);
       toast.success("Quiz completed successfully!");
     } catch (error) {
       if (error instanceof Error) {
@@ -147,7 +282,7 @@ export default function Quiz() {
     setAnswers([]);
     setShowExplanation(false);
     generateQuizFn();
-    setResultData(null);
+    setResultData(undefined);
   };
 
   // Format time left
@@ -177,7 +312,16 @@ export default function Quiz() {
 
   // Show results if quiz is completed
   if (resultData) {
-    return <QuizResult result={resultData} onStartNew={startNewQuiz} />;
+    return (
+      <QuizResult
+        result={{
+          quizScore: resultData.quizScore,
+          improvementTip: resultData.improvementTip ?? undefined,
+          questions: toQuizResultQuestions(resultData.questions),
+        }}
+        onStartNew={startNewQuiz}
+      />
+    );
   }
 
   if (!quizData) {
@@ -199,7 +343,9 @@ export default function Quiz() {
             <div className="mb-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
               <div className="flex items-center gap-2 mb-3">
                 <Target className="h-4 w-4 text-primary" />
-                <p className="font-medium text-sm">Focus Areas from Your Career Plan</p>
+                <p className="font-medium text-sm">
+                  Focus Areas from Your Career Plan
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {weakTopics.map((topic, idx) => (

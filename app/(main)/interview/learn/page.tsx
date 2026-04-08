@@ -3,10 +3,19 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 import {
   BookOpen,
   ArrowLeft,
@@ -55,9 +64,10 @@ export default function InterviewLearnPage() {
         .split(",")
         .map((topic) => topic.trim())
         .filter(Boolean),
-    [topicsParam]
+    [topicsParam],
   );
-  const topicTitle = topics.length > 1 ? "Multiple Topics" : topics[0] || "Learning";
+  const topicTitle =
+    topics.length > 1 ? "Multiple Topics" : topics[0] || "Learning";
 
   useEffect(() => {
     async function loadContent() {
@@ -104,7 +114,8 @@ Ask me anything about these topics, and I'll help you understand them better!`,
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages, isSending]);
 
@@ -165,7 +176,11 @@ Ask me anything about these topics, and I'll help you understand them better!`,
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => router.push("/interview")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/interview")}
+              >
                 <ArrowLeft className="w-4 h-4 mr-1" />
                 Back to Quiz
               </Button>
@@ -175,7 +190,11 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                 <h1 className="text-xl font-bold">{topicTitle}</h1>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setShowChat(!showChat)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowChat(!showChat)}
+            >
               <MessageSquare className="w-4 h-4 mr-2" />
               AI Tutor
             </Button>
@@ -184,7 +203,9 @@ Ask me anything about these topics, and I'll help you understand them better!`,
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className={`transition-all duration-300 ${showChat ? "lg:mr-96" : ""}`}>
+        <div
+          className={`transition-all duration-300 ${showChat ? "lg:mr-96" : ""}`}
+        >
           {/* Topics Breadcrumb */}
           <div className="flex flex-wrap gap-2 mb-6">
             {topics.map((topic, index) => (
@@ -216,7 +237,10 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4 }}
                 >
-                  <AIResponseFormatter content={formatAIResponse(content)} variant="default" />
+                  <AIResponseFormatter
+                    content={formatAIResponse(content)}
+                    variant="default"
+                  />
                 </motion.div>
               </ScrollArea>
             </CardContent>
@@ -229,7 +253,9 @@ Ask me anything about these topics, and I'll help you understand them better!`,
               Back to Quiz Selection
             </Button>
             <Button
-              onClick={() => router.push(`/interview/mockQuiz?topics=${topics.join(",")}`)}
+              onClick={() =>
+                router.push(`/interview/mockQuiz?topics=${topics.join(",")}`)
+              }
               className="gap-2"
             >
               <Brain className="w-4 h-4" />
@@ -256,14 +282,28 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                 <Sparkles className="w-5 h-5 text-primary" />
                 <div>
                   <p className="font-semibold text-sm">AI Tutor</p>
-                  <p className="text-xs text-muted-foreground">Ask anything about the content</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ask anything about the content
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setIsChatExpanded(!isChatExpanded)}>
-                  {isChatExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsChatExpanded(!isChatExpanded)}
+                >
+                  {isChatExpanded ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowChat(false)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowChat(false)}
+                >
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -288,7 +328,10 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                     >
                       {message.role === "assistant" ? (
                         <div className="text-sm leading-relaxed">
-                          <AIResponseFormatter content={message.content} variant="chat" />
+                          <AIResponseFormatter
+                            content={formatAIResponse(message.content)}
+                            variant="chat"
+                          />
                         </div>
                       ) : (
                         <p className="text-sm">{message.content}</p>
@@ -323,7 +366,9 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && !e.shiftKey && handleSendChat()
+                  }
                   placeholder="Ask a question..."
                   className="flex-1 px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-transparent"
                   disabled={isSending}
@@ -334,12 +379,20 @@ Ask me anything about these topics, and I'll help you understand them better!`,
                   disabled={isSending || !chatInput.trim()}
                   className="shrink-0"
                 >
-                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {isSending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
               {chatMessages.length <= 1 && (
                 <div className="flex gap-1 flex-wrap">
-                  {["Explain this concept", "Give me an example", "Why is this important?"].map((suggestion) => (
+                  {[
+                    "Explain this concept",
+                    "Give me an example",
+                    "Why is this important?",
+                  ].map((suggestion) => (
                     <Button
                       key={suggestion}
                       variant="outline"

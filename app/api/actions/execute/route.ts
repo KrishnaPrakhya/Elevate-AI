@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 type ExecutedActionType =
   | "SEND_EMAIL"
@@ -19,6 +20,35 @@ type CalendarEventTypeValue =
   | "ASSESSMENT"
   | "LIVE_SESSION"
   | "CUSTOM";
+
+type UserRef = { id: string };
+type ActionParams = Record<string, unknown>;
+type ActionResult = {
+  success?: boolean;
+  error?: string;
+  [key: string]: unknown;
+};
+
+const getStringParam = (params: ActionParams, key: string): string | undefined => {
+  const value = params[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+};
+
+const getBooleanParam = (params: ActionParams, key: string): boolean | undefined => {
+  const value = params[key];
+  return typeof value === "boolean" ? value : undefined;
+};
+
+const getNumberParam = (params: ActionParams, key: string): number | undefined => {
+  const value = params[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
+
+const getStringArrayParam = (params: ActionParams, key: string): string[] => {
+  const value = params[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+};
 
 const normalizeActionType = (rawActionType: unknown): ExecutedActionType | null => {
   if (typeof rawActionType !== "string") return null;
@@ -99,6 +129,19 @@ const normalizeCalendarEventType = (
   return aliasMap[normalized] || "CUSTOM";
 };
 
+const toPrismaJsonValue = (value: unknown): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+
+const isPrismaConnectivityError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+
+  const maybeCode = (error as { code?: unknown }).code;
+  if (maybeCode === "P1001") return true;
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message.includes("Can't reach database server");
+};
+
 /**
  * Execute Confirmed Action Endpoint
  *
@@ -114,7 +157,23 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { actionId, actionType, params, title, description } = body;
+    const {
+      actionId,
+      actionType,
+      params: rawParams,
+      title,
+      description,
+    } = body as {
+      actionId?: string;
+      actionType?: string;
+      params?: unknown;
+      title?: string;
+      description?: string;
+    };
+
+    const params: ActionParams =
+      rawParams && typeof rawParams === "object" ? (rawParams as ActionParams) : {};
+
     const normalizedActionType = normalizeActionType(actionType);
 
     if (!actionType) {
@@ -131,37 +190,74 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user from database
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
+    const canRunWithoutUserRecord = normalizedActionType === "SEND_EMAIL";
 
-    if (!user) {
+    let user: UserRef | null = null;
+    let dbUnavailable = false;
+
+    try {
+      user = await db.user.findUnique({
+        where: { clerkUserId: userId },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (isPrismaConnectivityError(error)) {
+        dbUnavailable = true;
+      } else {
+        throw error;
+      }
+    }
+
+    if (dbUnavailable && !canRunWithoutUserRecord) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Database is temporarily unavailable. Please try again in a moment.",
+          code: "DB_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
+
+    if (!user && !dbUnavailable && !canRunWithoutUserRecord) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Execute the action based on type
-    let result: any;
+    let result: ActionResult;
 
     try {
       switch (normalizedActionType) {
         case "SEND_EMAIL":
-          result = await executeSendEmail(params, user);
+          result = await executeSendEmail(params);
           break;
 
         case "CREATE_CALENDAR_EVENT":
+          if (!user) {
+            throw new Error("User record is required for calendar actions");
+          }
           result = await executeCreateCalendarEvent(params, user);
           break;
 
         case "TRACK_JOB_APPLICATION":
+          if (!user) {
+            throw new Error("User record is required for job application actions");
+          }
           result = await executeTrackJobApplication(params, user);
           break;
 
         case "SCHEDULE_MENTORSHIP":
+          if (!user) {
+            throw new Error("User record is required for mentorship actions");
+          }
           result = await executeScheduleMentorship(params, user);
           break;
 
         case "UPDATE_PROGRESS":
+          if (!user) {
+            throw new Error("User record is required for progress update actions");
+          }
           result = await executeUpdateProgress(params, user);
           break;
 
@@ -177,22 +273,24 @@ export async function POST(request: NextRequest) {
       }
 
       // Record the executed action (optional, for audit trail)
-      try {
-        await db.executedAction.create({
-          data: {
-            userId: user.id,
-            type: normalizedActionType,
-            title: title || normalizedActionType,
-            description: description || "",
-            params: params,
-            result: result,
-            status: result.success ? "SUCCESS" : "FAILED",
-            errorMessage: result.error || null,
-          },
-        });
-      } catch (dbError) {
-        console.error("Failed to record executed action:", dbError);
-        // Continue anyway - this is just audit logging
+      if (user?.id) {
+        try {
+          await db.executedAction.create({
+            data: {
+              userId: user.id,
+              type: normalizedActionType,
+              title: title || normalizedActionType,
+              description: description || "",
+              params: toPrismaJsonValue(params),
+              result: toPrismaJsonValue(result),
+              status: result.success ? "SUCCESS" : "FAILED",
+              errorMessage: result.error || null,
+            },
+          });
+        } catch (dbError) {
+          console.error("Failed to record executed action:", dbError);
+          // Continue anyway - this is just audit logging
+        }
       }
 
       return NextResponse.json({
@@ -204,21 +302,35 @@ export async function POST(request: NextRequest) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
       // Record the failed execution (optional)
-      try {
-        await db.executedAction.create({
-          data: {
-            userId: user.id,
-            type: normalizedActionType,
-            title: title || normalizedActionType,
-            description: description || "",
-            params: params,
-            result: { error: errorMessage },
-            status: "FAILED",
-            errorMessage,
+      if (user?.id) {
+        try {
+          await db.executedAction.create({
+            data: {
+              userId: user.id,
+              type: normalizedActionType,
+              title: title || normalizedActionType,
+              description: description || "",
+              params: toPrismaJsonValue(params),
+              result: toPrismaJsonValue({ error: errorMessage }),
+              status: "FAILED",
+              errorMessage,
+            },
+          });
+        } catch (dbError) {
+          console.error("Failed to record failed action:", dbError);
+        }
+      }
+
+      if (isPrismaConnectivityError(error)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Database is temporarily unavailable. Please try again in a moment.",
+            code: "DB_UNAVAILABLE",
           },
-        });
-      } catch (dbError) {
-        console.error("Failed to record failed action:", dbError);
+          { status: 503 },
+        );
       }
 
       return NextResponse.json(
@@ -228,6 +340,18 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error("Error executing action:", error);
+
+    if (isPrismaConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Database is temporarily unavailable. Please try again in a moment.",
+          code: "DB_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to execute action" },
       { status: 500 }
@@ -239,9 +363,17 @@ export async function POST(request: NextRequest) {
  * Action Executors
  */
 
-async function executeSendEmail(params: any, user: any) {
+async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
   // Call Python backend for email sending
   const PYTHON_BACKEND_URL = process.env.FASTAPI_URL || "http://localhost:5000";
+
+  const to = getStringParam(params, "to");
+  const subject = getStringParam(params, "subject");
+  const html = getStringParam(params, "html");
+
+  if (!to || !subject || !html) {
+    throw new Error("Email action requires 'to', 'subject', and 'html' fields.");
+  }
 
   try {
     const response = await fetch(`${PYTHON_BACKEND_URL}/api/tools/send_email`, {
@@ -264,16 +396,32 @@ async function executeSendEmail(params: any, user: any) {
 
     const email = await resend.emails.send({
       from: "ElevateAI <notifications@elevateai.com>",
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
+      to,
+      subject,
+      html,
     });
 
-    return { success: true, messageId: email.id };
+    const messageId =
+      typeof email === "object" && email !== null
+        ? "id" in email && typeof email.id === "string"
+          ? email.id
+          : "data" in email &&
+              email.data &&
+              typeof email.data === "object" &&
+              "id" in email.data &&
+              typeof email.data.id === "string"
+            ? email.data.id
+            : undefined
+        : undefined;
+
+    return { success: true, messageId };
   }
 }
 
-async function executeCreateCalendarEvent(params: any, user: any) {
+async function executeCreateCalendarEvent(
+  params: ActionParams,
+  user: UserRef,
+): Promise<ActionResult> {
   // Call Python backend for calendar event creation
   const PYTHON_BACKEND_URL = process.env.FASTAPI_URL || "http://localhost:5000";
 
@@ -289,10 +437,17 @@ async function executeCreateCalendarEvent(params: any, user: any) {
       throw new Error(`Calendar API error: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ActionResult;
+
+    const title = getStringParam(params, "title");
+    const startTimeRaw = getStringParam(params, "start_time");
+    const endTimeRaw = getStringParam(params, "end_time");
+    const description = getStringParam(params, "description");
+    const timezone = getStringParam(params, "timezone") || "UTC";
+    const attendees = getStringArrayParam(params, "attendees");
 
     // Store the calendar event in database if successful
-    if (result.success && result.google_event_id) {
+    if (result.success && typeof result.google_event_id === "string" && title && startTimeRaw && endTimeRaw) {
       const normalizedCalendarEventType = normalizeCalendarEventType(
         params.event_type ?? params.eventType,
       );
@@ -302,13 +457,13 @@ async function executeCreateCalendarEvent(params: any, user: any) {
           userId: user.id,
           googleEventId: result.google_event_id,
           type: normalizedCalendarEventType,
-          title: params.title,
-          description: params.description,
-          startTime: new Date(params.start_time),
-          endTime: new Date(params.end_time),
-          timezone: params.timezone || "UTC",
-          attendees: params.attendees || [],
-          metadata: result,
+          title,
+          description,
+          startTime: new Date(startTimeRaw),
+          endTime: new Date(endTimeRaw),
+          timezone,
+          attendees,
+          metadata: toPrismaJsonValue(result),
         },
       });
     }
@@ -327,17 +482,31 @@ async function executeCreateCalendarEvent(params: any, user: any) {
   }
 }
 
-async function executeTrackJobApplication(params: any, user: any) {
+async function executeTrackJobApplication(
+  params: ActionParams,
+  user: UserRef,
+): Promise<ActionResult> {
+  const company = getStringParam(params, "company");
+  const role = getStringParam(params, "role");
+  const jobUrl = getStringParam(params, "job_url");
+  const location = getStringParam(params, "location");
+  const salaryRange = getStringParam(params, "salary_range");
+  const remote = getBooleanParam(params, "remote") || false;
+
+  if (!company || !role || !jobUrl) {
+    throw new Error("Job application action requires 'company', 'role', and 'job_url'.");
+  }
+
   // Create job application record
   const application = await db.jobApplication.create({
     data: {
       userId: user.id,
-      company: params.company,
-      role: params.role,
-      jobUrl: params.job_url,
-      location: params.location,
-      salaryRange: params.salary_range,
-      remote: params.remote || false,
+      company,
+      role,
+      jobUrl,
+      location,
+      salaryRange,
+      remote,
       status: "TRACKING",
       followUpDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
     },
@@ -350,16 +519,28 @@ async function executeTrackJobApplication(params: any, user: any) {
   };
 }
 
-async function executeScheduleMentorship(params: any, user: any) {
+async function executeScheduleMentorship(
+  params: ActionParams,
+  user: UserRef,
+): Promise<ActionResult> {
+  const mentorId = getStringParam(params, "mentor_id");
+  const scheduledTime = getStringParam(params, "scheduled_time");
+  const durationMinutes = getNumberParam(params, "duration_minutes") || 30;
+  const notes = getStringParam(params, "notes");
+
+  if (!mentorId || !scheduledTime) {
+    throw new Error("Mentorship action requires 'mentor_id' and 'scheduled_time'.");
+  }
+
   // Create mentorship session record
   const session = await db.mentorshipSession.create({
     data: {
-      mentorId: params.mentor_id,
+      mentorId,
       studentId: user.id,
-      scheduledAt: new Date(params.scheduled_time),
-      durationMinutes: params.duration_minutes || 30,
+      scheduledAt: new Date(scheduledTime),
+      durationMinutes,
       status: "SCHEDULED",
-      notes: params.notes,
+      notes,
     },
   });
 
@@ -372,10 +553,16 @@ async function executeScheduleMentorship(params: any, user: any) {
   };
 }
 
-async function executeUpdateProgress(params: any, user: any) {
-  const { progress_type, lesson_id, skill_name, mastery_delta } = params;
+async function executeUpdateProgress(
+  params: ActionParams,
+  user: UserRef,
+): Promise<ActionResult> {
+  const progressType = getStringParam(params, "progress_type");
+  const lessonId = getStringParam(params, "lesson_id");
+  const skillName = getStringParam(params, "skill_name");
+  const masteryDelta = getNumberParam(params, "mastery_delta");
 
-  if (progress_type === "lesson_completed" && lesson_id) {
+  if (progressType === "lesson_completed" && lessonId) {
     // Update lesson progress
     const enrollment = await db.enrollment.findFirst({
       where: { userId: user.id },
@@ -385,7 +572,7 @@ async function executeUpdateProgress(params: any, user: any) {
       await db.lessonProgress.upsert({
         create: {
           enrollmentId: enrollment.id,
-          lessonId: lesson_id,
+          lessonId,
           status: "COMPLETED",
           completedAt: new Date(),
         },
@@ -403,10 +590,10 @@ async function executeUpdateProgress(params: any, user: any) {
     }
   }
 
-  if (progress_type === "skill_mastery" && skill_name && mastery_delta) {
+  if (progressType === "skill_mastery" && skillName && typeof masteryDelta === "number") {
     // Update skill mastery
     const skill = await db.skillNode.findUnique({
-      where: { name: skill_name },
+      where: { name: skillName },
     });
 
     if (skill) {
@@ -414,10 +601,10 @@ async function executeUpdateProgress(params: any, user: any) {
         create: {
           userId: user.id,
           skillId: skill.id,
-          masteryLevel: mastery_delta,
+          masteryLevel: masteryDelta,
         },
         update: {
-          masteryLevel: { increment: mastery_delta },
+          masteryLevel: { increment: masteryDelta },
           lastPracticed: new Date(),
         },
         where: {
@@ -434,16 +621,31 @@ async function executeUpdateProgress(params: any, user: any) {
 }
 
 // GET endpoint to list pending actions
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
+    let user;
+    try {
+      user = await db.user.findUnique({
+        where: { clerkUserId: userId },
+      });
+    } catch (error) {
+      if (isPrismaConnectivityError(error)) {
+        return NextResponse.json(
+          {
+            error:
+              "Database is temporarily unavailable. Please try again in a moment.",
+            code: "DB_UNAVAILABLE",
+          },
+          { status: 503 },
+        );
+      }
+      throw error;
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -461,16 +663,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       actions: pendingActions.map((action) => ({
         id: action.id,
-        type: action.type.toLowerCase().replace("_", "") as any,
+        type: action.type.toLowerCase().replace("_", ""),
         title: action.title,
         description: action.description,
-        params: action.params as any,
+        params: (action.params ?? {}) as Record<string, unknown>,
         expiresAt: action.expiresAt.toISOString(),
-        metadata: action.metadata as any,
+        metadata: (action.metadata ?? {}) as Record<string, unknown>,
       })),
     });
   } catch (error) {
     console.error("Error fetching pending actions:", error);
+
+    if (isPrismaConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          error: "Database is temporarily unavailable. Please try again in a moment.",
+          code: "DB_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to fetch pending actions" },
       { status: 500 }

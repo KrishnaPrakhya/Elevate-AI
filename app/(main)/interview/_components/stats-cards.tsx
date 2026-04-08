@@ -50,7 +50,9 @@ function StatsCards(props: assessmentsProps) {
 
   const getLatestScore = () => {
     const latestScore = getLatestAssessment()?.quizScore;
-    return Number.isFinite(latestScore) ? latestScore.toFixed(1) : "0.0";
+    return typeof latestScore === "number" && Number.isFinite(latestScore)
+      ? latestScore.toFixed(1)
+      : "0.0";
   };
 
   const getTotalQuestions = () => {

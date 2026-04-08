@@ -59,9 +59,6 @@ export async function GET(request: NextRequest) {
             user: { select: { name: true, imageUrl: true } },
           },
         },
-        student: {
-          select: { name: true, imageUrl: true },
-        },
       },
       orderBy: { scheduledAt: "desc" },
     });

@@ -14,10 +14,12 @@ type ActivePlan = {
   };
 };
 
-const generateQuizSchema = z.object({
-  targetRole: z.string().optional(),
-  weakTopics: z.array(z.string()).optional(),
-});
+type QuizQuestionInput = {
+  question: string;
+  options?: string[];
+  correctAnswer: string;
+  explanation?: string;
+};
 
 export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const {userId}=await auth();
@@ -54,7 +56,7 @@ export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
     );
 
     return questions;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error generating interview quiz:", error);
     throw new Error("Failed to generate quiz");
   }
@@ -63,14 +65,76 @@ export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
 const saveQuizResultSchema = z.object({
   questions: z.array(z.object({
     question: z.string(),
+    options: z.array(z.string()).optional(),
     correctAnswer: z.string(),
     explanation: z.string().optional(),
   })),
   answers: z.array(z.string()),
   score: z.number().min(0).max(100),
+}).refine((data) => data.questions.length === data.answers.length, {
+  message: "Questions and answers length mismatch",
+  path: ["answers"],
 });
 
-export const saveQuizResult = async (questions: any[], answers: any[], score: number) => {
+const normalizeAnswerText = (value: string | undefined | null) => {
+  if (!value) return "";
+  return value
+    .trim()
+    .replace(/^['\"]|['\"]$/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+};
+
+const stripLeadingOptionLabel = (value: string) => {
+  return value
+    .replace(/^\s*(?:option\s+)?(?:[\[(]?\s*(?:[a-d]|[1-4])\s*[\])\.:\-])\s*/i, "")
+    .trim();
+};
+
+const extractOptionIndex = (value: string) => {
+  const match = value
+    .trim()
+    .match(/^(?:option\s+)?[\[(]?\s*([a-d]|[1-4])\s*[\])\.:\-]?\s*$/i);
+
+  if (!match) return null;
+
+  const token = match[1].toLowerCase();
+  if (/^[1-4]$/.test(token)) {
+    return Number(token) - 1;
+  }
+
+  return token.charCodeAt(0) - "a".charCodeAt(0);
+};
+
+const resolveAnswerForComparison = (answer: string, options: string[] = []) => {
+  const normalizedOptions = options.map((option) =>
+    normalizeAnswerText(stripLeadingOptionLabel(option))
+  );
+
+  const normalizedRaw = normalizeAnswerText(answer);
+  const normalizedStripped = normalizeAnswerText(stripLeadingOptionLabel(answer));
+
+  if (normalizedOptions.includes(normalizedRaw)) {
+    return normalizedRaw;
+  }
+
+  if (normalizedOptions.includes(normalizedStripped)) {
+    return normalizedStripped;
+  }
+
+  const optionIndex = extractOptionIndex(answer);
+  if (optionIndex !== null && optionIndex >= 0 && optionIndex < normalizedOptions.length) {
+    return normalizedOptions[optionIndex];
+  }
+
+  return normalizedRaw || normalizedStripped;
+};
+
+export const saveQuizResult = async (
+  questions: QuizQuestionInput[],
+  answers: string[],
+  score: number
+) => {
   const { userId } = await auth();
   if (!userId) throw new Error("User is Unauthorized");
 
@@ -83,14 +147,28 @@ export const saveQuizResult = async (questions: any[], answers: any[], score: nu
     }
   })
   if (!user) throw new Error("User not Found");
-  const questionResults = validated.questions.map((q, index) => ({
-    question: q.question,
-    correctAnswer: q.correctAnswer,
-    userAnswer: validated.answers[index],
-    isCorrect: q.correctAnswer === validated.answers[index],
-    explanation: q.explanation
-  }));
-  console.log(questionResults)
+  const questionResults = validated.questions.map((q, index) => {
+    const userAnswer = validated.answers[index];
+    const options = q.options ?? [];
+
+    const normalizedCorrect = resolveAnswerForComparison(q.correctAnswer, options);
+    const normalizedUser = resolveAnswerForComparison(userAnswer, options);
+
+    return {
+      question: q.question,
+      correctAnswer: q.correctAnswer,
+      userAnswer,
+      isCorrect: normalizedCorrect === normalizedUser,
+      explanation: q.explanation,
+    };
+  });
+
+  const correctCount = questionResults.filter((q) => q.isCorrect).length;
+  const computedScore =
+    validated.questions.length > 0
+      ? Number(((correctCount / validated.questions.length) * 100).toFixed(2))
+      : 0;
+
   const wrongAnswers=questionResults.filter((q)=>!q.isCorrect);
   let improvementTip = null;
   if (wrongAnswers.length > 0) {
@@ -135,7 +213,7 @@ export const saveQuizResult = async (questions: any[], answers: any[], score: nu
     const assessment=await db.assessments.create({
       data:{
         userId:user.id,
-        quizScore:validated.score,
+        quizScore:computedScore,
         questions:questionResults,
         category:"Technical",
         improvementTip,
@@ -149,7 +227,7 @@ export const saveQuizResult = async (questions: any[], answers: any[], score: nu
       description:
         "Interview quiz result was recorded and used to refine your next recommended learning actions.",
       params: {
-        score: validated.score,
+        score: computedScore,
         totalQuestions: validated.questions.length,
         wrongAnswers: wrongAnswers.length,
       },

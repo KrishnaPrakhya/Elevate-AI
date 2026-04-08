@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { cn } from "@/lib/utils";
@@ -26,184 +26,113 @@ export function AIResponseFormatter({
   className,
   variant = "default",
 }: AIResponseFormatterProps) {
-  const baseClasses = cn(
-    "prose prose-sm max-w-none dark:prose-invert",
-    variant === "compact" && "prose-xs",
-    variant === "chat" &&
-      "prose-xs leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-    className,
-  );
+  const baseClasses = cn("max-w-none", className);
+
+  const markdownComponents: Components = {
+    h1: ({ children }) => (
+      <h1 className="mt-5 mb-3 text-2xl font-bold tracking-tight">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="mt-4 mb-2 text-xl font-semibold tracking-tight">
+        {children}
+      </h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="mt-4 mb-2 text-lg font-semibold tracking-tight">
+        {children}
+      </h3>
+    ),
+    h4: ({ children }) => (
+      <h4 className="mt-3 mb-2 text-base font-semibold">{children}</h4>
+    ),
+    p: ({ children }) => (
+      <p className="my-2 whitespace-pre-wrap text-sm leading-6 text-foreground/95">
+        {children}
+      </p>
+    ),
+    ul: ({ children }) => (
+      <ul className="my-2 list-disc pl-5 text-sm leading-6">{children}</ul>
+    ),
+    ol: ({ children }) => (
+      <ol className="my-2 list-decimal pl-5 text-sm leading-6">{children}</ol>
+    ),
+    li: ({ children }) => <li className="my-1">{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote className="my-3 border-l-4 border-primary/60 bg-muted/40 px-3 py-2 text-sm italic text-muted-foreground">
+        {children}
+      </blockquote>
+    ),
+    hr: () => <hr className="my-4 border-border" />,
+    a: ({ href, children }) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="text-primary underline underline-offset-2 hover:opacity-80"
+      >
+        {children}
+      </a>
+    ),
+    table: ({ children }) => (
+      <div className="my-4 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[520px] border-collapse text-sm">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }) => <thead className="bg-muted/80">{children}</thead>,
+    th: ({ children }) => (
+      <th className="border border-border px-3 py-2 text-left font-semibold text-foreground">
+        {children}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td className="border border-border px-3 py-2 align-top text-foreground/95">
+        {children}
+      </td>
+    ),
+    code: ({ className: codeClassName, children, ...props }) => {
+      const languageMatch = /language-(\w+)/.exec(codeClassName || "");
+      const contentValue = String(children ?? "");
+      const isBlock = Boolean(languageMatch) || contentValue.includes("\n");
+
+      if (isBlock) {
+        return (
+          <pre className="my-3 overflow-x-auto rounded-lg border border-border bg-muted p-3 text-xs leading-6">
+            <code className={codeClassName} {...props}>
+              {children}
+            </code>
+          </pre>
+        );
+      }
+
+      return (
+        <code
+          className="rounded bg-muted px-1.5 py-0.5 text-[0.85em] font-medium"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+  };
 
   return (
-    <div className={baseClasses}>
-      <style jsx global>{`
-        /* Table styling - the core fix for garbled tables */
-        .prose table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 1rem 0;
-          font-size: 0.875rem;
-        }
-
-        .prose th,
-        .prose td {
-          border: 1px solid hsl(var(--border));
-          padding: 0.75rem 1rem;
-          text-align: left;
-        }
-
-        .prose th {
-          background-color: hsl(var(--muted));
-          font-weight: 600;
-          color: hsl(var(--foreground));
-        }
-
-        .prose tr:nth-child(even) {
-          background-color: hsl(var(--muted) / 0.3);
-        }
-
-        .prose tr:hover {
-          background-color: hsl(var(--muted) / 0.5);
-        }
-
-        /* Code block styling */
-        .prose pre {
-          background-color: hsl(var(--muted));
-          border: 1px solid hsl(var(--border));
-          border-radius: 0.5rem;
-          padding: 1rem;
-          overflow-x: auto;
-          font-size: 0.8rem;
-          margin: 1rem 0;
-        }
-
-        .prose code {
-          background-color: hsl(var(--muted));
-          padding: 0.2rem 0.4rem;
-          border-radius: 0.25rem;
-          font-size: 0.85em;
-        }
-
-        .prose pre code {
-          background-color: transparent;
-          padding: 0;
-        }
-
-        /* Heading styling */
-        .prose h1,
-        .prose h2,
-        .prose h3,
-        .prose h4,
-        .prose h5,
-        .prose h6 {
-          color: hsl(var(--foreground));
-          font-weight: 600;
-          margin-top: 1.5rem;
-          margin-bottom: 0.75rem;
-        }
-
-        .prose h1 {
-          font-size: 1.5rem;
-        }
-        .prose h2 {
-          font-size: 1.25rem;
-        }
-        .prose h3 {
-          font-size: 1.1rem;
-        }
-        .prose h4 {
-          font-size: 1rem;
-        }
-
-        /* List styling */
-        .prose ul,
-        .prose ol {
-          padding-left: 1.5rem;
-          margin: 0.75rem 0;
-        }
-
-        .prose li {
-          margin: 0.35rem 0;
-        }
-
-        /* Blockquote styling */
-        .prose blockquote {
-          border-left: 3px solid hsl(var(--primary));
-          padding-left: 1rem;
-          color: hsl(var(--muted-foreground));
-          font-style: italic;
-          margin: 1rem 0;
-        }
-
-        /* Link styling */
-        .prose a {
-          color: hsl(var(--primary));
-          text-decoration: underline;
-          text-underline-offset: 2px;
-        }
-
-        .prose a:hover {
-          opacity: 0.8;
-        }
-
-        /* Horizontal rule */
-        .prose hr {
-          border-color: hsl(var(--border));
-          margin: 1.5rem 0;
-        }
-
-        /* Paragraph spacing */
-        .prose p {
-          margin: 0.75rem 0;
-          line-height: 1.6;
-        }
-
-        /* Strong/Bold text */
-        .prose strong {
-          font-weight: 600;
-          color: hsl(var(--foreground));
-        }
-
-        /* Compact variant adjustments */
-        .prose-xs table {
-          font-size: 0.75rem;
-        }
-
-        .prose-xs th,
-        .prose-xs td {
-          padding: 0.5rem 0.75rem;
-        }
-
-        .prose-xs pre {
-          padding: 0.75rem;
-          font-size: 0.7rem;
-        }
-      `}</style>
-
+    <div
+      className={cn(
+        baseClasses,
+        variant === "compact" &&
+          "text-sm [&_table]:text-xs [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5",
+        variant === "chat" &&
+          "text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+      )}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
-        components={{
-          // Custom table renderer
-          table: ({ node, children, ...props }) => (
-            <div className="overflow-x-auto">
-              <table {...props}>{children}</table>
-            </div>
-          ),
-          // Custom code block renderer
-          code({ node, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || "");
-            return match ? (
-              <pre className={className}>
-                <code {...props}>{children}</code>
-              </pre>
-            ) : (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          },
-        }}
+        components={markdownComponents}
       >
         {content}
       </ReactMarkdown>
@@ -220,111 +149,104 @@ export function AIResponseFormatter({
 export function formatAIResponse(content: string): string {
   if (!content) return "";
 
-  let formatted = content;
-
-  const normalizeBrokenPipeTables = (text: string): string => {
-    // Some model outputs compact full table rows into one line separated by "||".
-    // Expand those separators first so row-level normalization can work reliably.
-    const expanded = text.includes("||")
-      ? text.replace(/\s*\|\|\s*/g, "\n")
-      : text;
-
-    const lines = expanded.split(/\r?\n/);
-    const likelyBrokenTable = lines.some((line) => {
-      const t = line.trim();
-      return (
-        t.includes("||") ||
-        /^-+\|/.test(t) ||
-        /^\|\s*\|/.test(t) ||
-        /^-\|$/.test(t)
-      );
-    });
-
-    if (!likelyBrokenTable) return text;
-
-    const normalized: string[] = [];
-    for (const line of lines) {
-      const t = line.trim();
-
-      if (!t) {
-        normalized.push("");
-        continue;
-      }
-
-      // Drop table separator-only rows from malformed markdown.
-      if (/^[-:|\s]+$/.test(t)) {
-        continue;
-      }
-
-      if (t.includes("|")) {
-        const cells = t
-          .split("|")
-          .map((cell) => cell.trim())
-          .map((cell) => cell.replace(/^[-*]+\s*/, "").trim())
-          .filter(Boolean);
-
-        if (cells.length === 0) {
-          continue;
-        }
-
-        const isHeaderRow =
-          cells.length >= 2 &&
-          /observation|area|strength|recommendation|example/i.test(cells[0]) &&
-          /why|evidence|detail|rationale|example/i.test(
-            cells.slice(1).join(" "),
-          );
-
-        if (isHeaderRow) {
-          continue;
-        }
-
-        if (cells.length === 1) {
-          normalized.push(cells[0]);
-        } else if (cells.length === 2) {
-          normalized.push(`- ${cells[0]}: ${cells[1]}`);
-        } else {
-          normalized.push(`- ${cells[0]}: ${cells.slice(1).join(" | ")}`);
-        }
-        continue;
-      }
-
-      normalized.push(line);
-    }
-
-    return normalized.join("\n");
+  const normalizeOutsideCodeBlocks = (
+    text: string,
+    normalize: (segment: string) => string,
+  ): string => {
+    const fencedSegments = text.split(/(```[\s\S]*?```)/g);
+    return fencedSegments
+      .map((segment) =>
+        segment.startsWith("```") ? segment : normalize(segment),
+      )
+      .join("");
   };
 
-  formatted = normalizeBrokenPipeTables(formatted);
+  const isTableSeparatorRow = (line: string): boolean =>
+    /^\|\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(line.trim());
 
-  // Normalize HTML line breaks that frequently appear in model output.
+  const isPotentialTableRow = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed || isTableSeparatorRow(trimmed)) return false;
+    const pipeCount = (trimmed.match(/\|/g) || []).length;
+    return pipeCount >= 2;
+  };
+
+  const normalizeTableRow = (line: string): string => {
+    const trimmed = line.trim();
+    if (!isPotentialTableRow(trimmed)) return line;
+
+    let row = trimmed;
+    if (!row.startsWith("|")) row = `| ${row}`;
+    if (!row.endsWith("|")) row = `${row} |`;
+    row = row.replace(/\|\|+/g, "| |");
+    row = row.replace(/\s*\|\s*/g, " | ");
+    row = row.replace(/\s{2,}/g, " ").trim();
+
+    return row;
+  };
+
+  const insertMissingTableSeparators = (text: string): string => {
+    const lines = text.split("\n");
+    const output: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const current = normalizeTableRow(lines[i]);
+      const next = i + 1 < lines.length ? lines[i + 1].trim() : "";
+
+      output.push(current);
+
+      if (
+        !isPotentialTableRow(current) ||
+        isTableSeparatorRow(next) ||
+        !isPotentialTableRow(next)
+      ) {
+        continue;
+      }
+
+      const cellCount = current
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean).length;
+
+      if (cellCount >= 2) {
+        output.push(`| ${new Array(cellCount).fill("---").join(" | ")} |`);
+      }
+    }
+
+    return output.join("\n");
+  };
+
+  let formatted = content.replace(/\r\n/g, "\n").trim();
+
+  const wrappedMarkdown = formatted.match(
+    /^```(?:md|markdown|text)?\n([\s\S]*?)\n```$/i,
+  );
+  if (wrappedMarkdown?.[1]) {
+    formatted = wrappedMarkdown[1].trim();
+  }
+
   formatted = formatted.replace(/<br\s*\/?\s*>/gi, "\n");
 
-  // Ensure markdown horizontal rules are on their own lines.
-  formatted = formatted.replace(/(^|\n)\s*---\s*(?=\n|$)/g, "$1---");
+  formatted = normalizeOutsideCodeBlocks(formatted, (segment) => {
+    let next = segment;
 
-  // Ensure markdown headings start on a new line.
-  formatted = formatted.replace(/([^\n])\s*(#{1,6}\s+)/g, "$1\n\n$2");
+    // Move markdown headings onto clean boundaries.
+    next = next.replace(/([^\n])\s*(#{1,6}\s+)/g, "$1\n\n$2");
+    next = next.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
 
-  // Ensure numbered section labels begin on a new line.
-  formatted = formatted.replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n\n$2");
+    // Some model outputs compact table rows with double pipes between rows.
+    next = next.replace(/\|\|\s*(?=\|)/g, "\n");
 
-  // Fix tables without proper spacing
-  formatted = formatted.replace(/(\|[^|]+\|)\n(\|[-| ]+\|)\n/g, "$1\n$2\n");
+    // Ensure horizontal rules are isolated lines.
+    next = next.replace(/\s*(---+)\s*/g, "\n$1\n");
 
-  // Break table separator rows onto their own line if they are inline.
-  formatted = formatted.replace(/\s+(\|\s*[-:]{2,}[-|:\s]*\|)/g, "\n$1");
+    next = insertMissingTableSeparators(next);
 
-  // Ensure each table row starts on a new line when multiple rows are compacted.
-  formatted = formatted.replace(/\|\s+(?=\|)/g, "|\n|");
+    // Normalize spacing to avoid giant gaps but preserve paragraph breaks.
+    next = next.replace(/\n{3,}/g, "\n\n");
 
-  // Ensure blank lines before headings
-  formatted = formatted.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
-
-  // Ensure blank lines before code blocks
-  formatted = formatted.replace(/([^\n])\n(```)/g, "$1\n\n$2");
-
-  // Normalize multiple blank lines to single blank line
-  formatted = formatted.replace(/\n{3,}/g, "\n\n");
+    return next;
+  });
 
   return formatted.trim();
 }

@@ -482,9 +482,6 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
 
         {!showExplanation ? (
           <Button
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
             onClick={handleAnswer}
             disabled={!selectedOption}
             className="w-full mt-6 py-6 rounded-xl font-medium bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90 shadow-lg"
@@ -526,8 +523,6 @@ export default function QuizGame({ quizData, setQuizStarted }: QuizGameProps) {
             </div>
 
             <Button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
               onClick={handleNextQuestion}
               className="w-full py-6 rounded-xl font-medium bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90 shadow-lg flex items-center justify-center gap-2"
             >

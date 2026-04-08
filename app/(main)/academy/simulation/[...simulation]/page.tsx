@@ -3,12 +3,27 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { BrainCircuit, Send, CheckCircle2, ArrowLeft, Loader2 } from "lucide-react";
+import {
+  BrainCircuit,
+  Send,
+  CheckCircle2,
+  ArrowLeft,
+  Loader2,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { AIResponseFormatter } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 
 interface SimulationScenario {
   id: string;
@@ -31,7 +46,9 @@ export default function SimulationPage() {
   const scenarioId = params.simulation?.[0] || "api-design";
 
   const [scenario, setScenario] = useState<SimulationScenario | null>(null);
-  const [messages, setMessages] = useState<{role: 'ai' | 'user', content: string}[]>([]);
+  const [messages, setMessages] = useState<
+    { role: "ai" | "user"; content: string }[]
+  >([]);
   const [input, setInput] = useState("");
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [score, setScore] = useState<number | null>(null);
@@ -43,14 +60,16 @@ export default function SimulationPage() {
       try {
         const res = await fetch("/api/simulation/scenarios");
         const data = await res.json();
-        const foundScenario = data.scenarios.find((s: SimulationScenario) => s.id === scenarioId);
+        const foundScenario = data.scenarios.find(
+          (s: SimulationScenario) => s.id === scenarioId,
+        );
         if (foundScenario) {
           setScenario(foundScenario);
           setMessages([
             {
-              role: 'ai',
-              content: `Welcome to the **${foundScenario.title}** simulation!\n\n${foundScenario.description}\n\nI'm here to evaluate your response. Please explain your approach in detail, considering trade-offs and practical implications.`
-            }
+              role: "ai",
+              content: `Welcome to the **${foundScenario.title}** simulation!\n\n${foundScenario.description}\n\nI'm here to evaluate your response. Please explain your approach in detail, considering trade-offs and practical implications.`,
+            },
           ]);
         }
       } catch (error) {
@@ -63,7 +82,10 @@ export default function SimulationPage() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const newMessages = [...messages, { role: "user" as const, content: input }];
+    const newMessages = [
+      ...messages,
+      { role: "user" as const, content: input },
+    ];
     setMessages(newMessages);
     setInput("");
     setIsEvaluating(true);
@@ -82,19 +104,25 @@ export default function SimulationPage() {
 
       const result: EvaluationResult = await response.json();
 
-      setMessages([...newMessages, {
-        role: "ai",
-        content: `**Score: ${result.score}/100**\n\n${result.feedback}`
-      }]);
+      setMessages([
+        ...newMessages,
+        {
+          role: "ai",
+          content: `**Score: ${result.score}/100**\n\n${result.feedback}`,
+        },
+      ]);
       setScore(result.score);
       setSuggestions(result.suggestions);
 
       if (result.next_prompt) {
         setTimeout(() => {
-          setMessages(prev => [...prev, {
-            role: "ai",
-            content: `**Follow-up Question:**\n\n${result.next_prompt}`
-          }]);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "ai",
+              content: `**Follow-up Question:**\n\n${result.next_prompt}`,
+            },
+          ]);
         }, 1000);
       }
 
@@ -102,10 +130,14 @@ export default function SimulationPage() {
     } catch (error) {
       console.error("Error evaluating response:", error);
       toast.error("Failed to evaluate response. Please try again.");
-      setMessages([...newMessages, {
-        role: "ai",
-        content: "I apologize, but I encountered an error evaluating your response. Please try again."
-      }]);
+      setMessages([
+        ...newMessages,
+        {
+          role: "ai",
+          content:
+            "I apologize, but I encountered an error evaluating your response. Please try again.",
+        },
+      ]);
     } finally {
       setIsEvaluating(false);
     }
@@ -139,84 +171,103 @@ export default function SimulationPage() {
         <div>
           <h1 className="text-3xl font-bold">{scenario.title}</h1>
           <p className="text-muted-foreground flex items-center gap-2 mt-1">
-             <BrainCircuit className="w-4 h-4"/> {scenario.category} • {scenario.difficulty}
+            <BrainCircuit className="w-4 h-4" /> {scenario.category} •{" "}
+            {scenario.difficulty}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {score !== null && (
             <div className="text-right mr-4">
               <p className="text-sm text-muted-foreground">Current Score</p>
-              <p className={`text-2xl font-bold ${score >= 70 ? 'text-green-600' : score >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              <p
+                className={`text-2xl font-bold ${score >= 70 ? "text-green-600" : score >= 50 ? "text-yellow-600" : "text-red-600"}`}
+              >
                 {score}/100
               </p>
             </div>
           )}
-           <Button
-             variant="outline"
-             className="text-green-600 border-green-600 hover:bg-green-50"
-             onClick={handleComplete}
-           >
-             <CheckCircle2 className="w-4 h-4 mr-2" /> Complete Simulation
-           </Button>
+          <Button
+            variant="outline"
+            className="text-green-600 border-green-600 hover:bg-green-50"
+            onClick={handleComplete}
+          >
+            <CheckCircle2 className="w-4 h-4 mr-2" /> Complete Simulation
+          </Button>
         </div>
       </div>
 
       <Card className="h-[600px] flex flex-col">
         <CardHeader className="border-b bg-muted/30 pb-4">
-          <CardTitle className="text-lg">Live Session with AI Senior Engineer</CardTitle>
-          <CardDescription>Roleplay the scenario to earn your portfolio artifact.</CardDescription>
+          <CardTitle className="text-lg">
+            Live Session with AI Senior Engineer
+          </CardTitle>
+          <CardDescription>
+            Roleplay the scenario to earn your portfolio artifact.
+          </CardDescription>
         </CardHeader>
-        
+
         <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((msg, idx) => (
-             <motion.div
-               key={idx}
-               initial={{ opacity: 0, y: 10 }}
-               animate={{ opacity: 1, y: 0 }}
-               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-             >
-               <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                 msg.role === 'user'
-                  ? 'bg-primary text-primary-foreground rounded-tr-none'
-                  : 'bg-muted rounded-tl-none border'
-               }`}>
-                 {msg.role === 'ai' ? (
-                   <div className="text-sm">
-                     <AIResponseFormatter content={msg.content} variant="chat" />
-                   </div>
-                 ) : (
-                   <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
-                 )}
-               </div>
-             </motion.div>
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-tr-none"
+                    : "bg-muted rounded-tl-none border"
+                }`}
+              >
+                {msg.role === "ai" ? (
+                  <div className="text-sm">
+                    <AIResponseFormatter
+                      content={formatAIResponse(msg.content)}
+                      variant="chat"
+                    />
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {msg.content}
+                  </p>
+                )}
+              </div>
+            </motion.div>
           ))}
           {isEvaluating && (
-             <div className="flex justify-start">
-               <div className="bg-muted rounded-2xl rounded-tl-none px-4 py-3 border text-sm text-muted-foreground flex items-center gap-2">
-                 <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" />
-                 <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:0.2s]" />
-                 <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:0.4s]" />
-                 Evaluating your response...
-               </div>
-             </div>
+            <div className="flex justify-start">
+              <div className="bg-muted rounded-2xl rounded-tl-none px-4 py-3 border text-sm text-muted-foreground flex items-center gap-2">
+                <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" />
+                <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:0.2s]" />
+                <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:0.4s]" />
+                Evaluating your response...
+              </div>
+            </div>
           )}
         </CardContent>
 
         <div className="p-4 border-t bg-background">
           <div className="flex gap-2">
-            <Textarea 
+            <Textarea
               placeholder="Type your response or architecture design here..."
               className="resize-none h-12 py-3"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }
               }}
             />
-            <Button size="icon" className="h-12 w-12 shrink-0 rounded-xl" onClick={handleSend} disabled={isEvaluating || !input.trim()}>
+            <Button
+              size="icon"
+              className="h-12 w-12 shrink-0 rounded-xl"
+              onClick={handleSend}
+              disabled={isEvaluating || !input.trim()}
+            >
               <Send className="w-5 h-5" />
             </Button>
           </div>

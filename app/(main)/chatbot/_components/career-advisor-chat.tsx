@@ -40,6 +40,17 @@ interface Message {
   category?: "job" | "advice" | "schedule" | "analysis";
 }
 
+interface BackendPendingAction {
+  type?: unknown;
+  title?: unknown;
+  description?: unknown;
+  params?: unknown;
+  metadata?: {
+    icon?: unknown;
+    priority?: unknown;
+  } | null;
+}
+
 const normalizeAssistantContent = (rawContent: unknown): string => {
   if (typeof rawContent !== "string") return "";
 
@@ -99,6 +110,25 @@ const normalizePendingActionType = (
   }
 
   return "schedule";
+};
+
+const normalizePendingActionMetadata = (
+  rawMetadata: BackendPendingAction["metadata"],
+): PendingAction["metadata"] | undefined => {
+  if (!rawMetadata || typeof rawMetadata !== "object") return undefined;
+
+  const icon =
+    typeof rawMetadata.icon === "string" ? rawMetadata.icon : undefined;
+  const priority =
+    rawMetadata.priority === "low" ||
+    rawMetadata.priority === "medium" ||
+    rawMetadata.priority === "high"
+      ? rawMetadata.priority
+      : undefined;
+
+  if (!icon && !priority) return undefined;
+
+  return { icon, priority };
 };
 
 interface CareerAdvisorChatProps {
@@ -249,18 +279,31 @@ export default function CareerAdvisorChat({
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Handle pending actions from backend
-      const backendPendingActions = data.pending_actions || [];
+      const backendPendingActions: BackendPendingAction[] = Array.isArray(
+        data.pending_actions,
+      )
+        ? data.pending_actions
+        : [];
       if (backendPendingActions.length > 0) {
         // Transform backend actions to frontend format
         const transformedActions: PendingAction[] = backendPendingActions.map(
-          (action: any, index: number) => ({
+          (action, index) => ({
             id: `action-${Date.now()}-${index}`,
             type: normalizePendingActionType(action.type),
-            title: action.title,
-            description: action.description,
-            params: action.params,
+            title:
+              typeof action.title === "string"
+                ? action.title
+                : `Action ${index + 1}`,
+            description:
+              typeof action.description === "string"
+                ? action.description
+                : "A pending action requires your confirmation.",
+            params:
+              action.params && typeof action.params === "object"
+                ? (action.params as Record<string, unknown>)
+                : {},
             expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
-            metadata: action.metadata,
+            metadata: normalizePendingActionMetadata(action.metadata),
           }),
         );
         setPendingActions((prev) => [...prev, ...transformedActions]);

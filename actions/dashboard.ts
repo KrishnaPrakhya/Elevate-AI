@@ -219,6 +219,7 @@ export async function getDashboardInsights() {
   })
   if(!user) throw new Error("User Not Found");
   if (!user.industry) throw new Error("User industry is not defined");
+  const industry = user.industry;
 
   const countryCode = await resolveUserCountryCode();
   
@@ -228,12 +229,12 @@ export async function getDashboardInsights() {
     async()=>{
       const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
       const now = Date.now();
-      const insights = await generateAIinsights(user.industry, countryCode);
+      const insights = await generateAIinsights(industry, countryCode);
 
       return {
-        id: `${user.id}-${user.industry}-${countryCode}-weekly`,
+        id: `${user.id}-${industry}-${countryCode}-weekly`,
         ...insights,
-        industry: user.industry,
+        industry,
         lastUpdated: new Date(now),
         nextUpdated: new Date(now + ONE_WEEK_MS),
       };

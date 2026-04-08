@@ -56,6 +56,7 @@ interface ProfileFormProps {
     name?: string | null;
     email?: string | null;
     clerkUserId?: string | null;
+    googleCalendarRefreshToken?: string | null;
   };
 }
 

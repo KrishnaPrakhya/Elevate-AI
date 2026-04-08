@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import type { PathLevel, Prisma, SimulationType } from "@prisma/client";
+
+const validDifficulties: PathLevel[] = [
+  "BEGINNER",
+  "INTERMEDIATE",
+  "ADVANCED",
+  "EXPERT",
+];
+
+const validSimulationTypes: SimulationType[] = [
+  "TECHNICAL",
+  "SOFT_SKILL",
+  "NEGOTIATION",
+  "DEBUGGING",
+  "SYSTEM_DESIGN",
+];
 
 // Get all available simulations
 export async function GET(request: NextRequest) {
@@ -27,12 +43,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const where: {
-      type?: string;
-      difficulty?: string;
-    } = {};
-    if (type) where.type = type;
-    if (difficulty) where.difficulty = difficulty;
+    const where: Prisma.SimulationScenarioWhereInput = {};
+    if (type && validSimulationTypes.includes(type as SimulationType)) {
+      where.type = type as SimulationType;
+    }
+    if (
+      difficulty &&
+      validDifficulties.includes(difficulty as PathLevel)
+    ) {
+      where.difficulty = difficulty as PathLevel;
+    }
 
     const simulations = await db.simulationScenario.findMany({
       where,
@@ -86,8 +106,12 @@ export async function POST(request: NextRequest) {
       data: {
         title,
         description,
-        difficulty: difficulty || "BEGINNER",
-        type: type || "TECHNICAL",
+        difficulty: validDifficulties.includes(difficulty as PathLevel)
+          ? (difficulty as PathLevel)
+          : "BEGINNER",
+        type: validSimulationTypes.includes(type as SimulationType)
+          ? (type as SimulationType)
+          : "TECHNICAL",
         aiPrompt,
         successCriteria,
         primarySkillId,

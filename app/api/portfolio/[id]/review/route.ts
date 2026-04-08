@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
+
+const toPrismaJsonValue = (value: unknown): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 
 const normalizeUrl = (url?: string | null): string | null => {
   if (!url) return null;
@@ -138,7 +142,7 @@ export async function POST(
     const updatedArtifact = await db.portfolioArtifact.update({
       where: { id: artifact.id, userId: user.id },
       data: {
-        aiReview: detailedReview,
+        aiReview: toPrismaJsonValue(detailedReview),
       },
     });
 

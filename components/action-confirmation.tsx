@@ -30,7 +30,7 @@ export interface PendingAction {
   type: "email" | "calendar" | "mentorship" | "job_application" | "schedule";
   title: string;
   description: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   expiresAt: string;
   metadata?: {
     icon?: string;
@@ -80,7 +80,7 @@ export function ActionConfirmation({
     }
   };
 
-  const formatParams = (params: Record<string, any>) => {
+  const formatParams = (params: Record<string, unknown>) => {
     const requestedTimezone =
       typeof params.timezone === "string" && params.timezone.trim().length > 0
         ? params.timezone.trim()

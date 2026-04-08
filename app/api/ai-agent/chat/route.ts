@@ -143,6 +143,17 @@ export async function POST(request: NextRequest) {
 function detectAgentIntent(message: string): string {
   const lowerMessage = message.toLowerCase();
 
+  // Email drafting should win over schedule keywords when both are present.
+  const hasEmailWord = lowerMessage.includes("email") || lowerMessage.includes("mail");
+  const hasEmailVerb = /\b(draft|write|compose|create|prepare|send)\b.*\b(email|mail)\b|\b(email|mail)\b.*\b(draft|write|compose|create|prepare|send)\b/i.test(
+    lowerMessage,
+  );
+  const hasRecipient = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(lowerMessage);
+
+  if (hasEmailWord && (hasEmailVerb || hasRecipient)) {
+    return "email_drafter";
+  }
+
   // Resume/Cover Letter related
   if (
     lowerMessage.includes("resume") ||
@@ -318,6 +329,8 @@ function getAgentSystemPrompt(agent: string): string {
 
     interview_preparer: `You are an interview preparation specialist. You help users prepare for both technical and behavioral interviews, provide common questions, suggest answer frameworks (like STAR), and conduct mock interviews.`,
 
+    email_drafter: `You are an expert communication assistant. Draft polished, professional emails with a clear subject, concise body, and action-oriented tone. If users provide planning content, summarize it into a scannable email structure with bullets and headings.`,
+
     supervisor: `You are a helpful career assistant who can help with various aspects of career development including resume review, job search, interview prep, and career planning. You provide thoughtful, personalized advice.`,
   };
 
@@ -353,6 +366,11 @@ function generateSuggestions(agent: string): string[] {
       "Give me a practice technical question",
       "How do I answer 'tell me about yourself'?",
       "What questions should I ask the interviewer?",
+    ],
+    email_drafter: [
+      "Draft a follow-up email with my 4-week plan",
+      "Rewrite this email to sound more professional",
+      "Create a concise subject line and CTA for this email",
     ],
     supervisor: [
       "Help me improve my resume",

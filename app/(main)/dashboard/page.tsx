@@ -162,19 +162,19 @@ function DashboardPage() {
       const careerInsight = (await response.json()) as CareerInsight;
       const planActions = mapPlanActions(activePlan);
       const statsActions = performanceInsights?.nextActions || [];
-      const mergedActions = !activePlan
-        ? [
-            {
-              type: "course",
-              title: "Generate your Academy Learning Plan",
-              description:
-                "Create your plan first so all next steps, interview cadence, and deadlines align to one roadmap.",
-              priority: "high",
-              reasoning:
-                "Plan-first mode is required before personalized execution recommendations are finalized.",
-              actionUrl: "/academy#generate-plan-section",
-            },
-          ]
+      const planFirstAction: CareerInsight["recommendedActions"][number] = {
+        type: "course",
+        title: "Generate your Academy Learning Plan",
+        description:
+          "Create your plan first so all next steps, interview cadence, and deadlines align to one roadmap.",
+        priority: "high",
+        reasoning:
+          "Plan-first mode is required before personalized execution recommendations are finalized.",
+        actionUrl: "/academy#generate-plan-section",
+      };
+
+      const mergedActions: CareerInsight["recommendedActions"] = !activePlan
+        ? [planFirstAction]
         : planActions.length > 0
           ? planActions
           : statsActions.length > 0

@@ -4,7 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 import {
   Sparkles,
   MessageSquare,
@@ -49,9 +52,13 @@ export function AITutorFloat({ context }: AITutorFloatProps) {
           role: "assistant",
           content: `Hi! I'm your **AI Tutor** 👋
 
-${context?.lessonTitle ? `I'm here to help you with: **${context.lessonTitle}**
+${
+  context?.lessonTitle
+    ? `I'm here to help you with: **${context.lessonTitle}**
 
-` : ""}Ask me anything about the content, and I'll help you understand it better. I can:
+`
+    : ""
+}Ask me anything about the content, and I'll help you understand it better. I can:
 - Explain concepts in simpler terms
 - Provide real-world examples
 - Clarify confusing topics
@@ -103,7 +110,8 @@ What would you like to know?`,
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "I'm having trouble connecting right now. Please try again in a moment!",
+        content:
+          "I'm having trouble connecting right now. Please try again in a moment!",
         timestamp: new Date(),
       };
       setChatMessages((prev) => [...prev, errorMessage]);
@@ -176,7 +184,9 @@ What would you like to know?`,
                 <div>
                   <p className="font-semibold text-sm">AI Tutor</p>
                   <p className="text-xs text-muted-foreground">
-                    {context?.lessonTitle ? `Learning: ${context.lessonTitle}` : "Here to help you learn"}
+                    {context?.lessonTitle
+                      ? `Learning: ${context.lessonTitle}`
+                      : "Here to help you learn"}
                   </p>
                 </div>
               </div>
@@ -187,7 +197,11 @@ What would you like to know?`,
                   onClick={() => setIsExpanded(!isExpanded)}
                   className="h-8 w-8 p-0"
                 >
-                  {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  {isExpanded ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
                 </Button>
                 <Button
                   variant="ghost"
@@ -218,7 +232,10 @@ What would you like to know?`,
                       }`}
                     >
                       {message.role === "assistant" ? (
-                        <AIResponseFormatter content={message.content} variant="chat" />
+                        <AIResponseFormatter
+                          content={formatAIResponse(message.content)}
+                          variant="chat"
+                        />
                       ) : (
                         <p className="text-sm">{message.content}</p>
                       )}
@@ -270,7 +287,9 @@ What would you like to know?`,
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendChat()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && !e.shiftKey && handleSendChat()
+                  }
                   placeholder="Ask a question..."
                   className="flex-1 px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   disabled={isSending}
@@ -281,7 +300,11 @@ What would you like to know?`,
                   disabled={isSending || !chatInput.trim()}
                   className="shrink-0"
                 >
-                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {isSending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
             </div>

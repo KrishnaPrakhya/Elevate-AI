@@ -8,9 +8,9 @@ import { revalidatePath } from "next/cache";
 
 interface UpdateUserData {
   industry: string;
-  experience: string;
-  bio: string;
-  skills: string[];
+  experience: string | number;
+  bio?: string;
+  skills?: string[];
 }
 
 export async function getUser() {
@@ -148,8 +148,8 @@ export async function updateUser(data: UpdateUserData) {
           industry: data.industry,
           targetRole: null, // Will be set separately if provided
           experience: Number(data.experience),
-          bio: data.bio,
-          skills: data.skills
+          bio: data.bio ?? "",
+          skills: data.skills ?? []
         }
       });
 

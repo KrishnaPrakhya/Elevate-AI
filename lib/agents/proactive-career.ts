@@ -13,10 +13,40 @@
 
 import { db } from "../prisma";
 import { Resend } from "resend";
+import {
+  Prisma,
+  type ActionType,
+  type Priority,
+  type ReminderType,
+} from "@prisma/client";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : undefined;
+
+const interventionUserInclude = Prisma.validator<Prisma.UserInclude>()({
+  streak: true,
+  enrollments: {
+    include: {
+      learningPath: true,
+      lessonProgress: true,
+    },
+  },
+  skillProgress: {
+    include: {
+      skill: true,
+    },
+  },
+  resume: true,
+  jobApplications: true,
+  emailPreference: true,
+});
+
+type InterventionUser = Prisma.UserGetPayload<{
+  include: typeof interventionUserInclude;
+}>;
+
+type ActionParams = Record<string, unknown>;
 
 interface UserIntervention {
   type: InterventionType;
@@ -25,7 +55,7 @@ interface UserIntervention {
   message: string;
   action?: {
     type: "email" | "calendar" | "notification";
-    params: Record<string, any>;
+    params: ActionParams;
   };
 }
 
@@ -38,28 +68,31 @@ type InterventionType =
   | "learning_path_suggestion"
   | "streak_nudge";
 
+const interventionToReminderType: Record<InterventionType, ReminderType> = {
+  celebrate_milestone: "MILESTONE_CELEBRATION",
+  re_engagement: "COLD_START",
+  suggest_job_search: "MAINTENANCE",
+  skill_gap_alert: "LEARNING_GOAL",
+  interview_reminder: "WEEKLY_REVIEW",
+  learning_path_suggestion: "LEARNING_GOAL",
+  streak_nudge: "STREAK_NUDGE",
+};
+
+const interventionToPriority: Record<UserIntervention["priority"], Priority> = {
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH",
+};
+
+const toJsonObject = (value: ActionParams): Prisma.InputJsonObject =>
+  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonObject;
+
 /**
  * Check all users for intervention opportunities
  */
 export async function checkCareerInterventions() {
   const users = await db.user.findMany({
-    include: {
-      streak: true,
-      enrollments: {
-        include: {
-          learningPath: true,
-          lessonProgress: true,
-        },
-      },
-      skillProgress: {
-        include: {
-          skill: true,
-        },
-      },
-      resume: true,
-      jobApplications: true,
-      emailPreference: true,
-    },
+    include: interventionUserInclude,
   });
 
   const interventions: Array<{ userId: string; intervention: UserIntervention }> = [];
@@ -82,7 +115,9 @@ export async function checkCareerInterventions() {
 /**
  * Analyze a single user for intervention opportunities
  */
-async function analyzeUserForInterventions(user: any): Promise<UserIntervention[]> {
+async function analyzeUserForInterventions(
+  user: InterventionUser,
+): Promise<UserIntervention[]> {
   const interventions: UserIntervention[] = [];
 
   // Check for milestone celebrations
@@ -193,7 +228,9 @@ async function analyzeUserForInterventions(user: any): Promise<UserIntervention[
   }
 
   // Check for interview preparation reminders (job applications without interview prep)
-  const hasInterviewing = user.jobApplications?.some((app: any) => app.status === "INTERVIEWING");
+  const hasInterviewing = user.jobApplications?.some(
+    (app) => app.status === "INTERVIEWING",
+  );
   if (hasInterviewing) {
     interventions.push({
       type: "interview_reminder",
@@ -220,6 +257,9 @@ async function analyzeUserForInterventions(user: any): Promise<UserIntervention[
 async function executeIntervention(userId: string, intervention: UserIntervention) {
   const user = await db.user.findUnique({
     where: { id: userId },
+    include: {
+      emailPreference: true,
+    },
   });
 
   if (!user || !user.email) return;
@@ -235,13 +275,15 @@ async function executeIntervention(userId: string, intervention: UserInterventio
   await db.reminder.create({
     data: {
       userId,
-      type: intervention.type.toUpperCase() as any,
+      type: interventionToReminderType[intervention.type],
       title: intervention.title,
       message: intervention.message,
       scheduledFor: new Date(),
       status: "PENDING",
-      priority: intervention.priority.toUpperCase() as any,
-      metadata: intervention.action?.params || {},
+      priority: interventionToPriority[intervention.priority],
+      metadata: intervention.action?.params
+        ? toJsonObject(intervention.action.params)
+        : undefined,
     },
   });
 
@@ -253,7 +295,11 @@ async function executeIntervention(userId: string, intervention: UserInterventio
         break;
       case "calendar":
         // Would create calendar event via action system
-        await createPendingAction(userId, "CREATE_CALENDAR_EVENT", intervention.action.params);
+        await createPendingAction(
+          userId,
+          "CREATE_CALENDAR_EVENT",
+          intervention.action.params,
+        );
         break;
       case "notification":
         // In-app notification would be created here
@@ -303,16 +349,16 @@ async function sendInterventionEmail(email: string, intervention: UserInterventi
  */
 async function createPendingAction(
   userId: string,
-  type: string,
-  params: Record<string, any>
+  type: ActionType,
+  params: ActionParams,
 ) {
   await db.pendingAction.create({
     data: {
       userId,
-      type: type as any,
+      type,
       title: `Suggested: ${type.replace("_", " ")}`,
       description: "This action was suggested by your AI Career Coach",
-      params,
+      params: toJsonObject(params),
       status: "PENDING",
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     },
@@ -322,7 +368,10 @@ async function createPendingAction(
 /**
  * Generate re-engagement email HTML
  */
-function generateReEngagementEmail(user: any, daysSinceActivity: number) {
+function generateReEngagementEmail(
+  user: InterventionUser,
+  daysSinceActivity: number,
+) {
   const learningPath = user.enrollments[0]?.learningPath;
 
   return `

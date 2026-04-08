@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import type { SessionStatus } from "@prisma/client";
 
 // Cancel or complete a session
 export async function PATCH(
@@ -16,6 +17,19 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const { status, rating, feedback } = body;
+
+    const allowedStatuses: SessionStatus[] = [
+      "SCHEDULED",
+      "COMPLETED",
+      "CANCELLED",
+      "RESCHEDULED",
+    ];
+
+    if (!allowedStatuses.includes(status as SessionStatus)) {
+      return NextResponse.json({ error: "Invalid session status" }, { status: 400 });
+    }
+
+    const nextStatus = status as SessionStatus;
 
     const user = await db.user.findUnique({
       where: { clerkUserId: userId },
@@ -45,13 +59,13 @@ export async function PATCH(
     }
 
     const updateData: {
-      status: string;
+      status: SessionStatus;
       rating?: number | null;
       feedback?: string | null;
-    } = { status };
+    } = { status: nextStatus };
 
     // If completing and rating provided (student rates mentor)
-    if (status === "COMPLETED" && rating && session.mentorId === user.id) {
+    if (nextStatus === "COMPLETED" && rating && session.mentorId === user.id) {
       updateData.rating = rating;
       updateData.feedback = feedback;
 

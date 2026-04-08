@@ -1098,7 +1098,9 @@ export default function LocalInterviewSimulator({
               Skip
             </Button>
             <Button
-              onClick={submitAnswer}
+              onClick={() => {
+                void submitAnswer();
+              }}
               disabled={!userAnswer.trim() || isSubmittingAnswer}
             >
               {questionIndex < totalQuestions - 1 ? (

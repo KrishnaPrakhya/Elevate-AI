@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { db } from "../prisma";
 import { inngest } from "./client";
-import { Resend } from "resend";
 
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
@@ -11,10 +10,50 @@ const model = new OpenAI({
   baseURL: ollamaBaseUrl,
 });
 
-let resend: Resend | undefined;
+const getBackendBaseUrl = () => {
+  const raw =
+    process.env.FASTAPI_URL ||
+    process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL ||
+    "http://localhost:5000";
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+};
 
-if (process.env.RESEND_API_KEY) {
-  resend = new Resend(process.env.RESEND_API_KEY);
+async function sendEmailViaBackend(input: {
+  to: string;
+  subject: string;
+  html: string;
+  fromName?: string;
+  text?: string;
+}) {
+  const response = await fetch(`${getBackendBaseUrl()}/api/tools/send_email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      from_name: input.fromName || "ElevateAI Academy",
+      email_type: "general",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Email backend failed (${response.status}): ${errorText}`);
+  }
+
+  const result = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+  };
+
+  if (!result.success) {
+    throw new Error(result.error || "Email backend returned an unsuccessful result");
+  }
+
+  return result;
 }
 
 // ============================================
@@ -144,14 +183,12 @@ export const sendDailyDigest = inngest.createFunction(
           },
         });
 
-        if (resend) {
-          await resend.emails.send({
-            from: "ElevateAI Academy <academy@elevateai.com>",
-            to: user.email,
-            subject: `Your Daily Learning Digest - ${new Date().toLocaleDateString()}`,
-            html: body,
-          });
-        }
+        await sendEmailViaBackend({
+          to: user.email,
+          subject: `Your Daily Learning Digest - ${new Date().toLocaleDateString()}`,
+          html: body,
+          fromName: "ElevateAI Academy",
+        });
       });
     }
   }
@@ -239,14 +276,12 @@ export const sendWeeklyProgress = inngest.createFunction(
           },
         });
 
-        if (resend) {
-          await resend.emails.send({
-            from: "ElevateAI Academy <academy@elevateai.com>",
-            to: user.email,
-            subject: `Your Weekly Progress Report`,
-            html: body,
-          });
-        }
+        await sendEmailViaBackend({
+          to: user.email,
+          subject: "Your Weekly Progress Report",
+          html: body,
+          fromName: "ElevateAI Academy",
+        });
       });
     }
   }
@@ -307,14 +342,12 @@ export const sendStreakReminders = inngest.createFunction(
           },
         });
 
-        if (resend) {
-          await resend.emails.send({
-            from: "ElevateAI Academy <academy@elevateai.com>",
-            to: user.email,
-            subject: `Don't Lose Your ${streakDays}-Day Streak!`,
-            html: body,
-          });
-        }
+        await sendEmailViaBackend({
+          to: user.email,
+          subject: `Don't Lose Your ${streakDays}-Day Streak!`,
+          html: body,
+          fromName: "ElevateAI Academy",
+        });
       });
     }
   }
@@ -395,14 +428,12 @@ export const sendDeadlineAlerts = inngest.createFunction(
             },
           });
 
-          if (resend) {
-            await resend.emails.send({
-              from: "ElevateAI Academy <academy@elevateai.com>",
-              to: enrollment.user.email,
-              subject: `Reminder: ${assignment.title} Due Tomorrow!`,
-              html: body,
-            });
-          }
+          await sendEmailViaBackend({
+            to: enrollment.user.email,
+            subject: `Reminder: ${assignment.title} Due Tomorrow!`,
+            html: body,
+            fromName: "ElevateAI Academy",
+          });
         });
       }
     }
@@ -450,14 +481,12 @@ export const sendAchievementEmails = inngest.createFunction(
         },
       });
 
-      if (resend) {
-        await resend.emails.send({
-          from: "ElevateAI Academy <academy@elevateai.com>",
-          to: user.email,
-          subject: `🎉 Achievement Unlocked: ${achievement.title}`,
-          html: body,
-        });
-      }
+      await sendEmailViaBackend({
+        to: user.email,
+        subject: `🎉 Achievement Unlocked: ${achievement.title}`,
+        html: body,
+        fromName: "ElevateAI Academy",
+      });
     });
   }
 );
@@ -525,14 +554,12 @@ export const sendInactivityAlerts = inngest.createFunction(
           },
         });
 
-        if (resend) {
-          await resend.emails.send({
-            from: "ElevateAI Academy <academy@elevateai.com>",
-            to: user.email,
-            subject: "We Miss You! Come Back and Keep Learning",
-            html: body,
-          });
-        }
+        await sendEmailViaBackend({
+          to: user.email,
+          subject: "We Miss You! Come Back and Keep Learning",
+          html: body,
+          fromName: "ElevateAI Academy",
+        });
       });
     }
   }
@@ -645,14 +672,12 @@ export const sendLeaderboardUpdates = inngest.createFunction(
           },
         });
 
-        if (resend) {
-          await resend.emails.send({
-            from: "ElevateAI Academy <academy@elevateai.com>",
-            to: user.email,
-            subject: `🏆 You Ranked #${entry.rank} This Week!`,
-            html: body,
-          });
-        }
+        await sendEmailViaBackend({
+          to: user.email,
+          subject: `🏆 You Ranked #${entry.rank} This Week!`,
+          html: body,
+          fromName: "ElevateAI Academy",
+        });
       });
     }
   }

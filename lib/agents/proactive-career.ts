@@ -12,7 +12,6 @@
  */
 
 import { db } from "../prisma";
-import { Resend } from "resend";
 import {
   Prisma,
   type ActionType,
@@ -20,9 +19,51 @@ import {
   type ReminderType,
 } from "@prisma/client";
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : undefined;
+const getBackendBaseUrl = () => {
+  const raw =
+    process.env.FASTAPI_URL ||
+    process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL ||
+    "http://localhost:5000";
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+};
+
+async function sendEmailViaBackend(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  fromName?: string;
+}) {
+  const response = await fetch(`${getBackendBaseUrl()}/api/tools/send_email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      from_name: input.fromName || "ElevateAI",
+      email_type: "general",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Email backend failed (${response.status}): ${errorText}`);
+  }
+
+  const result = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+  };
+
+  if (!result.success) {
+    throw new Error(result.error || "Email backend returned an unsuccessful result");
+  }
+
+  return result;
+}
 
 const interventionUserInclude = Prisma.validator<Prisma.UserInclude>()({
   streak: true,
@@ -312,11 +353,6 @@ async function executeIntervention(userId: string, intervention: UserInterventio
  * Send intervention email
  */
 async function sendInterventionEmail(email: string, intervention: UserIntervention) {
-  if (!resend) {
-    console.log(`[MOCK EMAIL] ${email}: ${intervention.title}`);
-    return;
-  }
-
   const html = `
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -336,11 +372,11 @@ async function sendInterventionEmail(email: string, intervention: UserInterventi
     </html>
   `;
 
-  await resend.emails.send({
-    from: "ElevateAI <notifications@elevateai.com>",
+  await sendEmailViaBackend({
     to: email,
     subject: intervention.title,
     html,
+    fromName: "ElevateAI",
   });
 }
 

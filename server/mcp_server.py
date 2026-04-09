@@ -2,7 +2,7 @@
 ElevateAI MCP Server
 
 Model Context Protocol server providing tools for:
-- Email sending (Resend)
+- Email sending (Gmail API)
 - Calendar management (Google Calendar)
 - Job application tracking
 - Mentorship scheduling
@@ -69,7 +69,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="send_email",
-            description="Send an email via Resend. Use for schedule confirmations, interview reminders, "
+            description="Send an email via Gmail API. Use for schedule confirmations, interview reminders, "
                        "mentorship notifications, achievement celebrations, and re-engagement campaigns.",
             inputSchema={
                 "type": "object",

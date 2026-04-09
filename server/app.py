@@ -33,14 +33,6 @@ except ImportError:
     GOOGLE_CALENDAR_AVAILABLE = False
     logger.warning("Google Calendar API not installed. Calendar features will be limited.")
 
-# Resend email imports
-try:
-    import resend
-    RESEND_AVAILABLE = True
-except ImportError:
-    RESEND_AVAILABLE = False
-    logger.warning("Resend SDK not installed. Email features will be limited.")
-
 
 def format_markdown_response(content: str) -> str:
     """
@@ -848,6 +840,7 @@ class SendEmailInput(BaseModel):
     html: str = Field(description="HTML email body")
     text: Optional[str] = Field(None, description="Plain text alternative")
     from_name: str = Field("ElevateAI", description="Sender name")
+    user_id: Optional[str] = Field(None, description="Optional user ID for OAuth token lookup")
     email_type: Optional[str] = Field("general", description="Type of email")
     user_name: Optional[str] = Field(None, description="Recipient name")
     schedule_title: Optional[str] = Field(None, description="Schedule title (for schedule emails)")
@@ -1053,7 +1046,8 @@ Rules:
 4. Do not add fake details; use only what is present in the request/context.
 5. Do not use placeholders like [Insert tasks] or [TBD].
 6. If the user provides a plan, organize it with clean headings, bullet points, and a readable weekly structure.
-7. Output MUST follow exactly this format:
+7. Never include onboarding bio/profile summary details unless the user explicitly asks to include them in this email.
+8. Output MUST follow exactly this format:
 Subject: <one-line subject>
 Body:
 <plain text email body>
@@ -1325,7 +1319,8 @@ async def detect_intent(
         }
 
     # === PRIORITY 4: Email Drafting (must run before schedule detection) ===
-    has_email_word = any(k in message for k in ["email", "mail"])
+    # Use word boundaries so domains like "gmail.com" do not count as explicit "mail" intent.
+    has_email_word = bool(re.search(r"\b(email|mail)\b", message))
     has_email_verb = bool(
         re.search(
             r"\b(draft|write|compose|create|prepare|send)\b.*\b(email|mail)\b|\b(email|mail)\b.*\b(draft|write|compose|create|prepare|send)\b",
@@ -1601,7 +1596,7 @@ async def email_drafter(state: AgentState) -> AgentState:
             request_text=latest_message_content,
             recipient=recipient,
             sender_name=user_profile.get("name"),
-            sender_role=user_profile.get("current_role"),
+            sender_role=user_profile.get("targetRole") or user_profile.get("current_role"),
             industry=user_profile.get("industry"),
             tone="professional",
         ))
@@ -1750,15 +1745,17 @@ async def schedule_generator(state: AgentState) -> AgentState:
         timeline_weeks = 4 # Default
 
         # Detect action requests (email, calendar)
-        wants_email = any(k in latest_message_lower for k in ["email it", "email me", "send email", "send to email", "send an email", "email of"])
         wants_calendar = any(k in latest_message_lower for k in ["add to calendar", "calendar event", "google calendar", "schedule in calendar"])
 
-        # Extract email recipient if mentioned
-        import re
-        email_recipient = None
-        email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', latest_message_content)
-        if email_match:
-            email_recipient = email_match.group()
+        # Extract email recipient if mentioned, then infer email intent.
+        email_recipient = extract_email_recipient(latest_message_content)
+        wants_email_phrase = any(
+            k in latest_message_lower
+            for k in ["email it", "email me", "send email", "send to email", "send an email", "email of"]
+        )
+        wants_email = wants_email_phrase or (
+            email_recipient is not None and any(k in latest_message_lower for k in ["send", "mail", "share"])
+        )
 
         # LLM call to extract structured info
         if "target role" in latest_message_lower or "timeline" in latest_message_lower or "schedule for" in latest_message_lower:
@@ -2194,7 +2191,7 @@ async def chat_endpoint(
             'industry': user.industry or '',
             'targetRole': user.targetRole or '',  # Centralized target role from DB
             'experience_years': user.experience if user.experience is not None else 0,
-            'current_role': user.bio or '',
+            'current_role': user.targetRole or '',
             'timezone': request_timezone,
             'timezone_offset_minutes': request_timezone_offset,
         }
@@ -2527,30 +2524,10 @@ async def finish_voice_interview(request_data: dict):
 
 @app.post("/api/tools/send_email")
 async def send_email_tool(input_data: SendEmailInput):
-    """Send email via Resend. Used by AI agents for notifications."""
+    """Send email via Gmail API. Used by AI agents for notifications."""
     try:
-        if not RESEND_AVAILABLE:
-            logger.warning("Resend SDK not installed in backend runtime; returning mock response")
-            return {
-                "success": True,
-                "mock": True,
-                "message_id": f"mock_{os.urandom(8).hex()}",
-                "to": input_data.to,
-                "subject": input_data.subject
-            }
-
-        if not os.getenv("RESEND_API_KEY"):
-            logger.warning("RESEND_API_KEY missing for backend process; returning mock response")
-            return {
-                "success": True,
-                "mock": True,
-                "message_id": f"mock_{os.urandom(8).hex()}",
-                "to": input_data.to,
-                "subject": input_data.subject
-            }
-
-        resend.api_key = os.getenv("RESEND_API_KEY")
-        from_email = os.getenv("RESEND_FROM_EMAIL", "notifications@elevateai.com")
+        from tools.email import EmailTool
+        email_tool = EmailTool()
 
         html_payload = (input_data.html or "").strip()
         html_lower = html_payload.lower()
@@ -2568,20 +2545,14 @@ async def send_email_tool(input_data: SendEmailInput):
             source_markdown = input_data.text or html_payload or ""
             html_payload = build_email_html_document(input_data.subject, source_markdown)
 
-        email = resend.Emails.send({
-            "from": f"{input_data.from_name} <{from_email}>",
-            "to": input_data.to,
-            "subject": input_data.subject,
-            "html": html_payload,
-            "text": input_data.text,
-        })
-
-        return {
-            "success": True,
-            "message_id": email.get("id") if isinstance(email, dict) else str(email),
-            "to": input_data.to,
-            "subject": input_data.subject
-        }
+        return await email_tool.send_email(
+            to=input_data.to,
+            subject=input_data.subject,
+            html=html_payload,
+            text=input_data.text,
+            from_name=input_data.from_name,
+            user_id=input_data.user_id,
+        )
     except Exception as e:
         logger.error(f"Error sending email: {e}")
         return {"success": False, "error": str(e)}
@@ -2948,7 +2919,7 @@ async def list_available_tools():
                 "name": "send_email",
                 "endpoint": "/api/tools/send_email",
                 "method": "POST",
-                "description": "Send email notifications via Resend"
+                "description": "Send email notifications via Gmail API"
             },
             {
                 "name": "create_calendar_event",

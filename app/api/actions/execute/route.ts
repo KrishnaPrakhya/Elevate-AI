@@ -389,32 +389,10 @@ async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
 
     return await response.json();
   } catch (error) {
-    console.error("Email send error, using fallback:", error);
-    // Fallback to Resend directly
-    const { Resend } = await import("resend");
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
-    const email = await resend.emails.send({
-      from: "ElevateAI <notifications@elevateai.com>",
-      to,
-      subject,
-      html,
-    });
-
-    const messageId =
-      typeof email === "object" && email !== null
-        ? "id" in email && typeof email.id === "string"
-          ? email.id
-          : "data" in email &&
-              email.data &&
-              typeof email.data === "object" &&
-              "id" in email.data &&
-              typeof email.data.id === "string"
-            ? email.data.id
-            : undefined
-        : undefined;
-
-    return { success: true, messageId };
+    console.error("Email send error via backend:", error);
+    throw error instanceof Error
+      ? error
+      : new Error("Email send failed via backend endpoint");
   }
 }
 

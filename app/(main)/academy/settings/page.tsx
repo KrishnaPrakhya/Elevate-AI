@@ -43,7 +43,9 @@ export default function AcademySettingsPage() {
     async function load() {
       try {
         const user = await getUser();
-        const userWithPrefs = user as typeof user & { emailPreference?: EmailPreferences };
+        const userWithPrefs = user as typeof user & {
+          emailPreference?: EmailPreferences;
+        };
         if (userWithPrefs.emailPreference) {
           setPreferences({
             dailyDigest: userWithPrefs.emailPreference.dailyDigest,
@@ -53,7 +55,8 @@ export default function AcademySettingsPage() {
             achievementAlerts: userWithPrefs.emailPreference.achievementAlerts,
             cohortMessages: userWithPrefs.emailPreference.cohortMessages,
             mentorUpdates: userWithPrefs.emailPreference.mentorUpdates,
-            leaderboardUpdates: userWithPrefs.emailPreference.leaderboardUpdates,
+            leaderboardUpdates:
+              userWithPrefs.emailPreference.leaderboardUpdates,
             emailTime: userWithPrefs.emailPreference.emailTime,
             timezone: userWithPrefs.emailPreference.timezone,
           });
@@ -68,7 +71,10 @@ export default function AcademySettingsPage() {
   }, []);
 
   const handleToggle = (key: keyof EmailPreferences) => {
-    setPreferences((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+    setPreferences((prev) => ({
+      ...prev,
+      [key]: !prev[key as keyof typeof prev],
+    }));
   };
 
   const handleSave = async () => {
@@ -96,7 +102,9 @@ export default function AcademySettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Academy Settings</h1>
-        <p className="text-muted-foreground">Manage your learning preferences and notifications</p>
+        <p className="text-muted-foreground">
+          Manage your learning preferences and notifications
+        </p>
       </div>
 
       {/* Email Preferences */}
@@ -112,7 +120,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Daily Learning Digest</p>
-                <p className="text-sm text-muted-foreground">Get a personalized summary every morning</p>
+                <p className="text-sm text-muted-foreground">
+                  Get a personalized summary every morning
+                </p>
               </div>
               <Switch
                 checked={preferences.dailyDigest}
@@ -123,7 +133,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Weekly Progress Report</p>
-                <p className="text-sm text-muted-foreground">Monday summary of your learning progress</p>
+                <p className="text-sm text-muted-foreground">
+                  Monday summary of your learning progress
+                </p>
               </div>
               <Switch
                 checked={preferences.weeklyProgress}
@@ -134,7 +146,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Streak Reminders</p>
-                <p className="text-sm text-muted-foreground">Get reminded if you haven&apos;t learned today</p>
+                <p className="text-sm text-muted-foreground">
+                  Get reminded if you haven&apos;t learned today
+                </p>
               </div>
               <Switch
                 checked={preferences.streakReminders}
@@ -145,7 +159,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Deadline Alerts</p>
-                <p className="text-sm text-muted-foreground">24-hour warning before assignments are due</p>
+                <p className="text-sm text-muted-foreground">
+                  24-hour warning before assignments are due
+                </p>
               </div>
               <Switch
                 checked={preferences.deadlineAlerts}
@@ -156,7 +172,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Achievement Notifications</p>
-                <p className="text-sm text-muted-foreground">Celebrate when you earn badges</p>
+                <p className="text-sm text-muted-foreground">
+                  Celebrate when you earn badges
+                </p>
               </div>
               <Switch
                 checked={preferences.achievementAlerts}
@@ -167,7 +185,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Cohort Messages</p>
-                <p className="text-sm text-muted-foreground">Updates from your learning cohort</p>
+                <p className="text-sm text-muted-foreground">
+                  Updates from your learning cohort
+                </p>
               </div>
               <Switch
                 checked={preferences.cohortMessages}
@@ -178,7 +198,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Mentor Updates</p>
-                <p className="text-sm text-muted-foreground">Notifications from your mentor</p>
+                <p className="text-sm text-muted-foreground">
+                  Notifications from your mentor
+                </p>
               </div>
               <Switch
                 checked={preferences.mentorUpdates}
@@ -189,7 +211,9 @@ export default function AcademySettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
               <div>
                 <p className="font-medium">Leaderboard Updates</p>
-                <p className="text-sm text-muted-foreground">Weekly rankings notifications</p>
+                <p className="text-sm text-muted-foreground">
+                  Weekly rankings notifications
+                </p>
               </div>
               <Switch
                 checked={preferences.leaderboardUpdates}
@@ -201,19 +225,30 @@ export default function AcademySettingsPage() {
           <div className="flex items-center gap-4 pt-4 border-t">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-muted-foreground" />
-              <Label htmlFor="emailTime" className="text-sm">Email Time</Label>
+              <Label htmlFor="emailTime" className="text-sm">
+                Email Time
+              </Label>
             </div>
             <Input
               id="emailTime"
               type="time"
               value={preferences.emailTime}
-              onChange={(e) => setPreferences((prev) => ({ ...prev, emailTime: e.target.value }))}
+              onChange={(e) =>
+                setPreferences((prev) => ({
+                  ...prev,
+                  emailTime: e.target.value,
+                }))
+              }
               className="w-32"
             />
           </div>
 
           <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
             Save Preferences
           </Button>
         </CardContent>

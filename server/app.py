@@ -2559,7 +2559,7 @@ async def send_email_tool(input_data: SendEmailInput):
 
 
 def _google_oauth_redirect_uri() -> str:
-    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:5000/api/google/callback")
+    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "https://elevate-ai-flask.onrender.com/api/google/callback")
 
 
 def _google_state_serializer() -> URLSafeSerializer:
@@ -2632,7 +2632,7 @@ async def google_connect(
 
     state_payload = {
         "clerk_user_id": clerk_user_id,
-        "next_url": next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "http://localhost:3000/profile?google_calendar=connected"),
+        "next_url": next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=connected"),
     }
     state = _google_state_serializer().dumps(state_payload)
 
@@ -2659,7 +2659,7 @@ async def google_callback(
 ):
     """Handle Google OAuth callback, exchange code, and persist refresh token to DB."""
     if error:
-        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "http://localhost:3000/profile?google_calendar=failed")
+        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed")
         return RedirectResponse(url=_append_query_params(failure_url, {"reason": error}))
 
     if not code or not state:
@@ -2686,7 +2686,7 @@ async def google_callback(
     credentials = flow.credentials
     if not credentials or not credentials.refresh_token:
         # This can happen if consent was previously granted without prompt=consent.
-        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "http://localhost:3000/profile?google_calendar=failed")
+        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed")
         return RedirectResponse(
             url=_append_query_params(
                 failure_url,
@@ -2706,7 +2706,7 @@ async def google_callback(
         user.googleCalendarConnectedAt = datetime.datetime.utcnow()
         await db.commit()
 
-    success_url = next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "http://localhost:3000/profile?google_calendar=connected")
+    success_url = next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=connected")
     return RedirectResponse(url=_append_query_params(success_url, {"google_calendar": "connected"}))
 
 

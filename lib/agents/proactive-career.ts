@@ -24,7 +24,7 @@ const getBackendBaseUrl = () => {
     process.env.FASTAPI_URL ||
     process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
     process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL ||
-    "http://localhost:5000";
+    "https://elevate-ai-flask.onrender.com";
   return raw.endsWith("/") ? raw.slice(0, -1) : raw;
 };
 

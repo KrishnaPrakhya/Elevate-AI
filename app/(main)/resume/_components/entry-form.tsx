@@ -96,7 +96,11 @@ export function EntryForm(prop: Props) {
       toast.success("Description improved successfully!");
     }
     if (improveError) {
-      toast.error(improveError.message || "Failed to improve description");
+      const message =
+        improveError instanceof Error
+          ? improveError.message
+          : "Failed to improve description";
+      toast.error(message);
     }
   }, [improvedContent, improveError, isImproving, setValue]);
 

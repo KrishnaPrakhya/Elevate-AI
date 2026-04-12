@@ -8,8 +8,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, AlertCircle, BarChart, Zap } from "lucide-react";
+import { CheckCircle, XCircle, AlertCircle, BarChart, Zap, BookOpen, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 interface ResumeScoreCardProps {
   score: {
@@ -21,9 +24,12 @@ interface ResumeScoreCardProps {
     }[];
     suggestions: string[];
   };
+  userId?: string;
+  industry?: string;
+  currentSkills?: string[];
 }
 
-export function ResumeScoreCard({ score }: ResumeScoreCardProps) {
+export function ResumeScoreCard({ score, industry, currentSkills }: ResumeScoreCardProps) {
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-green-500";
     if (score >= 60) return "text-amber-500";
@@ -120,6 +126,42 @@ export function ResumeScoreCard({ score }: ResumeScoreCardProps) {
           </span>
         </div>
       </CardFooter>
+
+      {/* Academy Integration - Skill Gap Section */}
+      {currentSkills && currentSkills.length > 0 && industry && (
+        <div className="border-t p-4 bg-gradient-to-r from-primary/5 to-transparent">
+          <div className="flex items-start gap-3">
+            <div className="bg-primary/10 p-2 rounded-lg">
+              <BookOpen className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium text-sm mb-1">Build In-Demand Skills</h4>
+              <p className="text-xs text-muted-foreground mb-3">
+                Based on your industry ({industry}), consider developing these complementary skills
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {currentSkills.slice(0, 5).map((skill) => (
+                  <Badge key={skill} variant="secondary" className="text-xs">
+                    {skill}
+                  </Badge>
+                ))}
+                {currentSkills.length > 5 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{currentSkills.length - 5} more
+                  </Badge>
+                )}
+              </div>
+              <Link href={`/academy/paths?industry=${encodeURIComponent(industry)}`}>
+                <Button variant="outline" size="sm" className="w-full gap-2 text-xs">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  Explore Learning Paths
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

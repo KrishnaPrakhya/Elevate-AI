@@ -1,0 +1,1236 @@
+"use server";
+
+import { db } from "@/lib/prisma";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { auth } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
+import OpenAI from "openai";
+import { inngest } from "@/lib/inngest/client";
+import { getCachedData, CACHE_TTL } from "@/lib/redis";
+import { redis } from "@/lib/redis";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
+
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+
+const model = new OpenAI({
+  apiKey: ollamaApiKey,
+  baseURL: ollamaBaseUrl,
+});
+
+// ============================================
+// ENROLLMENT & LEARNING PATH
+// ============================================
+
+export async function getLearningPaths(industry?: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const where = industry
+    ? { isPublished: true, OR: [{ industry: null }, { industry }] }
+    : { isPublished: true };
+
+  return getCachedData(
+    `academy:learningPaths:${industry || "all"}`,
+    () =>
+      db.learningPath.findMany({
+        where,
+        include: {
+          modules: {
+            orderBy: { order: "asc" },
+            include: {
+              lessons: { orderBy: { order: "asc" } },
+            },
+          },
+          _count: { select: { enrollments: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    CACHE_TTL.MEDIUM
+  );
+}
+
+export async function getLearningPath(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  return getCachedData(
+    `academy:learningPath:${id}`,
+    () =>
+      db.learningPath.findUnique({
+        where: { id },
+        include: {
+          modules: {
+            orderBy: { order: "asc" },
+            include: {
+              lessons: { orderBy: { order: "asc" } },
+              assignments: true,
+            },
+          },
+        },
+      }),
+    CACHE_TTL.MEDIUM
+  );
+}
+
+export async function enrollInPath(learningPathId: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  // Get the first module and lesson
+  const path = await db.learningPath.findUnique({
+    where: { id: learningPathId },
+    include: {
+      modules: {
+        orderBy: { order: "asc" },
+        include: { lessons: { orderBy: { order: "asc" } } },
+      },
+    },
+  });
+
+  if (!path) throw new Error("Learning path not found");
+
+  const firstModule = path.modules[0];
+  const firstLesson = firstModule?.lessons[0];
+
+  const enrollment = await db.enrollment.create({
+    data: {
+      userId: user.id,
+      learningPathId,
+      currentModuleId: firstModule?.id,
+      currentLessonId: firstLesson?.id,
+      lastAccessedAt: new Date(),
+    },
+  });
+
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: "Enrolled in learning path",
+    description: `Enrollment created for ${path.title}.`,
+    params: {
+      learningPathId,
+      enrollmentId: enrollment.id,
+    },
+    metadata: {
+      source: "academy",
+      reason:
+        "Enrollment activity is tracked to explain AI recommendations and monitor learning-path adherence.",
+    },
+  });
+
+  // Trigger enrollment email via Inngest
+  await inngest.send({
+    name: "academy/enrollment",
+    data: {
+      userId: user.id,
+      learningPathId,
+      enrollmentId: enrollment.id,
+    },
+  });
+
+  revalidatePath("/academy");
+  return enrollment;
+}
+
+export async function getUserEnrollments() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  return getCachedData(
+    `academy:userEnrollments:${user.id}`,
+    () =>
+      db.enrollment.findMany({
+        where: { userId: user.id },
+        include: {
+          learningPath: {
+            include: {
+              modules: {
+                orderBy: { order: "asc" },
+                include: {
+                  lessons: { orderBy: { order: "asc" } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { lastAccessedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+// ============================================
+// LESSON PROGRESS
+// ============================================
+
+export async function updateLessonProgress(
+  enrollmentId: string,
+  lessonId: string,
+  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "REVIEW",
+  timeSpentMinutes?: number
+) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const progress = await db.lessonProgress.upsert({
+    where: {
+      enrollmentId_lessonId: { enrollmentId, lessonId },
+    },
+    update: {
+      status,
+      timeSpentMinutes: timeSpentMinutes
+        ? { increment: timeSpentMinutes }
+        : undefined,
+      completedAt: status === "COMPLETED" ? new Date() : undefined,
+    },
+    create: {
+      enrollmentId,
+      lessonId,
+      status,
+      timeSpentMinutes: timeSpentMinutes || 0,
+      completedAt: status === "COMPLETED" ? new Date() : undefined,
+    },
+  });
+
+  // Update enrollment progress
+  await updateEnrollmentProgress(enrollmentId);
+
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: `Lesson progress ${status.toLowerCase().replace("_", " ")}`,
+    description:
+      status === "COMPLETED"
+        ? "Lesson completion recorded and synced into the learning-performance timeline."
+        : "Lesson status was updated to keep progress analytics up to date.",
+    params: {
+      enrollmentId,
+      lessonId,
+      status,
+      timeSpentMinutes: timeSpentMinutes || 0,
+    },
+    metadata: {
+      source: "academy",
+      reason:
+        "Lesson activity is captured so AI can recommend interview and quiz timing based on real learning momentum.",
+    },
+  });
+
+  // Check for achievements
+  if (status === "COMPLETED") {
+    await inngest.send({
+      name: "academy/lesson-completed",
+      data: { userId, enrollmentId, lessonId },
+    });
+
+    // Sync academy progress back to career plan
+    await syncAcademyProgressToCareerPlan(userId, enrollmentId, lessonId);
+  }
+
+  revalidatePath("/academy");
+  return progress;
+}
+
+// ============================================
+// SYNC ACADEMY PROGRESS TO CAREER PLAN
+// ============================================
+
+async function syncAcademyProgressToCareerPlan(
+  userId: string,
+  enrollmentId: string,
+  lessonId: string
+) {
+  try {
+    // Get the lesson details
+    const enrollment = await db.enrollment.findUnique({
+      where: { id: enrollmentId },
+      include: {
+        learningPath: {
+          include: {
+            modules: {
+              include: {
+                lessons: true,
+              },
+            },
+          },
+        },
+        lessonProgress: {
+          where: { status: "COMPLETED" },
+          include: { lesson: true },
+        },
+      },
+    });
+
+    if (!enrollment) return;
+
+    // Get user's active career plan
+    const activePlanKey = `career-planner:active:${userId}`;
+    const activePlan = await redis.get<{
+      targetRole: string;
+      planDetails?: {
+        topGaps?: { skill: string; importance: number }[];
+        weeklyPlan?: { week: number; focus: string; goals: string[] }[];
+      };
+    }>(activePlanKey);
+
+    if (!activePlan) return;
+
+    // Calculate overall academy progress
+    const totalLessons = enrollment.learningPath.modules
+      ? await db.lesson.count({
+          where: {
+            module: {
+              learningPathId: enrollment.learningPathId,
+            },
+          },
+        })
+      : 0;
+
+    const completedLessons = enrollment.lessonProgress.length;
+    const completionRate = totalLessons > 0 ? completedLessons / totalLessons : 0;
+
+    // Update career plan with progress metadata
+    const updatedPlan = {
+      ...activePlan,
+      academyProgress: {
+        enrollmentId,
+        learningPathId: enrollment.learningPathId,
+        learningPathTitle: enrollment.learningPath.title,
+        completedLessons,
+        totalLessons,
+        completionRate: Math.round(completionRate * 100),
+        lastCompletedAt: new Date().toISOString(),
+      },
+      progressUpdatedAt: new Date().toISOString(),
+    };
+
+    // Store updated plan back in Redis
+    await redis.set(activePlanKey, updatedPlan, { ex: 7 * 24 * 60 * 60 }); // 7 days
+
+    // If completion rate is high (>80%), mark related skill gaps as "improving"
+    if (completionRate > 0.8) {
+      // Find skill gaps that match this learning path topics
+      const pathTitle = enrollment.learningPath.title.toLowerCase();
+      const updatedGaps = activePlan.planDetails?.topGaps?.map((gap) => ({
+        ...gap,
+        status: (
+          gap.skill.toLowerCase().includes(pathTitle) ||
+          pathTitle.includes(gap.skill.toLowerCase())
+            ? "improving"
+            : "pending"
+        ) as "improving" | "pending",
+      }));
+
+      if (updatedGaps) {
+        await redis.set(
+          activePlanKey,
+          {
+            ...updatedPlan,
+            planDetails: {
+              ...activePlan.planDetails,
+              topGaps: updatedGaps,
+            },
+          },
+          { ex: 7 * 24 * 60 * 60 }
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error syncing academy progress to career plan:", error);
+    // Don't throw - this is a sync operation, shouldn't block the main flow
+  }
+}
+
+async function updateEnrollmentProgress(enrollmentId: string) {
+  const enrollment = await db.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      learningPath: {
+        include: { modules: { include: { lessons: true } } },
+      },
+    },
+  });
+
+  if (!enrollment) return;
+
+  const totalLessons = enrollment.learningPath.modules.reduce(
+    (acc, m) => acc + m.lessons.length,
+    0
+  );
+
+  const completedProgress = await db.lessonProgress.count({
+    where: {
+      enrollmentId,
+      status: "COMPLETED",
+    },
+  });
+
+  const progressPercent = totalLessons > 0
+    ? (completedProgress / totalLessons) * 100
+    : 0;
+
+  await db.enrollment.update({
+    where: { id: enrollmentId },
+    data: {
+      progress: progressPercent,
+      completedAt: progressPercent >= 100 ? new Date() : undefined,
+    },
+  });
+}
+
+export async function getLessonProgress(enrollmentId: string) {
+  return getCachedData(
+    `academy:lessonProgress:${enrollmentId}`,
+    () =>
+      db.lessonProgress.findMany({
+        where: { enrollmentId },
+        include: { lesson: true },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+// ============================================
+// DAILY GOALS & STREAKS
+// ============================================
+
+export async function getTodayGoal() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const dayKey = today.toISOString().split("T")[0];
+
+  return getCachedData(
+    `academy:todayGoal:${user.id}:${dayKey}`,
+    () =>
+      db.dailyGoal.findUnique({
+        where: { userId_date: { userId: user.id, date: today } },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+export async function updateDailyGoal(data: {
+  actualMinutes?: number;
+  lessonsCompleted?: number;
+  assignmentsCompleted?: number;
+  quizzesCompleted?: number;
+}) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const goal = await db.dailyGoal.upsert({
+    where: { userId_date: { userId: user.id, date: today } },
+    update: data,
+    create: {
+      userId: user.id,
+      date: today,
+      ...data,
+    },
+  });
+
+  // Update streak
+  await updateStreak(user.id);
+
+  // Trigger daily goal completion email if target reached
+  if (goal.actualMinutes >= goal.targetMinutes) {
+    await inngest.send({
+      name: "academy/daily-goal-completed",
+      data: { userId: user.id, goalId: goal.id },
+    });
+  }
+
+  revalidatePath("/academy");
+  return goal;
+}
+
+async function updateStreak(userId: string) {
+  const streak = await db.streak.findUnique({ where: { userId } });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (!streak) {
+    await db.streak.create({
+      data: {
+        userId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActivityDate: today,
+        totalDaysActive: 1,
+      },
+    });
+    return;
+  }
+
+  const lastActivity = streak.lastActivityDate;
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  let newStreak = streak.currentStreak;
+
+  if (lastActivity && lastActivity.toDateString() === yesterday.toDateString()) {
+    newStreak = streak.currentStreak + 1;
+  } else if (lastActivity && lastActivity.toDateString() !== today.toDateString()) {
+    newStreak = 1;
+  }
+
+  await db.streak.update({
+    where: { userId },
+    data: {
+      currentStreak: newStreak,
+      longestStreak: Math.max(streak.longestStreak, newStreak),
+      lastActivityDate: today,
+      totalDaysActive: { increment: 1 },
+    },
+  });
+}
+
+export async function getUserStreak() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  return getCachedData(
+    `academy:userStreak:${user.id}`,
+    () => db.streak.findUnique({ where: { userId: user.id } }),
+    CACHE_TTL.SHORT
+  );
+}
+
+// ============================================
+// ASSIGNMENTS & SUBMISSIONS
+// ============================================
+
+export async function getAssignment(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  return getCachedData(
+    `academy:assignment:${id}`,
+    () =>
+      db.assignment.findUnique({
+        where: { id },
+        include: { submissions: { orderBy: { submittedAt: "desc" } } },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+export async function submitAssignment(
+  assignmentId: string,
+  lessonId: string | null,
+  content: string,
+  attachments?: Prisma.JsonValue
+) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const assignment = await db.assignment.findUnique({ where: { id: assignmentId } });
+  if (!assignment) throw new Error("Assignment not found");
+
+  const isLate = assignment.dueDate ? new Date() > assignment.dueDate : false;
+
+  const submissionData: {
+    assignmentId: string;
+    lessonId: string | null;
+    userId: string;
+    content: string;
+    isLate: boolean;
+    attachments?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
+  } = {
+    assignmentId,
+    lessonId,
+    userId: user.id,
+    content,
+    isLate: assignment.allowLateSubmission ? isLate : false,
+  };
+
+  if (attachments !== undefined) {
+    submissionData.attachments = attachments === null ? Prisma.JsonNull : (attachments as Prisma.InputJsonValue);
+  }
+
+  const submission = await db.submission.create({
+    data: submissionData,
+  });
+
+  // Trigger submission email to mentor if assigned
+  await inngest.send({
+    name: "academy/assignment-submitted",
+    data: { userId: user.id, submissionId: submission.id },
+  });
+
+  revalidatePath("/academy");
+  return submission;
+}
+
+export async function gradeSubmission(
+  submissionId: string,
+  score: number,
+  feedback: string
+) {
+  const submission = await db.submission.update({
+    where: { id: submissionId },
+    data: { score, feedback, gradedAt: new Date() },
+  });
+
+  // Award achievement if passed
+  if (submission && score >= 60) {
+    await inngest.send({
+      name: "academy/assignment-graded",
+      data: { submissionId, score },
+    });
+  }
+
+  revalidatePath("/academy");
+  return submission;
+}
+
+export async function getUserSubmissions() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  return getCachedData(
+    `academy:userSubmissions:${user.id}`,
+    () =>
+      db.submission.findMany({
+        where: { userId: user.id },
+        include: { assignment: true },
+        orderBy: { submittedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+// ============================================
+// ACHIEVEMENTS & LEADERBOARD
+// ============================================
+
+export async function getAchievements() {
+  return getCachedData(
+    "academy:achievements:active",
+    () =>
+      db.achievement.findMany({
+        where: { isActive: true },
+        orderBy: { points: "desc" },
+      }),
+    CACHE_TTL.MEDIUM
+  );
+}
+
+export async function getUserAchievements() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  return getCachedData(
+    `academy:userAchievements:${user.id}`,
+    () =>
+      db.userAchievement.findMany({
+        where: { userId: user.id },
+        include: { achievement: true },
+        orderBy: { earnedAt: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+export async function checkAndAwardAchievements(userId: string, type: string) {
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) return;
+
+  const achievements = await db.achievement.findMany({
+    where: { category: type as any, isActive: true },
+  });
+
+  for (const achievement of achievements) {
+    const existing = await db.userAchievement.findUnique({
+      where: { userId_achievementId: { userId: user.id, achievementId: achievement.id } },
+    });
+
+    if (existing) continue;
+
+    const criteria = achievement.criteria as any;
+    let earned = false;
+
+    switch (type) {
+      case "LEARNING":
+        const lessonsCompleted = await db.lessonProgress.count({
+          where: { enrollment: { userId: user.id }, status: "COMPLETED" },
+        });
+        earned = lessonsCompleted >= criteria.threshold;
+        break;
+      case "STREAK":
+        const streak = await db.streak.findUnique({ where: { userId: user.id } });
+        earned = !!streak && streak.currentStreak >= criteria.threshold;
+        break;
+      case "ASSIGNMENT":
+        const submissions = await db.submission.count({
+          where: { userId: user.id, score: { gte: criteria.minScore || 60 } },
+        });
+        earned = submissions >= criteria.threshold;
+        break;
+      case "QUIZ":
+        const quizCount = await db.assessments.count({
+          where: { userId: user.id },
+        });
+        earned = quizCount >= criteria.threshold;
+        break;
+    }
+
+    if (earned) {
+      await db.userAchievement.create({
+        data: { userId: user.id, achievementId: achievement.id },
+      });
+
+      await inngest.send({
+        name: "academy/achievement-unlocked",
+        data: { userId: user.id, achievementId: achievement.id },
+      });
+    }
+  }
+}
+
+export async function getLeaderboard(
+  type: "WEEKLY" | "MONTHLY" | "ALL_TIME" = "WEEKLY"
+) {
+  const now = new Date();
+  let startDate: Date;
+
+  switch (type) {
+    case "WEEKLY":
+      startDate = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case "MONTHLY":
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+      break;
+    case "ALL_TIME":
+      startDate = new Date(0);
+      break;
+  }
+
+  const leaderboard = await getCachedData(
+    `academy:leaderboard:${type}`,
+    () =>
+      db.leaderboard.findFirst({
+        where: {
+          type,
+          startDate: { gte: startDate },
+        },
+        include: {
+          entries: {
+            orderBy: { rank: "asc" },
+            take: 50,
+          },
+        },
+      }),
+    CACHE_TTL.SHORT
+  );
+
+  return leaderboard;
+}
+
+// ============================================
+// COHORTS & MENTORSHIP
+// ============================================
+
+export async function getCohorts() {
+  return getCachedData(
+    "academy:cohorts:active",
+    () =>
+      db.cohort.findMany({
+        where: { isActive: true },
+        include: {
+          members: { take: 5 },
+          _count: { select: { members: true } },
+        },
+        orderBy: { startsAt: "asc" },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+export async function joinCohort(cohortId: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const cohort = await db.cohort.findUnique({ where: { id: cohortId } });
+  if (!cohort) throw new Error("Cohort not found");
+
+  const memberCount = await db.cohortMember.count({ where: { cohortId } });
+  if (memberCount >= cohort.maxMembers) {
+    throw new Error("Cohort is full");
+  }
+
+  const member = await db.cohortMember.create({
+    data: { cohortId, userId: user.id },
+  });
+
+  await inngest.send({
+    name: "academy/cohort-joined",
+    data: { userId: user.id, cohortId },
+  });
+
+  revalidatePath("/academy/cohorts");
+  return member;
+}
+
+export async function getUserCohort() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const membership = await getCachedData(
+    `academy:userCohort:${user.id}`,
+    () =>
+      db.cohortMember.findFirst({
+        where: { userId: user.id },
+        include: {
+          cohort: {
+            include: {
+              members: { include: { user: true } },
+            },
+          },
+        },
+      }),
+    CACHE_TTL.SHORT
+  );
+
+  return membership?.cohort || null;
+}
+
+export async function scheduleMentorshipSession(
+  mentorId: string,
+  scheduledAt: Date,
+  durationMinutes: number = 30,
+  notes?: string
+) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  const session = await db.mentorshipSession.create({
+    data: {
+      mentorId,
+      studentId: user.id,
+      scheduledAt,
+      durationMinutes,
+      notes,
+    },
+  });
+
+  await inngest.send({
+    name: "academy/mentorship-scheduled",
+    data: { userId: user.id, sessionId: session.id },
+  });
+
+  revalidatePath("/academy/mentorship");
+  return session;
+}
+
+export async function getMentors() {
+  return getCachedData(
+    "academy:mentors:available",
+    () =>
+      db.mentor.findMany({
+        where: { isAvailable: true },
+        orderBy: { rating: "desc" },
+      }),
+    CACHE_TTL.SHORT
+  );
+}
+
+// ============================================
+// ACADEMY DASHBOARD
+// ============================================
+
+export async function getAcademyDashboard() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User not found");
+
+  // Cache key based on user ID and date (for daily refresh)
+  const today = new Date().toISOString().split("T")[0];
+  const cacheKey = `academy:dashboard:${user.id}:${today}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
+      const [enrollments, streak, todayGoal, achievements, submissions] = await Promise.all([
+        db.enrollment.findMany({
+          where: { userId: user.id },
+          include: {
+            learningPath: {
+              include: { modules: { include: { lessons: true } } },
+            },
+          },
+        }),
+        db.streak.findUnique({ where: { userId: user.id } }),
+        db.dailyGoal.findUnique({
+          where: { userId_date: { userId: user.id, date: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        }),
+        db.userAchievement.findMany({
+          where: { userId: user.id },
+          include: { achievement: true },
+        }),
+        db.submission.findMany({
+          where: { userId: user.id },
+          include: { assignment: true },
+          orderBy: { submittedAt: "desc" },
+          take: 5,
+        }),
+      ]);
+
+      // Calculate stats
+      const totalLessonsCompleted = await db.lessonProgress.count({
+        where: {
+          enrollment: { userId: user.id },
+          status: "COMPLETED",
+        },
+      });
+
+      const totalAssignmentsCompleted = submissions.filter((s) => s.score !== null).length;
+      const totalPoints = achievements.reduce((acc, ua) => acc + ua.achievement.points, 0);
+
+      return {
+        enrollments,
+        streak,
+        todayGoal,
+        achievements,
+        recentSubmissions: submissions,
+        stats: {
+          totalLessonsCompleted,
+          totalAssignmentsCompleted,
+          totalPoints,
+          currentStreak: streak?.currentStreak || 0,
+          longestStreak: streak?.longestStreak || 0,
+          weeklyGoalProgress: todayGoal
+            ? (todayGoal.actualMinutes / todayGoal.targetMinutes) * 100
+            : 0,
+        },
+      };
+    },
+    CACHE_TTL.SHORT // Cache for 5 minutes - data updates frequently
+  );
+}
+
+// ============================================
+// AI-POWERED PERSONALIZED LEARNING
+// ============================================
+
+export async function getPersonalizedRecommendations() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: {
+      industryInsight: true,
+      enrollments: {
+        include: {
+          learningPath: {
+            include: {
+              modules: {
+                include: { lessons: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  // Cache key for recommendations
+  const cacheKey = `academy:recommendations:${user.id}:${user.industry}`;
+
+  return getCachedData(
+    cacheKey,
+    async () => {
+      const activePlan = await redis.get<{
+        targetRole?: string;
+        planDetails?: { recommendedPaths?: { id: string }[]; topGaps?: { skill: string }[] };
+      }>(`career-planner:active:${user.id}`).catch(() => null);
+
+      // Get incomplete enrollments
+      const inProgressEnrollments = user.enrollments.filter((e) => e.progress < 100);
+
+      // Get available paths not enrolled in
+      const enrolledPathIds = user.enrollments.map((e) => e.learningPathId);
+      const recommendedPaths = await db.learningPath.findMany({
+        where: {
+          isPublished: true,
+          id: { notIn: enrolledPathIds },
+          OR: [{ industry: user.industry }, { industry: null }],
+        },
+        take: 3,
+      });
+
+      // Promote paths aligned to the active career plan.
+      const planPathIds = activePlan?.planDetails?.recommendedPaths?.map((p) => p.id) || [];
+      const prioritizedRecommendedPaths = recommendedPaths.sort((a, b) => {
+        const aScore = planPathIds.includes(a.id) ? 1 : 0;
+        const bScore = planPathIds.includes(b.id) ? 1 : 0;
+        return bScore - aScore;
+      });
+
+      // Get next lessons to complete
+      const nextLessons = inProgressEnrollments.map((enrollment) => {
+        const path = enrollment.learningPath;
+        const currentModule = path.modules.find((m) => m.id === enrollment.currentModuleId);
+        const currentLesson = currentModule?.lessons.find((l) => l.id === enrollment.currentLessonId);
+        return { enrollment, currentModule, currentLesson };
+      });
+
+      // Generate AI tips based on user's industry and progress
+      let aiTip = "";
+      if (model && user.industryInsight) {
+        try {
+          const planGapText = activePlan?.planDetails?.topGaps?.map((g) => g.skill).join(", ") || "none";
+          const prompt = `Based on a ${user.industry} professional with ${user.experience} years of experience,
+            who has completed ${user.enrollments.reduce((acc, e) => acc + e.progress, 0) / user.enrollments.length || 0}% average progress,
+            and active plan gaps: ${planGapText},
+            generate a single, actionable learning tip. Keep it under 2 sentences.`;
+          const result = await model.chat.completions.create({
+            model: "gpt-oss:20b-cloud",
+            messages: [{ role: "user", content: prompt }],
+          });
+          aiTip = result.choices[0]?.message?.content?.trim() || "";
+        } catch (e) {
+          console.error("Error generating AI tip:", e);
+        }
+      }
+
+      return {
+        recommendedPaths: prioritizedRecommendedPaths,
+        nextLessons,
+        aiTip,
+      };
+    },
+    CACHE_TTL.MEDIUM // Cache for 1 hour
+  );
+}
+
+// ============================================
+// LLM-POWERED SKILL GAP ANALYSIS
+// ============================================
+
+/**
+ * Generates real-time skill gap analysis using LLM based on:
+ * - User's current enrollments and progress
+ * - Industry insights and market trends
+ * - Active career plan (if exists)
+ * - Completed lessons and assignments
+ */
+export async function getRealTimeSkillAnalysis() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: {
+      industryInsight: true,
+      enrollments: {
+        include: {
+          learningPath: true,
+          lessonProgress: {
+            where: { status: "COMPLETED" },
+            include: { lesson: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) return { topGaps: [], hasData: false };
+
+  // Get active career plan from Redis
+  const activePlan = await redis.get<{
+    targetRole?: string;
+    planDetails?: { topGaps?: { skill: string; importance: number }[] };
+  }>(`career-planner:active:${userId}`).catch(() => null);
+
+  // If career plan exists with gaps, use those (already validated)
+  if (activePlan?.planDetails?.topGaps && activePlan.planDetails.topGaps.length > 0) {
+    return {
+      topGaps: activePlan.planDetails.topGaps,
+      hasData: true,
+      source: "career_plan" as const,
+    };
+  }
+
+  // Otherwise, generate gaps using LLM based on actual user data
+  try {
+    const completedLessons = user.enrollments.flatMap((e: any) => e.lessonProgress.map((lp: any) => lp.lesson));
+    const completedSkillTopics = new Set(
+      completedLessons.map((l: any) => l?.title.toLowerCase() || "")
+    );
+
+    const prompt = `Analyze this professional's skill gaps based on their actual learning progress:
+
+INDUSTRY: ${user.industry || "Technology"}
+EXPERIENCE: ${user.experience || 0} years
+CURRENT SKILLS: ${user.skills?.join(", ") || "Not specified"}
+
+COMPLETED LEARNING TOPICS:
+${Array.from(completedSkillTopics).slice(0, 10).join("\n") || "No completed lessons yet"}
+
+ACTIVE ENROLLMENTS (${user.enrollments.length}):
+${user.enrollments.map((e) => `- ${e.learningPath.title} (${Math.round(e.progress)}% complete)`).join("\n") || "None"}
+
+TARGET ROLE: ${activePlan?.targetRole || "Not specified"}
+
+Return a JSON array of 3-5 skill gaps with this format:
+[
+  {"skill": "Skill Name", "importance": 8, "reason": "Why this gap matters"},
+  ...
+]
+
+IMPORTANT:
+- If user has NO completed lessons and NO enrollments, return empty array []
+- Only include skills that are genuinely missing based on their learning history
+- Importance: 1-10 scale based on industry relevance`;
+
+    const result = await model.chat.completions.create({
+      model: "gpt-oss:20b-cloud",
+      messages: [
+        { role: "system", content: "You are a career development expert. Analyze skill gaps objectively based on actual learning progress." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const content = result.choices[0]?.message?.content?.trim() || "[]";
+    const parsedGaps = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+
+    return {
+      topGaps: Array.isArray(parsedGaps) ? parsedGaps : [],
+      hasData: Array.isArray(parsedGaps) && parsedGaps.length > 0,
+      source: "llm_analysis" as const,
+    };
+  } catch (error) {
+    console.error("Error generating skill gap analysis:", error);
+    return { topGaps: [], hasData: false, source: "error" as const };
+  }
+}
+
+// ============================================
+// AGENTIC LEARNING RECOMMENDATIONS (MCP)
+// ============================================
+
+/**
+ * Uses MCP agents to generate proactive learning recommendations
+ * by analyzing user progress, industry trends, and career goals.
+ */
+export async function getAgentLearningRecommendations() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: {
+      industryInsight: true,
+      enrollments: {
+        include: { learningPath: true },
+      },
+    },
+  });
+
+  if (!user) return { recommendations: [], message: "" };
+
+  try {
+    // Build context from user's actual data
+    const activeEnrollments = user.enrollments.filter((e: any) => e.progress < 100 && e.progress > 0);
+    const completedEnrollments = user.enrollments.filter((e: any) => e.progress >= 100);
+
+    const prompt = `You are an AI learning advisor. Generate personalized learning recommendations based on REAL user data.
+
+USER PROFILE:
+- Industry: ${user.industry || "Technology"}
+- Experience: ${user.experience || 0} years
+- Skills: ${user.skills?.join(", ") || "Not specified"}
+
+CURRENT LEARNING STATUS:
+${activeEnrollments.length > 0
+  ? activeEnrollments.map((e: any) => `  - ${e.learningPath.title}: ${Math.round(e.progress)}% complete`).join("\n")
+  : "  No active enrollments"}
+
+COMPLETED LEARNING:
+${completedEnrollments.length > 0
+  ? completedEnrollments.map((e: any) => `  - ${e.learningPath.title}: Completed`).join("\n")
+  : "  No completed learning yet"}
+
+INDUSTRY INSIGHTS:
+- Market Outlook: ${user.industryInsight?.marketOutLook || "Unknown"}
+- Demand Level: ${user.industryInsight?.demandLevel || "Unknown"}
+
+Based on this REAL data, provide:
+1. If user has active enrollments: Specific encouragement and next-step suggestions
+2. If user has no enrollments: 2-3 specific learning path recommendations with WHY they matter
+3. If user has completed learning: Congratulate and suggest advanced topics
+
+Return JSON:
+{
+  "recommendations": [
+    {"title": "Recommendation title", "description": "Why this matters", "action": "Suggested action", "priority": "high|medium|low"}
+  ],
+  "message": "Personalized encouragement message (1-2 sentences)"
+}`;
+
+    const result = await model.chat.completions.create({
+      model: "gpt-oss:20b-cloud",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const content = result.choices[0]?.message?.content?.trim() || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+
+    return {
+      recommendations: parsed.recommendations || [],
+      message: parsed.message || "",
+    };
+  } catch (error) {
+    console.error("Error generating agent recommendations:", error);
+    return { recommendations: [], message: "Continue your learning journey!" };
+  }
+}

@@ -51,7 +51,7 @@ export default function CreateCoverLetterForm({
   } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      templateId: "professional",
+      templateId: "de-sitter",
     },
   });
 
@@ -168,12 +168,11 @@ export default function CreateCoverLetterForm({
                   <SelectValue placeholder="Select a template style" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="professional">Professional</SelectItem>
-                  <SelectItem value="modern">Modern</SelectItem>
-                  <SelectItem value="creative">Creative</SelectItem>
-                  <SelectItem value="executive">Executive</SelectItem>
-                  <SelectItem value="technical">Technical</SelectItem>
-                  <SelectItem value="entry-level">Entry Level</SelectItem>
+                  <SelectItem value="de-sitter">De Sitter (Classic Academic)</SelectItem>
+                  <SelectItem value="venkat">Venkat (Modern Professional)</SelectItem>
+                  <SelectItem value="jackson-sharp">Jackson Sharp (Traditional)</SelectItem>
+                  <SelectItem value="executive">Executive (Formal Business)</SelectItem>
+                  <SelectItem value="creative">Creative (Gradient Design)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

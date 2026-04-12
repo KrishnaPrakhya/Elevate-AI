@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Calendar } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,11 +55,14 @@ interface ProfileFormProps {
     bio?: string | null;
     name?: string | null;
     email?: string | null;
+    clerkUserId?: string | null;
+    googleCalendarRefreshToken?: string | null;
   };
 }
 
 export default function ProfileForm({ initialUser }: ProfileFormProps) {
   const router = useRouter();
+  const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
 
   // Attempt to nicely pre-format skills array to a comma separated string
   const defaultSkills = initialUser.skills ? initialUser.skills.join(", ") : "";
@@ -214,6 +218,81 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
       </Card>
 
       <div className="space-y-6">
+        <Card className="border-border/60 shadow-sm bg-muted/20">
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              Google Calendar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Connect your Google Calendar to enable AI-powered scheduling for
+              study sessions, interviews, and mentorship meetings.
+            </p>
+            {initialUser.googleCalendarRefreshToken ? (
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <p className="text-sm text-green-700 dark:text-green-300 font-medium flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Google Calendar Connected
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                  AI can now create events directly in your calendar
+                </p>
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant="default"
+                  className="w-full"
+                  disabled={isConnectingCalendar}
+                  onClick={() => {
+                    setIsConnectingCalendar(true);
+                    const clerkUserId = initialUser.clerkUserId;
+                    if (!clerkUserId) {
+                      toast.error("User ID not found. Please sign in again.");
+                      return;
+                    }
+                    const redirectUrl = encodeURIComponent(
+                      `${window.location.origin}/profile?google_calendar=connected`,
+                    );
+                    const backendBaseUrl = (
+                      process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+                      "https://elevate-ai-flask.onrender.com"
+                    ).replace(/\/$/, "");
+                    window.location.href = `${backendBaseUrl}/api/google/connect?clerk_user_id=${clerkUserId}&next_url=${redirectUrl}`;
+                  }}
+                >
+                  {isConnectingCalendar ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="mr-2 h-4 w-4" />
+                      Connect Google Calendar
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  You will be redirected to Google to authorize access
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="border-border/60 shadow-sm bg-muted/20">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">

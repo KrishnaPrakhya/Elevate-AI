@@ -295,6 +295,17 @@ class EmailTool:
         meeting_link: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        interviewer_row = (
+            f'<tr><td style="padding: 8px 0;"><strong>Interviewer:</strong></td><td>{interviewer_name}</td></tr>'
+            if interviewer_name
+            else ""
+        )
+        meeting_link_cta = (
+            f'<p><a href="{meeting_link}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Join Interview</a></p>'
+            if meeting_link
+            else ""
+        )
+
         html = f"""
         <html>
         <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">
@@ -312,11 +323,11 @@ class EmailTool:
                         <td style=\"padding: 8px 0;\"><strong>Time:</strong></td>
                         <td>{interview_time.strftime('%B %d, %Y at %I:%M %p UTC')}</td>
                     </tr>
-                    {f'<tr><td style=\"padding: 8px 0;\"><strong>Interviewer:</strong></td><td>{interviewer_name}</td></tr>' if interviewer_name else ''}
+                    {interviewer_row}
                 </table>
             </div>
 
-            {f'<p><a href=\"{meeting_link}\" style=\"background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;\">Join Interview</a></p>' if meeting_link else ''}
+            {meeting_link_cta}
 
             <p>Good luck with your preparation!</p>
             <p>Best regards,<br>The ElevateAI Team</p>
@@ -340,6 +351,12 @@ class EmailTool:
         topic: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        topic_row = (
+            f'<tr><td style="padding: 8px 0;"><strong>Topic:</strong></td><td>{topic}</td></tr>'
+            if topic
+            else ""
+        )
+
         html = f"""
         <html>
         <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">
@@ -357,7 +374,7 @@ class EmailTool:
                         <td style=\"padding: 8px 0;\"><strong>Time:</strong></td>
                         <td>{session_time.strftime('%B %d, %Y at %I:%M %p UTC')}</td>
                     </tr>
-                    {f'<tr><td style=\"padding: 8px 0;\"><strong>Topic:</strong></td><td>{topic}</td></tr>' if topic else ''}
+                    {topic_row}
                 </table>
             </div>
 
@@ -383,6 +400,12 @@ class EmailTool:
         points_earned: int = 0,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        points_badge = (
+            f'<p style="font-size: 1.2em; margin-top: 16px;"><strong>+{points_earned} points</strong></p>'
+            if points_earned > 0
+            else ""
+        )
+
         html = f"""
         <html>
         <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">
@@ -392,7 +415,7 @@ class EmailTool:
             <div style=\"background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 8px; margin: 20px 0; color: white;\">
                 <h3 style=\"margin-top: 0; color: white;\">{achievement_title}</h3>
                 <p>{achievement_description}</p>
-                {f'<p style=\"font-size: 1.2em; margin-top: 16px;\"><strong>+{points_earned} points</strong></p>' if points_earned > 0 else ''}
+                {points_badge}
             </div>
 
             <p>Keep up the great work on your learning journey!</p>

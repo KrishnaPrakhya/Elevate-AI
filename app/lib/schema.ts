@@ -7,6 +7,9 @@ export const onBoardingSchema = z.object({
   subIndustry: z.string({
     required_error: "Please select a specialization",
   }),
+  targetRole: z.string({
+    required_error: "Please select your target role",
+  }),
   bio: z.string().max(500).optional(),
   experience: z
     .string()

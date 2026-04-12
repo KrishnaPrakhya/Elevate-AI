@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, X, BookOpen, Brain } from "lucide-react";
+import { CheckCircle, X, BookOpen, Brain, Loader2 } from "lucide-react";
 import Confetti from "react-confetti";
 import { useWindowSize } from "@/hooks/use-window-size";
-import { generateTopicContent, generateTopicQuiz } from "@/actions/topicQuiz";
+import { generateTopicQuiz } from "@/actions/topicQuiz";
 import { QuizResponse } from "../types";
 
 interface Topics {
@@ -56,9 +57,9 @@ export default function QuizForm({
   setQuizStarted,
   Topics,
 }: QuizFormProps) {
+  const router = useRouter();
   const [selectedSubtopics, setSelectedSubtopics] = useState<string[]>([]);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-  const [content, setContent] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const { width, height } = useWindowSize();
   console.log(Topics);
@@ -86,37 +87,14 @@ export default function QuizForm({
     setQuizStarted(true);
   };
 
-  const handleLearnTopics = async () => {
+  const handleLearnTopics = () => {
     if (selectedSubtopics.length === 0) {
       alert("Please select at least one subtopic to learn.");
       return;
     }
 
-    try {
-      setIsGeneratingContent(true);
-      const generatedContent = await generateTopicContent(selectedSubtopics);
-      setContent(generatedContent);
-    } catch (error) {
-      console.error(error);
-      alert("Failed to generate content. Please try again.");
-    } finally {
-      setIsGeneratingContent(false);
-    }
-  };
-
-  // Function to format plain text with line breaks
-  const formatContent = (text: string) => {
-    return text.split("\n").map((paragraph, index) => (
-      <motion.p
-        key={index}
-        className="mb-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.05 }}
-      >
-        {paragraph.trim() === "" ? <br /> : paragraph}
-      </motion.p>
-    ));
+    const topicsParam = selectedSubtopics.join(",");
+    router.push(`/interview/learn?topics=${encodeURIComponent(topicsParam)}`);
   };
 
   return (
@@ -137,42 +115,40 @@ export default function QuizForm({
 
       <form
         onSubmit={handleSubmit}
-        className="p-8 bg-white rounded-2xl shadow-xl border border-gray-100"
+        className="p-6 bg-background rounded-2xl shadow-xl border border-primary/20"
       >
         <motion.h2
-          className="text-3xl font-bold mb-8 text-center bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent"
+          className="text-2xl font-bold mb-6 text-center bg-gradient-to-r from-primary to-cyan-600 bg-clip-text text-transparent"
           initial={{ scale: 0.9 }}
           animate={{ scale: 1 }}
           transition={{ duration: 0.5 }}
         >
-          Select Top Skills Quiz Topics
+          Select Topics for Quiz
         </motion.h2>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {Topics?.map((topic, topicIndex) => (
             <motion.div
               key={topic.name}
-              className="mb-6 bg-gray-50 p-5 rounded-xl border border-gray-100"
+              className="p-4 bg-muted/50 rounded-xl border border-primary/10"
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: topicIndex * 0.1 }}
             >
-              <div className="flex items-center gap-2 mb-4 border-b pb-2 border-gray-200">
-                {/* {topicIcons[topic as keyof typeof topicIcons]} */}
-                <h3 className="text-xl font-semibold text-gray-800">
-                  {topic.name}
-                </h3>
+              <div className="flex items-center gap-2 mb-3 border-b border-primary/10 pb-2">
+                <BookOpen className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold">{topic.name}</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {topic.subtopics?.map((subtopic, subIndex) => (
                   <motion.label
                     key={subtopic}
-                    className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                    whileHover={{ scale: 1.02 }}
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+                    whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: topicIndex * 0.1 + subIndex * 0.05 }}
+                    transition={{ delay: topicIndex * 0.1 + subIndex * 0.03 }}
                   >
                     <div className="relative">
                       <input
@@ -184,8 +160,8 @@ export default function QuizForm({
                       <div
                         className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${
                           selectedSubtopics.includes(subtopic)
-                            ? "bg-purple-600 border-purple-600"
-                            : "border-gray-300"
+                            ? "bg-primary border-primary"
+                            : "border-border"
                         }`}
                       >
                         {selectedSubtopics.includes(subtopic) && (
@@ -203,7 +179,7 @@ export default function QuizForm({
                         )}
                       </div>
                     </div>
-                    <span className="text-gray-700">{subtopic}</span>
+                    <span className="text-sm">{subtopic}</span>
                   </motion.label>
                 ))}
               </div>
@@ -212,7 +188,7 @@ export default function QuizForm({
         </div>
 
         <motion.div
-          className="flex gap-4 mt-8"
+          className="flex gap-3 mt-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
@@ -220,65 +196,24 @@ export default function QuizForm({
           <Button
             type="button"
             onClick={handleLearnTopics}
-            disabled={isGeneratingContent}
-            className={`flex-1 py-3 rounded-xl text-white font-medium transition-all shadow-md ${
-              isGeneratingContent
-                ? "bg-green-400 cursor-not-allowed"
-                : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
-            }`}
+            className="flex-1 py-2.5 rounded-xl text-white font-medium bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 transition-all shadow-md"
           >
-            {isGeneratingContent ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Generating...
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2">
-                <BookOpen className="w-5 h-5" />
-                Learn Topics
-              </div>
-            )}
+            <div className="flex items-center justify-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              Learn Topics
+            </div>
           </Button>
 
           <Button
             type="submit"
-            className="flex-1 py-3 rounded-xl text-white font-medium bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all shadow-md"
+            className="flex-1 py-2.5 rounded-xl text-white font-medium bg-gradient-to-r from-primary to-cyan-600 hover:from-primary/90 hover:to-cyan-600/90 transition-all shadow-md"
           >
             <div className="flex items-center justify-center gap-2">
-              <Brain className="w-5 h-5" />
+              <Brain className="w-4 h-4" />
               Start Quiz
             </div>
           </Button>
         </motion.div>
-
-        <AnimatePresence>
-          {content && (
-            <motion.div
-              className="mt-8 p-6 bg-gray-50 rounded-xl border border-gray-200"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-purple-600" />
-                  Learning Content
-                </h3>
-                <Button
-                  onClick={() => setContent(null)}
-                  variant="ghost"
-                  className="text-gray-500 hover:text-gray-700 p-1"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-              <div className="whitespace-pre-wrap text-gray-700 overflow-auto max-h-[400px] pr-2 custom-scrollbar">
-                {formatContent(content)}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </form>
     </motion.div>
   );

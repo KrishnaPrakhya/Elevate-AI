@@ -17,7 +17,6 @@ ElevateAI is a sophisticated career development platform that leverages AI agent
 The platform implements a sophisticated multi-agent system using LangGraph, featuring:
 
 1. **Supervisor Agent**
-
    - Analyzes user intent and orchestrates workflow
    - Routes requests to specialized agents
    - Manages conversation state and context
@@ -62,7 +61,7 @@ Uses SQLAlchemy with async support for efficient data management:
 - **AI Framework**: LangGraph for agent orchestration
 - **Database**: PostgreSQL with async drivers
 - **ORM**: SQLAlchemy with async support
-- **AI Models**: Google's Gemini-1.5-flash
+- **AI Models**: Google's Gemini-2.5-flash-lite
 - **Search Integration**: Tavily API for job searches
 
 ## 💡 Intelligent Features
@@ -99,13 +98,50 @@ pip install -r requirements.txt
 GEMINI_API_KEY=your_api_key
 TAVILY_API_KEY=your_api_key
 DATABASE_URL=your_db_url
+
+# Google OAuth Calendar (per-user calendar access)
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+# Optional: use OAuth client JSON instead of client id/secret
+GOOGLE_CREDENTIALS_FILE=/absolute/path/oauth-client.json
+
+# Backend callback URL (must match Google Cloud OAuth redirect URI)
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:5000/api/google/callback
+
+# Frontend redirects after OAuth callback
+GOOGLE_OAUTH_SUCCESS_REDIRECT=http://localhost:3000/profile?google_calendar=connected
+GOOGLE_OAUTH_FAILURE_REDIRECT=http://localhost:3000/profile?google_calendar=failed
+
+# State signing secret for OAuth flow integrity
+GOOGLE_OAUTH_STATE_SECRET=replace_with_long_random_secret
 ```
 
-4. Run the application:
+4. Apply schema update for Google refresh token storage:
+
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+5. Run the application:
 
 ```bash
 python server/app.py
 ```
+
+## Google Calendar OAuth Onboarding (Per User)
+
+1. Add `GOOGLE_OAUTH_REDIRECT_URI` to your Google Cloud OAuth client redirect URIs.
+2. When a user clicks "Connect Google Calendar", open:
+
+```text
+GET /api/google/connect?clerk_user_id=<CLERK_USER_ID>&next_url=<FRONTEND_URL>
+```
+
+3. User grants consent in Google.
+4. Google redirects to `/api/google/callback`.
+5. Backend exchanges code, stores refresh token in DB (`User.googleCalendarRefreshToken`), and redirects to success URL.
+6. Calendar event creation uses the stored per-user refresh token, so events are created in that user's calendar.
 
 ## 🌐 API Endpoints
 

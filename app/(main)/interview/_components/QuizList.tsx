@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 type QuizResult = {
   id: string;
   quizScore: number;
@@ -162,9 +163,14 @@ function QuizList(assessments: assessmentsProps) {
                     </div>
                     {item.improvementTip && (
                       <div className="mt-4 p-3 bg-muted/50 rounded-lg border text-sm">
-                        <p className="text-muted-foreground">
-                          {item.improvementTip}
-                        </p>
+                        <div className="relative max-h-36 overflow-hidden">
+                          <AIResponseFormatter
+                            content={formatAIResponse(item.improvementTip)}
+                            variant="chat"
+                            className="text-muted-foreground"
+                          />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted/70 to-transparent" />
+                        </div>
                       </div>
                     )}
                   </div>

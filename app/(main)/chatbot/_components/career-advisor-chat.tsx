@@ -5,14 +5,7 @@ import axios from "axios";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,8 +25,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import {
+  AIResponseFormatter,
+  formatAIResponse,
+} from "@/components/ai-response-formatter";
 import CareerPlanGenerator from "./career-plan-generator";
+import { ActionList, PendingAction } from "@/components/action-confirmation";
 
 interface Message {
   id: string;
@@ -43,6 +40,97 @@ interface Message {
   category?: "job" | "advice" | "schedule" | "analysis";
 }
 
+interface BackendPendingAction {
+  type?: unknown;
+  title?: unknown;
+  description?: unknown;
+  params?: unknown;
+  metadata?: {
+    icon?: unknown;
+    priority?: unknown;
+  } | null;
+}
+
+const normalizeAssistantContent = (rawContent: unknown): string => {
+  if (typeof rawContent !== "string") return "";
+
+  let content = rawContent.trim();
+
+  // Some backend/tool responses arrive as quoted strings with escaped newlines.
+  if (
+    (content.startsWith('"') && content.endsWith('"')) ||
+    (content.startsWith("'") && content.endsWith("'"))
+  ) {
+    content = content.slice(1, -1);
+  }
+
+  content = content
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"');
+
+  // Unwrap plain markdown wrapped inside a fenced code block.
+  const fencedBlockMatch = content.match(
+    /^```(?:md|markdown|text)?\n([\s\S]*?)\n```$/i,
+  );
+  if (fencedBlockMatch?.[1]) {
+    content = fencedBlockMatch[1].trim();
+  }
+
+  return content;
+};
+
+const normalizePendingActionType = (
+  rawType: unknown,
+): PendingAction["type"] => {
+  if (typeof rawType !== "string") return "schedule";
+
+  const normalizedType = rawType.trim().toLowerCase();
+
+  if (normalizedType === "email" || normalizedType === "send_email") {
+    return "email";
+  }
+  if (
+    normalizedType === "calendar" ||
+    normalizedType === "create_calendar_event"
+  ) {
+    return "calendar";
+  }
+  if (
+    normalizedType === "mentorship" ||
+    normalizedType === "schedule_mentorship"
+  ) {
+    return "mentorship";
+  }
+  if (
+    normalizedType === "job_application" ||
+    normalizedType === "track_job_application"
+  ) {
+    return "job_application";
+  }
+
+  return "schedule";
+};
+
+const normalizePendingActionMetadata = (
+  rawMetadata: BackendPendingAction["metadata"],
+): PendingAction["metadata"] | undefined => {
+  if (!rawMetadata || typeof rawMetadata !== "object") return undefined;
+
+  const icon =
+    typeof rawMetadata.icon === "string" ? rawMetadata.icon : undefined;
+  const priority =
+    rawMetadata.priority === "low" ||
+    rawMetadata.priority === "medium" ||
+    rawMetadata.priority === "high"
+      ? rawMetadata.priority
+      : undefined;
+
+  if (!icon && !priority) return undefined;
+
+  return { icon, priority };
+};
+
 interface CareerAdvisorChatProps {
   userProfile: {
     resume_content: string;
@@ -50,6 +138,7 @@ interface CareerAdvisorChatProps {
     skills: string[];
     industry: string;
     experience_years: number;
+    profile_bio: string;
     clerkUserId: string;
   };
 }
@@ -69,15 +158,16 @@ export default function CareerAdvisorChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeView, setActiveView] = useState<"chat" | "plan" | "profile">(
-    "chat"
+    "chat",
   );
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, pendingActions, isLoading]);
 
   // Focus input on load
   useEffect(() => {
@@ -103,14 +193,26 @@ export default function CareerAdvisorChat({
     setIsLoading(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
+      const backendUrl =
+        process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
       if (!backendUrl) {
-        throw new Error("FLASK_BACKEND_URL environment variable is not set");
+        throw new Error(
+          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set",
+        );
       }
-      console.log(backendUrl + "api/chat");
-      const response = await axios.post((backendUrl + "api/chat") as string, {
+      const baseUrl = backendUrl.endsWith("/")
+        ? backendUrl.slice(0, -1)
+        : backendUrl;
+      const userTimezone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
+
+      const response = await axios.post(`${baseUrl}/api/chat`, {
         message: userMessage.content,
         clerkUserId: userProfile.clerkUserId,
+        timezone: userTimezone,
+        timezoneOffsetMinutes,
       });
       console.log(response);
       if (!response.data) {
@@ -145,14 +247,14 @@ export default function CareerAdvisorChat({
       if (
         data.response.toLowerCase().includes("job") &&
         categoryKeywords.job.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "job";
       } else if (
         data.response.toLowerCase().includes("plan") &&
         categoryKeywords.plan.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "schedule";
@@ -160,7 +262,7 @@ export default function CareerAdvisorChat({
         (data.response.toLowerCase().includes("resume") ||
           data.response.toLowerCase().includes("profile")) &&
         categoryKeywords.analysis.some((kw) =>
-          userMessage.content.toLowerCase().includes(kw)
+          userMessage.content.toLowerCase().includes(kw),
         )
       ) {
         category = "analysis";
@@ -169,15 +271,51 @@ export default function CareerAdvisorChat({
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response,
+        content: normalizeAssistantContent(data.response),
         timestamp: new Date().toISOString(),
         category,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // If the response has a specific category, suggest switching to that tool
+      // Handle pending actions from backend
+      const backendPendingActions: BackendPendingAction[] = Array.isArray(
+        data.pending_actions,
+      )
+        ? data.pending_actions
+        : [];
+      if (backendPendingActions.length > 0) {
+        // Transform backend actions to frontend format
+        const transformedActions: PendingAction[] = backendPendingActions.map(
+          (action, index) => ({
+            id: `action-${Date.now()}-${index}`,
+            type: normalizePendingActionType(action.type),
+            title:
+              typeof action.title === "string"
+                ? action.title
+                : `Action ${index + 1}`,
+            description:
+              typeof action.description === "string"
+                ? action.description
+                : "A pending action requires your confirmation.",
+            params:
+              action.params && typeof action.params === "object"
+                ? (action.params as Record<string, unknown>)
+                : {},
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
+            metadata: normalizePendingActionMetadata(action.metadata),
+          }),
+        );
+        setPendingActions((prev) => [...prev, ...transformedActions]);
+        toast.info(
+          `${transformedActions.length} action(s) pending your confirmation`,
+          {
+            duration: 5000,
+          },
+        );
+      }
 
+      // If the response has a specific category, suggest switching to that tool
       if (category === "schedule") {
         toast.info("Would you like to create a Career Plan?", {
           action: {
@@ -218,12 +356,44 @@ export default function CareerAdvisorChat({
     }
   };
 
+  // Handle action confirmation
+  const handleConfirmAction = async (action: PendingAction) => {
+    try {
+      // Call Next.js API endpoint (not Python backend)
+      const response = await axios.post("/api/actions/execute", {
+        actionId: action.id,
+        actionType: action.type,
+        params: action.params,
+        title: action.title,
+        description: action.description,
+      });
+
+      if (response.data.success) {
+        toast.success(`Action completed: ${action.title}`);
+        // Remove confirmed action from pending list
+        setPendingActions((prev) => prev.filter((a) => a.id !== action.id));
+      } else {
+        toast.error(`Action failed: ${response.data.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Action execution error:", error);
+      toast.error("Failed to execute action");
+    }
+  };
+
+  const handleCancelAction = (actionId: string) => {
+    setPendingActions((prev) => prev.filter((a) => a.id !== actionId));
+    toast.info("Action cancelled");
+  };
+
   const suggestedQuestions = [
     "What jobs match my skills?",
     "How can I improve my resume?",
-    "Create a career development plan",
-    "Prepare me for my Interview",
-    "What skills should I develop next?",
+    "Add a mock interview to my Google Calendar",
+    "Track a new job application for me",
+    "Set a follow-up reminder for this job",
+    "Draft a professional follow-up email",
+    "Schedule a mentorship session this week",
   ];
 
   const getCategoryIcon = (category?: string) => {
@@ -242,8 +412,8 @@ export default function CareerAdvisorChat({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+    <div className="mx-auto flex h-full min-h-[560px] w-full max-w-6xl flex-col bg-background">
+      <div className="flex items-center justify-between mb-4 px-4 py-2">
         <div className="flex items-center gap-2">
           {activeView !== "chat" && (
             <Button
@@ -312,30 +482,16 @@ export default function CareerAdvisorChat({
 
       {/* Chat View */}
       {activeView === "chat" && (
-        <Card className="flex-1 flex flex-col">
-          <CardHeader className="pb-2 border-b">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10 bg-primary/10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  <Bot className="h-6 w-6" />
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <CardTitle>Career Advisor</CardTitle>
-                <CardDescription>AI-powered career guidance</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="flex-1 overflow-hidden p-0">
-            <ScrollArea className="h-[calc(100%-8rem)] px-4">
-              <div className="space-y-4 py-4">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
+          <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+            <ScrollArea className="h-full">
+              <div className="space-y-4 px-4 py-5 md:px-6">
                 {messages.map((message) => (
                   <div
                     key={message.id}
                     className={cn(
-                      "flex gap-3 max-w-[85%]",
-                      message.role === "user" ? "ml-auto" : "mr-auto"
+                      "flex max-w-[92%] gap-3 md:max-w-[85%]",
+                      message.role === "user" ? "ml-auto" : "mr-auto",
                     )}
                   >
                     {message.role === "assistant" && (
@@ -346,61 +502,20 @@ export default function CareerAdvisorChat({
                       </Avatar>
                     )}
 
-                    <div className="flex flex-col gap-1">
+                    <div className="flex min-w-0 flex-col gap-1">
                       <div
                         className={cn(
-                          "rounded-lg p-3",
+                          "rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed shadow-sm",
                           message.role === "user"
                             ? "bg-primary text-primary-foreground"
-                            : "bg-muted"
+                            : "border border-border/70 bg-muted/65",
                         )}
                       >
                         {message.role === "assistant" ? (
-                          <ReactMarkdown
-                            className="prose dark:prose-invert prose-sm max-w-none"
-                            components={{
-                              a: ({ ...props }) => (
-                                <a
-                                  {...props}
-                                  className="text-primary hover:underline"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                />
-                              ),
-                              ul: ({ ...props }) => (
-                                <ul
-                                  {...props}
-                                  className="list-disc pl-6 my-2"
-                                />
-                              ),
-                              ol: ({ ...props }) => (
-                                <ol
-                                  {...props}
-                                  className="list-decimal pl-6 my-2"
-                                />
-                              ),
-                              li: ({ ...props }) => (
-                                <li {...props} className="my-1" />
-                              ),
-                              h3: ({ ...props }) => (
-                                <h3
-                                  {...props}
-                                  className="text-base font-semibold mt-4 mb-2"
-                                />
-                              ),
-                              h4: ({ ...props }) => (
-                                <h4
-                                  {...props}
-                                  className="text-sm font-semibold mt-3 mb-1"
-                                />
-                              ),
-                              p: ({ ...props }) => (
-                                <p {...props} className="my-2" />
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                          <AIResponseFormatter
+                            content={formatAIResponse(message.content)}
+                            variant="chat"
+                          />
                         ) : (
                           <p>{message.content}</p>
                         )}
@@ -435,7 +550,7 @@ export default function CareerAdvisorChat({
                                 hour: "2-digit",
                                 minute: "2-digit",
                                 hour12: true,
-                              }
+                              },
                             )}
                           </span>
                         </div>
@@ -449,7 +564,7 @@ export default function CareerAdvisorChat({
                               hour: "2-digit",
                               minute: "2-digit",
                               hour12: true,
-                            }
+                            },
                           )}
                         </span>
                       )}
@@ -466,13 +581,13 @@ export default function CareerAdvisorChat({
                 ))}
 
                 {isLoading && (
-                  <div className="flex gap-3 max-w-[85%] mr-auto">
+                  <div className="mr-auto flex max-w-[85%] gap-3">
                     <Avatar className="h-8 w-8 mt-1">
                       <AvatarFallback className="bg-primary/10 text-primary">
                         <Bot className="h-5 w-5" />
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex items-center gap-2 rounded-lg p-3 bg-muted">
+                    <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-muted/65 px-4 py-3">
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       <span className="text-sm">Thinking...</span>
                     </div>
@@ -484,7 +599,7 @@ export default function CareerAdvisorChat({
             </ScrollArea>
           </CardContent>
 
-          <CardFooter className="border-t p-4 flex flex-col gap-3">
+          <CardFooter className="flex flex-col gap-3 border-t bg-card/60 p-4 backdrop-blur-sm">
             <div className="flex flex-wrap gap-2 w-full">
               {suggestedQuestions.map((question, index) => (
                 <Button
@@ -535,10 +650,20 @@ export default function CareerAdvisorChat({
 
       {/* Career Plan View */}
       {activeView === "plan" && (
-        <CareerPlanGenerator
-          onBack={() => setActiveView("chat")}
-          userProfile={userProfile}
-        />
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 shadow-sm border-0 bg-background">
+          <CareerPlanGenerator userProfile={userProfile} />
+        </Card>
+      )}
+
+      {/* Pending Actions List */}
+      {activeView === "chat" && pendingActions.length > 0 && (
+        <div className="shrink-0">
+          <ActionList
+            actions={pendingActions}
+            onConfirm={handleConfirmAction}
+            onCancel={handleCancelAction}
+          />
+        </div>
       )}
     </div>
   );

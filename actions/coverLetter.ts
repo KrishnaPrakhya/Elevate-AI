@@ -2,19 +2,17 @@
 
 import { db } from "@/lib/prisma"
 import { auth } from "@clerk/nextjs/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import OpenAI from "openai"
 import { revalidatePath } from "next/cache"
 import { getCachedData, invalidateCache, CACHE_TTL } from "@/lib/redis"
 
-let model: any
+const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || ""
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1"
 
-if (process.env.GEMINI_API_KEY) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-
-  model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-  })
-}
+const model = new OpenAI({
+  apiKey: ollamaApiKey,
+  baseURL: ollamaBaseUrl,
+})
 
 interface CoverLetterProp {
   content: any
@@ -190,9 +188,11 @@ export async function improveWithAICoverLetter(content: ImproveProps) {
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        const improvedContent = response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "gpt-oss:20b-cloud",
+        messages: [{ role: "user", content: prompt }],
+      });
+      const improvedContent = result.choices[0]?.message?.content?.trim() || ""
         return improvedContent
       } catch (error) {
         console.error("Error improving content:", error)
@@ -253,9 +253,11 @@ export const analyzeCoverLetter = async (content: string) => {
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        let analysisText = response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "gpt-oss:20b-cloud",
+        messages: [{ role: "user", content: prompt }],
+      });
+      let analysisText = result.choices[0]?.message?.content?.trim() || ""
         if (analysisText.startsWith("```json") || analysisText.startsWith("```")) {
           analysisText = analysisText.replace(/```json|```/g, "").trim()
         }
@@ -315,9 +317,11 @@ export async function tailorToJobCoverLetter(data: TailorProps) {
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        const tailoredContent = response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "gpt-oss:20b-cloud",
+        messages: [{ role: "user", content: prompt }],
+      });
+      const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
         return JSON.parse(tailoredContent)
       } catch (error) {
         console.error("Error tailoring Cover Letter:", error)
@@ -379,9 +383,11 @@ export const generateCoverLetter = async (jobTitle: string, companyName: string,
       `
 
       try {
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        return response.text().trim()
+        const result = await model.chat.completions.create({
+        model: "gpt-oss:20b-cloud",
+        messages: [{ role: "user", content: prompt }],
+      });
+      return result.choices[0]?.message?.content?.trim() || ""
       } catch (error) {
         console.error("Error generating cover letter:", error)
         throw new Error("Failed to generate cover letter")

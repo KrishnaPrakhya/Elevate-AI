@@ -1,6 +1,14 @@
 "use client";
-import MDEditor from "@uiw/react-md-editor";
+
 import { cn } from "@/lib/utils";
+import {
+  DeSitterTemplate,
+  VenkatTemplate,
+  JacksonSharpTemplate,
+  ClarkTemplate,
+  RacineTemplate,
+  LATEX_TEMPLATES,
+} from "./latex-templates";
 
 interface ResumePreviewProps {
   content: string;
@@ -8,49 +16,24 @@ interface ResumePreviewProps {
 }
 
 export function ResumePreview({ content, template }: ResumePreviewProps) {
+  const TemplateComponent = getTemplateComponent(template);
+
   return (
-    <div className={cn("p-8", getTemplateStyles(template))}>
-      <MDEditor.Markdown
-        source={content}
-        style={{
-          background: "transparent",
-          fontFamily: getTemplateFontFamily(template),
-        }}
-      />
+    <div className={cn("transition-all duration-300")}>
+      {TemplateComponent ? (
+        <TemplateComponent content={content} />
+      ) : (
+        // Fallback to basic template
+        <DeSitterTemplate content={content} />
+      )}
     </div>
   );
 }
 
-function getTemplateStyles(template: string): string {
-  switch (template) {
-    case "modern":
-      return "bg-white font-sans border-l-4 border-blue-500";
-    case "classic":
-      return "bg-white font-serif";
-    case "minimal":
-      return "bg-white font-sans";
-    case "professional":
-      return "bg-white font-sans border-t-4 border-slate-700";
-    case "creative":
-      return "bg-white font-sans bg-gradient-to-br from-purple-50 to-white";
-    default:
-      return "bg-white font-sans";
-  }
+function getTemplateComponent(template: string) {
+  const templateConfig = LATEX_TEMPLATES.find((t) => t.id === template);
+  return templateConfig?.component || DeSitterTemplate;
 }
 
-function getTemplateFontFamily(template: string): string {
-  switch (template) {
-    case "modern":
-      return "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    case "classic":
-      return "'Georgia', 'Times New Roman', serif";
-    case "minimal":
-      return "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    case "professional":
-      return "'Arial', 'Helvetica', sans-serif";
-    case "creative":
-      return "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    default:
-      return "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  }
-}
+// Export templates for selector
+export { LATEX_TEMPLATES };

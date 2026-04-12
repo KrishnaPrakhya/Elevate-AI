@@ -61,7 +61,7 @@ Uses SQLAlchemy with async support for efficient data management:
 - **AI Framework**: LangGraph for agent orchestration
 - **Database**: PostgreSQL with async drivers
 - **ORM**: SQLAlchemy with async support
-- **AI Models**: Google's Gemini-1.5-flash
+- **AI Models**: Google's Gemini-2.5-flash-lite
 - **Search Integration**: Tavily API for job searches
 
 ## 💡 Intelligent Features

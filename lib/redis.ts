@@ -5,6 +5,17 @@ export const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
 })
 
+const hasRedisConfig =
+  Boolean(process.env.UPSTASH_REDIS_REST_URL) &&
+  Boolean(process.env.UPSTASH_REDIS_REST_TOKEN)
+
+let redisAvailable = hasRedisConfig
+
+function isRedisConnectivityError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo|fetch failed/i.test(error.message)
+}
+
 export const CACHE_TTL = {
   SHORT: 60 * 5, // 5 minutes
   MEDIUM: 60 * 60, // 1 hour
@@ -18,6 +29,10 @@ export async function getCachedData<T>(
   fetchFn: () => Promise<T>,
   ttl: number = CACHE_TTL.MEDIUM,
 ): Promise<T> {
+  if (!redisAvailable) {
+    return fetchFn()
+  }
+
   try {
     const cachedData = await redis.get<T>(key)
 
@@ -33,6 +48,10 @@ export async function getCachedData<T>(
 
     return data
   } catch (error) {
+    if (isRedisConnectivityError(error)) {
+      redisAvailable = false
+      console.warn("Redis disabled for this runtime due to connectivity issues")
+    }
     console.error(`Redis cache error for key ${key}:`, error)
     return fetchFn()
   }
@@ -40,16 +59,25 @@ export async function getCachedData<T>(
 
 // Helper to invalidate cache
 export async function invalidateCache(key: string): Promise<void> {
+  if (!redisAvailable) return
+
   try {
     await redis.del(key)
     console.log(`Cache invalidated for key: ${key}`)
   } catch (error) {
+    if (isRedisConnectivityError(error)) {
+      redisAvailable = false
+      console.warn("Redis disabled for this runtime due to connectivity issues")
+      return
+    }
     console.error(`Failed to invalidate cache for key ${key}:`, error)
   }
 }
 
 // Helper to invalidate multiple cache keys with a pattern
 export async function invalidateCachePattern(pattern: string): Promise<void> {
+  if (!redisAvailable) return
+
   try {
     const keys = await redis.keys(pattern)
     if (keys.length > 0) {
@@ -57,6 +85,11 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
       console.log(`Invalidated ${keys.length} cache keys matching pattern: ${pattern}`)
     }
   } catch (error) {
+    if (isRedisConnectivityError(error)) {
+      redisAvailable = false
+      console.warn("Redis disabled for this runtime due to connectivity issues")
+      return
+    }
     console.error(`Failed to invalidate cache pattern ${pattern}:`, error)
   }
 }

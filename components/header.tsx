@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { SignedIn, SignedOut, SignInButton, SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "./ui/button";
@@ -13,6 +12,7 @@ import {
   Sparkles,
   User,
   LogOut,
+  FolderOpen,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./theme-toggle";
 import { checkUser } from "@/lib/checkUser";
+import { BookOpen, Trophy, Flame, Users, Mic } from "lucide-react";
 
 async function Header() {
   const user = await checkUser();
@@ -39,9 +40,18 @@ async function Header() {
         >
           <div className="relative flex items-center">
             <div className="relative h-8 w-8 overflow-hidden">
-              <div className="absolute inset-0 rounded-md bg-gradient-to-br from-primary to-primary-foreground opacity-90"></div>
-              <div className="absolute inset-0 flex items-center justify-center text-primary-foreground font-bold text-xl">
-                E
+              <div className="absolute inset-0 rounded-md bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 opacity-95"></div>
+              <div className="absolute inset-0 flex items-center justify-center text-white">
+                <svg
+                  viewBox="0 0 32 32"
+                  className="h-5.5 w-5.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M7 23.5a1 1 0 0 1-.95-.68l-1.1-3.3A1 1 0 0 1 5.9 18h2.4a1 1 0 0 1 .95.68l.55 1.65h12.4l.55-1.65a1 1 0 0 1 .95-.68h2.4a1 1 0 0 1 .95 1.32l-1.1 3.3a1 1 0 0 1-.95.68H7Zm2.2-5.4a1 1 0 0 1-.95-1.32l2.85-8.55A1 1 0 0 1 12.05 7h7.9a1 1 0 0 1 .95.68l2.85 8.55a1 1 0 0 1-.95 1.32H9.2Zm4.15-3.17h5.3L16 10.8l-2.65 4.13Z"
+                  />
+                </svg>
               </div>
               <div className="absolute -bottom-4 -right-4 h-8 w-8 bg-primary/20 rounded-full blur-xl"></div>
             </div>
@@ -65,7 +75,7 @@ async function Header() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-3">
                   <StarsIcon className="h-4 w-4" />
-                  <span>Growth Tools</span>
+                  <span>Career Tools</span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-70" />
                 </Button>
               </DropdownMenuTrigger>
@@ -90,11 +100,29 @@ async function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
+                    href="/portfolio"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                    <span>Portfolio</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
                     href="/interview"
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <GraduationCap className="h-4 w-4 text-primary" />
                     <span>Interview Prep</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/interview/simulator-live"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Mic className="h-4 w-4 text-emerald-500" />
+                    <span>Voice Interview</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -104,13 +132,75 @@ async function Header() {
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <BriefcaseBusiness className="h-4 w-4 text-primary" />
-                    <span>Agentic Chatbot</span>
-                    <Badge
-                      variant="outline"
-                      className="ml-auto text-xs py-0 h-5"
-                    >
-                      New
-                    </Badge>
+                    <span>AI Career Advisor</span>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2 px-3">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Academy</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span>Dashboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/paths"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <GraduationCap className="h-4 w-4 text-primary" />
+                    <span>Learning Paths</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/streak"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    <span>Streak & Goals</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/achievements"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Trophy className="h-4 w-4 text-yellow-500" />
+                    <span>Achievements</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/leaderboard"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4 text-primary" />
+                    <span>Leaderboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy/cohorts"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4 text-primary" />
+                    <span>Cohorts</span>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -134,7 +224,7 @@ async function Header() {
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <LayoutDashboard className="h-4 w-4 text-primary" />
-                    <span>Industry Insights</span>
+                    <span>Dashboard</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -158,6 +248,15 @@ async function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
+                    href="/portfolio"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                    <span>Portfolio</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
                     href="/interview"
                     className="flex items-center gap-2 cursor-pointer"
                   >
@@ -165,20 +264,33 @@ async function Header() {
                     <span>Interview Prep</span>
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/interview/simulator-live"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Mic className="h-4 w-4 text-emerald-500" />
+                    <span>Voice Interview</span>
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link
-                    href="/career-advisor"
+                    href="/chatbot"
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <BriefcaseBusiness className="h-4 w-4 text-primary" />
-                    <span>Career Advisor</span>
-                    <Badge
-                      variant="outline"
-                      className="ml-auto text-xs py-0 h-5"
-                    >
-                      New
-                    </Badge>
+                    <span>AI Career Advisor</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/academy"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span>Academy</span>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>

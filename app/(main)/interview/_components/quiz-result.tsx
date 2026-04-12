@@ -8,6 +8,8 @@ import {
   Lightbulb,
   Target,
   Award,
+  BookOpen,
+  GraduationCap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +22,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 
 interface QuizResultProps {
   result: {
@@ -187,7 +191,57 @@ export default function QuizResult({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">{result.improvementTip}</p>
+              <AIResponseFormatter
+                content={formatAIResponse(result.improvementTip)}
+                variant="chat"
+                className="text-muted-foreground"
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Academy Integration - Recommended Learning */}
+      {incorrectAnswers > 0 && (
+        <motion.div variants={itemVariants}>
+          <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-blue-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-primary" />
+                Strengthen Your Knowledge
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-3">
+                You missed {incorrectAnswers} question{incorrectAnswers > 1 ? "s" : ""}.
+                Check out these Academy resources to improve:
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {result.questions
+                  .filter((q) => !q.isCorrect)
+                  .slice(0, 3)
+                  .map((q, idx) => {
+                    // Extract topic from question
+                    const topicWords = q.question
+                      .split(" ")
+                      .filter((w) => w.length > 4)
+                      .slice(0, 2)
+                      .join(" ");
+                    return (
+                      <Badge key={idx} variant="secondary" className="text-xs">
+                        <BookOpen className="h-3 w-3 mr-1" />
+                        {topicWords}
+                      </Badge>
+                    );
+                  })}
+              </div>
+              <Link href="/academy/paths">
+                <Button variant="outline" size="sm" className="w-full gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Browse Learning Paths
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </motion.div>
@@ -259,6 +313,26 @@ export default function QuizResult({
                       </p>
                       <p className="text-muted-foreground">{q.explanation}</p>
                     </div>
+
+                    {/* Academy Integration - Learn More for incorrect answers */}
+                    {!q.isCorrect && (
+                      <div className="text-sm p-3 rounded-lg bg-primary/5 border border-primary/20">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium flex items-center gap-1">
+                            <BookOpen className="h-4 w-4 text-primary" />
+                            Want to learn more?
+                          </p>
+                          <Link
+                            href={`/academy/paths?search=${encodeURIComponent(q.question.split(" ").slice(0, 3).join(" "))}`}
+                          >
+                            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                              Find Courses
+                              <ArrowRight className="h-3 w-3" />
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>

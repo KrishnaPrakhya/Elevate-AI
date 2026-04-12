@@ -249,37 +249,29 @@ export default function CoverLetterDashboard({
           >
             {[
               {
-                id: "professional",
-                name: "Professional",
-                description:
-                  "Formal and traditional style suitable for corporate roles",
+                id: "de-sitter",
+                name: "De Sitter",
+                description: "Classic academic with centered header",
               },
               {
-                id: "modern",
-                name: "Modern",
-                description:
-                  "Contemporary design with a clean, minimalist approach",
+                id: "venkat",
+                name: "Venkat",
+                description: "Modern professional with blue accent",
               },
               {
-                id: "creative",
-                name: "Creative",
-                description: "Bold and unique style for creative industries",
+                id: "jackson-sharp",
+                name: "Jackson Sharp",
+                description: "Traditional business format",
               },
               {
                 id: "executive",
                 name: "Executive",
-                description: "Sophisticated design for senior positions",
+                description: "Formal with dark header band",
               },
               {
-                id: "technical",
-                name: "Technical",
-                description: "Focused on technical skills and achievements",
-              },
-              {
-                id: "entry-level",
-                name: "Entry Level",
-                description:
-                  "Perfect for recent graduates and those new to the workforce",
+                id: "creative",
+                name: "Creative",
+                description: "Modern gradient design",
               },
             ].map((template) => (
               <motion.div key={template.id} variants={itemVariants}>

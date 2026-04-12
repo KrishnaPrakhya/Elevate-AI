@@ -71,10 +71,10 @@ function PerformanceChart(props: assessmentsProps) {
             </div>
             <CardDescription>Your quiz scores over time</CardDescription>
           </div>
-          <Button variant="ghost" size="sm" className="gap-1 text-xs">
+          {/* <Button variant="ghost" size="sm" className="gap-1 text-xs">
             <span>Detailed Analysis</span>
             <ArrowUpRight className="h-3.5 w-3.5" />
-          </Button>
+          </Button> */}
         </div>
       </CardHeader>
       <CardContent>

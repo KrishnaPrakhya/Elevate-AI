@@ -924,17 +924,15 @@ function ResumeBuilder({ initialContent }: Props) {
                       value={selectedTemplate}
                       onValueChange={setSelectedTemplate}
                     >
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="Select template" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="modern">Modern</SelectItem>
-                        <SelectItem value="classic">Classic</SelectItem>
-                        <SelectItem value="minimal">Minimal</SelectItem>
-                        <SelectItem value="professional">
-                          Professional
-                        </SelectItem>
-                        <SelectItem value="creative">Creative</SelectItem>
+                        <SelectItem value="de-sitter">De Sitter (Academic)</SelectItem>
+                        <SelectItem value="venkat">Venkat (Modern Professional)</SelectItem>
+                        <SelectItem value="jackson-sharp">Jackson Sharp (Classic)</SelectItem>
+                        <SelectItem value="clark">Clark (Tech Modern)</SelectItem>
+                        <SelectItem value="racine">Racine (Minimalist)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1007,6 +1005,9 @@ function ResumeBuilder({ initialContent }: Props) {
                   (suggestion) => suggestion.content
                 ),
               }}
+              userId={user?.id}
+              industry={undefined}
+              currentSkills={formValues.skills ? formValues.skills.split(",").map(s => s.trim()).filter(Boolean) : []}
             />
           ) : (
             <Card className="shadow-md border-primary/20">
@@ -1150,36 +1151,6 @@ function ResumeBuilder({ initialContent }: Props) {
           </DialogHeader>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
             <ResumeTemplateSelector
-              templates={[
-                {
-                  id: "modern",
-                  name: "Modern",
-                  description:
-                    "Clean and contemporary design with a touch of color",
-                },
-                {
-                  id: "classic",
-                  name: "Classic",
-                  description:
-                    "Traditional layout that works for all industries",
-                },
-                {
-                  id: "minimal",
-                  name: "Minimal",
-                  description:
-                    "Simple and elegant design with plenty of white space",
-                },
-                {
-                  id: "professional",
-                  name: "Professional",
-                  description: "Structured format ideal for corporate roles",
-                },
-                {
-                  id: "creative",
-                  name: "Creative",
-                  description: "Bold design for creative industries",
-                },
-              ]}
               selectedTemplate={selectedTemplate}
               onSelect={setSelectedTemplate}
             />

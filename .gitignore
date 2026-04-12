@@ -37,7 +37,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-
+!.env.example
+.env.example
 # vercel
 .vercel
 
@@ -47,3 +48,9 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+/server/elevate-ai-492405-6591e2d825c5.json
+
+# Google credential files
+*google*credentials*.json
+*service-account*.json

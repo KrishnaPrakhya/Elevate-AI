@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:5000";
+const FASTAPI_URL =
+  process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
 
 export async function POST(request: NextRequest) {
   try {

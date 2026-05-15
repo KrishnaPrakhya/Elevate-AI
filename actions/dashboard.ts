@@ -209,36 +209,25 @@ export const generateAIinsights = async (
 };
 
 export async function getDashboardInsights() {
-  const {userId}=await auth();
-  if(!userId) throw new Error("User Not Authorized");
-  
-  const user=await db.user.findUnique({
-    where:{
-      clerkUserId:userId
-    }
-  })
-  if(!user) throw new Error("User Not Found");
+  const { userId } = await auth();
+  if (!userId) throw new Error("User Not Authorized");
+
+  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
+  if (!user) throw new Error("User Not Found");
   if (!user.industry) throw new Error("User industry is not defined");
-  const industry = user.industry;
 
   const countryCode = await resolveUserCountryCode();
-  
-  const cacheKey=`dashboard:insights:${user.id}:country:${countryCode}:v3-weekly-geo`
-  return getCachedData(
-    cacheKey,
-    async()=>{
-      const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-      const now = Date.now();
-      const insights = await generateAIinsights(industry, countryCode);
 
-      return {
-        id: `${user.id}-${industry}-${countryCode}-weekly`,
-        ...insights,
-        industry,
-        lastUpdated: new Date(now),
-        nextUpdated: new Date(now + ONE_WEEK_MS),
-      };
+  // generateAIinsights already has its own Redis cache (CACHE_TTL.WEEK).
+  // No outer wrapper needed — avoids a redundant Redis round-trip.
+  const insights = await generateAIinsights(user.industry, countryCode);
+  const now = Date.now();
 
-    },CACHE_TTL.MEDIUM
-  )
+  return {
+    id: `${user.id}-${user.industry}-${countryCode}-weekly`,
+    ...insights,
+    industry: user.industry,
+    lastUpdated: new Date(now),
+    nextUpdated: new Date(now + 7 * 24 * 60 * 60 * 1000),
+  };
 }

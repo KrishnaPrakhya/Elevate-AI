@@ -18,6 +18,7 @@ import {
   BookOpen,
   Target,
   Mic,
+  Loader2,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -81,7 +82,9 @@ export type IndustryInsights = {
 };
 
 interface Props {
-  insights: IndustryInsights;
+  insights?: IndustryInsights | null;
+  insightsLoading?: boolean;
+  careerInsightLoading?: boolean;
   careerInsight?: CareerInsight | null;
   activePlan?: {
     targetRole: string;
@@ -147,7 +150,7 @@ interface Props {
 }
 
 function DashBoardView(props: Props) {
-  const { insights } = props;
+  const { insights, insightsLoading = false, careerInsightLoading = false } = props;
   const planStartDate = props.activePlan?.createdAt
     ? new Date(props.activePlan.createdAt)
     : null;
@@ -164,7 +167,7 @@ function DashBoardView(props: Props) {
     return abs >= 100_000 ? value / 1000 : value;
   };
 
-  const salaryData = insights.salaryRanges.map(
+  const salaryData = (insights?.salaryRanges ?? []).map(
     (range: salaryInsights, index: number) => ({
       name: range.role,
       min: toSalaryK(range.min),
@@ -246,14 +249,14 @@ function DashBoardView(props: Props) {
     }
   };
 
-  const OutlookInfo = getMarketOutlookInfo(insights.marketOutLook);
+  const OutlookInfo = getMarketOutlookInfo(insights?.marketOutLook ?? "neutral");
   const OutlookIcon = OutlookInfo.icon;
-  const demandColors = getDemandColor(insights.demandLevel);
+  const demandColors = getDemandColor(insights?.demandLevel ?? "medium");
 
-  const lastUpdatedDate = format(new Date(insights.lastUpdated), "MMM d, yyyy");
-  const nextUpdatedDate = formatDistanceToNow(new Date(insights.nextUpdated), {
-    addSuffix: true,
-  });
+  const lastUpdatedDate = insights ? format(new Date(insights.lastUpdated), "MMM d, yyyy") : null;
+  const nextUpdatedDate = insights
+    ? formatDistanceToNow(new Date(insights.nextUpdated), { addSuffix: true })
+    : null;
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -284,21 +287,33 @@ function DashBoardView(props: Props) {
       >
         <div>
           <h1 className="text-3xl font-bold tracking-tight gradient-text mb-1">
-            {insights.industry} Insights
+            {insightsLoading ? (
+              <span className="inline-flex items-center gap-2 text-muted-foreground text-2xl">
+                <Loader2 className="h-5 w-5 animate-spin" /> Loading insights…
+              </span>
+            ) : (
+              (insights?.industry ?? "Industry") + " Insights"
+            )}
           </h1>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span className="text-sm">Last updated: {lastUpdatedDate}</span>
-            <TooltipProvider>
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <Info className="h-4 w-4 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Next update {nextUpdatedDate}</p>
-                </TooltipContent>
-              </TooltipUI>
-            </TooltipProvider>
+            {insightsLoading ? (
+              <span className="text-sm">Fetching latest data…</span>
+            ) : (
+              <>
+                <span className="text-sm">Last updated: {lastUpdatedDate}</span>
+                <TooltipProvider>
+                  <TooltipUI>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Next update {nextUpdatedDate}</p>
+                    </TooltipContent>
+                  </TooltipUI>
+                </TooltipProvider>
+              </>
+            )}
           </div>
         </div>
 
@@ -873,32 +888,28 @@ function DashBoardView(props: Props) {
                 }}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">
-                    Market Outlook
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium">Market Outlook</CardTitle>
                   <div className={cn("p-1.5 rounded-full", OutlookInfo.bg)}>
-                    <OutlookIcon className={cn("h-4 w-4", OutlookInfo.color)} />
+                    {insightsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <OutlookIcon className={cn("h-4 w-4", OutlookInfo.color)} />}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-baseline gap-2">
-                    <div className="text-2xl font-bold">
-                      {insights.marketOutLook}
+                  {insightsLoading ? (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="h-7 w-24 rounded bg-muted" />
+                      <div className="h-3 w-32 rounded bg-muted" />
                     </div>
-                    <div
-                      className={cn(
-                        "text-xs px-2 py-0.5 rounded-full",
-                        OutlookInfo.bg,
-                        OutlookInfo.color,
-                      )}
-                    >
-                      Trend
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Next update {nextUpdatedDate}
-                  </p>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-2xl font-bold">{insights?.marketOutLook}</div>
+                        <div className={cn("text-xs px-2 py-0.5 rounded-full", OutlookInfo.bg, OutlookInfo.color)}>Trend</div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                        <Clock className="h-3 w-3" />Next update {nextUpdatedDate}
+                      </p>
+                    </>
+                  )}
                 </CardContent>
                 <div className={cn("h-1.5", OutlookInfo.bg)}></div>
               </Card>
@@ -907,132 +918,108 @@ function DashBoardView(props: Props) {
             <motion.div variants={itemVariants}>
               <Card className="overflow-hidden border-t-4 border-t-indigo-500 transition-all hover:shadow-md">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">
-                    Industry Growth
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium">Industry Growth</CardTitle>
                   <div className="p-1.5 rounded-full bg-indigo-500/20 dark:bg-indigo-500/30">
-                    <TrendingUp className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    {insightsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <TrendingUp className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-baseline gap-2">
-                    <div className="text-2xl font-bold">
-                      {insights.growthRate.toFixed(1)}%
+                  {insightsLoading ? (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="h-7 w-16 rounded bg-muted" />
+                      <div className="h-2 w-full rounded bg-muted" />
                     </div>
-                    <div className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-                      Annual
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>Growth Rate</span>
-                      <span className="font-medium">
-                        {insights.growthRate.toFixed(1)}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={Number(insights.growthRate.toFixed(1))}
-                      className="h-2"
-                      indicatorClassName="bg-indigo-500"
-                    />
-                  </div>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-2xl font-bold">{insights?.growthRate.toFixed(1)}%</div>
+                        <div className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-600 dark:text-indigo-400">Annual</div>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span>Growth Rate</span>
+                          <span className="font-medium">{insights?.growthRate.toFixed(1)}%</span>
+                        </div>
+                        <Progress value={Number(insights?.growthRate.toFixed(1))} className="h-2" indicatorClassName="bg-indigo-500" />
+                      </div>
+                    </>
+                  )}
                 </CardContent>
                 <div className="h-1.5 bg-indigo-500/20 dark:bg-indigo-500/30"></div>
               </Card>
             </motion.div>
 
-            {/* Demand Level Card */}
             <motion.div variants={itemVariants}>
               <Card
-                className={cn(
-                  "overflow-hidden border-t-4 transition-all hover:shadow-md",
-                )}
+                className={cn("overflow-hidden border-t-4 transition-all hover:shadow-md")}
                 style={{
-                  borderTopColor: demandColors.text.includes("emerald")
-                    ? "#10b981"
-                    : demandColors.text.includes("amber")
-                      ? "#f59e0b"
-                      : demandColors.text.includes("rose")
-                        ? "#f43f5e"
-                        : "#64748b",
+                  borderTopColor: demandColors.text.includes("emerald") ? "#10b981" : demandColors.text.includes("amber") ? "#f59e0b" : demandColors.text.includes("rose") ? "#f43f5e" : "#64748b",
                 }}
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">
-                    Demand Level
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium">Demand Level</CardTitle>
                   <div className={cn("p-1.5 rounded-full", demandColors.bg)}>
-                    <Briefcase className={cn("h-4 w-4", demandColors.text)} />
+                    {insightsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Briefcase className={cn("h-4 w-4", demandColors.text)} />}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-baseline gap-2">
-                    <div className="text-2xl font-bold">
-                      {insights.demandLevel}
+                  {insightsLoading ? (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="h-7 w-20 rounded bg-muted" />
+                      <div className="h-2 w-full rounded bg-muted" />
                     </div>
-                    <div
-                      className={cn(
-                        "text-xs px-2 py-0.5 rounded-full",
-                        demandColors.bg,
-                        demandColors.text,
-                      )}
-                    >
-                      Current
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>Demand Indicator</span>
-                      <span className={cn("font-medium", demandColors.text)}>
-                        {insights.demandLevel}
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", demandColors.fill)}
-                        style={{
-                          width:
-                            insights.demandLevel.toLowerCase() === "high"
-                              ? "90%"
-                              : insights.demandLevel.toLowerCase() === "medium"
-                                ? "60%"
-                                : "30%",
-                        }}
-                      ></div>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-2xl font-bold">{insights?.demandLevel}</div>
+                        <div className={cn("text-xs px-2 py-0.5 rounded-full", demandColors.bg, demandColors.text)}>Current</div>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span>Demand Indicator</span>
+                          <span className={cn("font-medium", demandColors.text)}>{insights?.demandLevel}</span>
+                        </div>
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", demandColors.fill)}
+                            style={{ width: insights?.demandLevel?.toLowerCase() === "high" ? "90%" : insights?.demandLevel?.toLowerCase() === "medium" ? "60%" : "30%" }}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
                 <div className={cn("h-1.5", demandColors.bg)}></div>
               </Card>
             </motion.div>
 
-            {/* Top Skills Card */}
             <motion.div variants={itemVariants}>
               <Card className="overflow-hidden border-t-4 border-t-purple-500 transition-all hover:shadow-md">
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">
-                    Top Skills
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium">Top Skills</CardTitle>
                   <div className="p-1.5 rounded-full bg-purple-500/20 dark:bg-purple-500/30">
-                    <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    {insightsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-wrap gap-1.5">
-                    {insights.topSkills.map((skill) => (
-                      <Badge
-                        key={skill}
-                        variant="secondary"
-                        className="bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
-                      >
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
-                    <Award className="h-3 w-3" />
-                    Most in-demand skills
-                  </p>
+                  {insightsLoading ? (
+                    <div className="flex flex-wrap gap-1.5 animate-pulse">
+                      {[80, 60, 72, 55, 65].map((w) => (
+                        <div key={w} className="h-5 rounded-full bg-muted" style={{ width: w }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(insights?.topSkills ?? []).map((skill) => (
+                          <Badge key={skill} variant="secondary" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors">{skill}</Badge>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                        <Award className="h-3 w-3" />Most in-demand skills
+                      </p>
+                    </>
+                  )}
                 </CardContent>
                 <div className="h-1.5 bg-purple-500/20 dark:bg-purple-500/30"></div>
               </Card>
@@ -1287,23 +1274,24 @@ function DashBoardView(props: Props) {
                 </CardContent>
 
                 <CardFooter className="border-t bg-muted/20 px-6 py-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                    {insights.salaryRanges.map((range, index) => (
-                      <div key={index} className="flex flex-col space-y-1">
-                        <div className="text-sm font-medium">{range.role}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {range.location}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="text-xs">Range:</div>
-                          <div className="text-sm font-medium">
-                            {toSalaryK(range.min).toFixed(0)}K -
-                            {toSalaryK(range.max).toFixed(0)}K
+                  {insightsLoading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full animate-pulse">
+                      {[1,2,3].map(i => <div key={i} className="space-y-1"><div className="h-4 w-24 rounded bg-muted"/><div className="h-3 w-32 rounded bg-muted"/><div className="h-4 w-20 rounded bg-muted"/></div>)}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                      {(insights?.salaryRanges ?? []).map((range, index) => (
+                        <div key={index} className="flex flex-col space-y-1">
+                          <div className="text-sm font-medium">{range.role}</div>
+                          <div className="text-xs text-muted-foreground">{range.location}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="text-xs">Range:</div>
+                            <div className="text-sm font-medium">{toSalaryK(range.min).toFixed(0)}K - {toSalaryK(range.max).toFixed(0)}K</div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardFooter>
               </Card>
             </motion.div>
@@ -1331,7 +1319,12 @@ function DashBoardView(props: Props) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {insights.keyTrends.map((trend, index) => (
+                  {insightsLoading ? (
+                    <div className="space-y-3 animate-pulse">
+                      {[1,2,3].map(i => <div key={i} className="h-12 rounded-lg bg-muted" />)}
+                    </div>
+                  ) : null}
+                  {!insightsLoading && (insights?.keyTrends ?? []).map((trend, index) => (
                     <div
                       key={index}
                       className="flex gap-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20"
@@ -1370,7 +1363,9 @@ function DashBoardView(props: Props) {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">
-                    {insights.recommendedSkills.map((skill, index) => (
+                    {insightsLoading ? (
+                      Array.from({length: 4}).map((_,i) => <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />)
+                    ) : (insights?.recommendedSkills ?? []).map((skill, index) => (
                       <Link
                         key={index}
                         href={`/academy/paths?search=${encodeURIComponent(skill)}`}

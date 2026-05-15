@@ -6,11 +6,12 @@ import { getAcademyDashboard } from "@/actions/academy";
 import { getPerformanceIntelligence } from "@/actions/performance";
 import { getUserLearningSummary } from "@/lib/integrations/academy-career-bridge";
 import type { CareerInsight } from "@/lib/ai/career-agent";
+import { pageCache } from "@/lib/page-cache";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import DashBoardView, { IndustryInsights } from "./_components/DashBoardView";
 import { IndustryInsight } from "@prisma/client";
-import { Flame, BookOpen, Trophy, Play } from "lucide-react";
+import { Flame, BookOpen, Trophy, Play, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -124,6 +125,11 @@ function mapPlanActions(
 function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Track which expensive sections are still loading after initial render
+  const [sectionStatus, setSectionStatus] = useState<{
+    insights: "loading" | "done" | "error";
+    careerInsight: "loading" | "done" | "error";
+  }>({ insights: "loading", careerInsight: "loading" });
   const router = useRouter();
 
   useEffect(() => {
@@ -157,7 +163,12 @@ function DashboardPage() {
         }),
       }).catch(() => null);
 
-      if (!isMounted || !response?.ok) return;
+      if (!isMounted) return;
+
+      if (!response?.ok) {
+        setSectionStatus((s) => ({ ...s, careerInsight: "error" }));
+        return;
+      }
 
       const careerInsight = (await response.json()) as CareerInsight;
       const planActions = mapPlanActions(activePlan);
@@ -181,6 +192,7 @@ function DashboardPage() {
             ? statsActions
             : careerInsight.recommendedActions || [];
 
+      if (!isMounted) return;
       setData((prev) =>
         prev
           ? {
@@ -192,52 +204,51 @@ function DashboardPage() {
             }
           : prev,
       );
+      setSectionStatus((s) => ({ ...s, careerInsight: "done" }));
     }
 
     async function load() {
       try {
-        const { isOnBoardingStatus } = await getOnboardingStatus();
-        if (!isOnBoardingStatus) {
+        // ── Phase 1: fast DB-only calls (~300 ms first visit, ~0 ms repeat) ─
+        // pageCache serves from memory instantly on repeat navigations.
+        // Background refresh kicks in automatically when entry is >60 s old.
+        const [onboardingResult, academyData, learningSummary, user, performanceInsights, plannerState] =
+          await Promise.all([
+            pageCache.get("dashboard:onboarding", () =>
+              getOnboardingStatus().catch(() => ({ isOnBoardingStatus: true }))
+            ),
+            pageCache.get("dashboard:academy", () =>
+              getAcademyDashboard().catch(() => null)
+            ),
+            pageCache.get("dashboard:learningSummary", () =>
+              getUserLearningSummary().catch(() => null)
+            ),
+            pageCache.get("dashboard:user", () =>
+              getUser().catch(() => null)
+            ),
+            pageCache.get("dashboard:performance", () =>
+              getPerformanceIntelligence().catch(() => null)
+            ),
+            pageCache.get("dashboard:planner", () =>
+              fetch("/api/career-planner")
+                .then((res) => (res.ok ? res.json() : null))
+                .catch(() => null),
+              30_000 // planner can go slightly stale faster
+            ),
+          ]);
+
+        if (!onboardingResult.isOnBoardingStatus) {
           router.replace("/onboarding");
           return;
         }
 
-        const [
-          rawInsights,
-          academyData,
-          learningSummary,
-          user,
-          performanceInsights,
-          plannerState,
-        ] = await Promise.all([
-          getDashboardInsights(),
-          getAcademyDashboard().catch(() => null),
-          getUserLearningSummary().catch(() => null),
-          getUser().catch(() => null),
-          getPerformanceIntelligence().catch(() => null),
-          fetch("/api/career-planner")
-            .then((res) => (res.ok ? res.json() : null))
-            .catch(() => null),
-        ]);
+        if (!isMounted) return;
 
         const activePlan = plannerState?.activePlan || null;
 
-        const insights: IndustryInsights = {
-          ...rawInsights,
-          salaryRanges: (
-            rawInsights.salaryRanges as unknown as SalaryRange[]
-          ).filter(Boolean),
-          demandLevel: rawInsights.demandLevel as "HIGH" | "MEDIUM" | "LOW",
-          marketOutLook: rawInsights.marketOutLook as
-            | "POSITIVE"
-            | "NEUTRAL"
-            | "NEGATIVE",
-        };
-
-        if (!isMounted) return;
-
+        // Render dashboard immediately with fast data (insights = null → shows skeleton)
         setData({
-          rawInsights: insights as unknown as DashboardInsights,
+          rawInsights: null as unknown as DashboardInsights,
           academyData,
           learningSummary,
           user,
@@ -247,13 +258,44 @@ function DashboardPage() {
         });
         setLoading(false);
 
-        // Non-blocking AI insights fetch so dashboard loads immediately.
-        void loadCareerInsights(
-          user,
-          learningSummary,
-          performanceInsights,
-          activePlan,
-        );
+        // ── Phase 2: background AI calls (non-blocking) ───────────────────
+        pageCache.get(
+          "dashboard:insights",
+          () => getDashboardInsights(),
+          // AI insights are expensive — keep for 5 min before background refresh
+          5 * 60_000,
+          // onRefresh: UI updates automatically when background refresh completes
+          (rawInsights) => {
+            if (!isMounted) return;
+            const insights: IndustryInsights = {
+              ...rawInsights,
+              salaryRanges: (rawInsights.salaryRanges as unknown as SalaryRange[]).filter(Boolean),
+              demandLevel: rawInsights.demandLevel as "HIGH" | "MEDIUM" | "LOW",
+              marketOutLook: rawInsights.marketOutLook as "POSITIVE" | "NEUTRAL" | "NEGATIVE",
+            };
+            setData((prev) =>
+              prev ? { ...prev, rawInsights: insights as unknown as DashboardInsights } : prev
+            );
+          }
+        )
+          .then((rawInsights) => {
+            if (!isMounted) return;
+            const insights: IndustryInsights = {
+              ...rawInsights,
+              salaryRanges: (rawInsights.salaryRanges as unknown as SalaryRange[]).filter(Boolean),
+              demandLevel: rawInsights.demandLevel as "HIGH" | "MEDIUM" | "LOW",
+              marketOutLook: rawInsights.marketOutLook as "POSITIVE" | "NEUTRAL" | "NEGATIVE",
+            };
+            setData((prev) =>
+              prev ? { ...prev, rawInsights: insights as unknown as DashboardInsights } : prev
+            );
+            setSectionStatus((s) => ({ ...s, insights: "done" }));
+          })
+          .catch(() => {
+            if (isMounted) setSectionStatus((s) => ({ ...s, insights: "error" }));
+          });
+
+        void loadCareerInsights(user, learningSummary, performanceInsights, activePlan);
       } catch (error) {
         console.error("Error loading dashboard:", error);
         if (!isMounted) return;
@@ -292,6 +334,19 @@ function DashboardPage() {
 
   return (
     <div className="container mx-auto">
+      {/* Real-time loading progress bar */}
+      {(sectionStatus.insights === "loading" || sectionStatus.careerInsight === "loading") && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-muted overflow-hidden">
+          <div className="h-full bg-primary animate-[progress_2s_ease-in-out_infinite]" style={{ width: "60%" }} />
+        </div>
+      )}
+      {/* Section loading status banner */}
+      {sectionStatus.insights === "loading" && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-4 py-2 border border-border/50">
+          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+          <span>Fetching AI-powered industry insights in the background…</span>
+        </div>
+      )}
       {/* Continue Learning Card - Shows when user has active enrollment */}
       {hasActiveEnrollment && learningSummary?.nextLesson && (
         <Card className="mb-6 border-primary/30 bg-gradient-to-r from-primary/10 to-blue-500/10 overflow-hidden">
@@ -401,6 +456,8 @@ function DashboardPage() {
         userId={user?.id}
         academyData={academyData}
         learningSummary={learningSummary}
+        insightsLoading={sectionStatus.insights === "loading"}
+        careerInsightLoading={sectionStatus.careerInsight === "loading"}
       />
     </div>
   );

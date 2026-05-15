@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { db } from "../prisma";
 import { inngest } from "./client";
+import { analyzeCareerProfile } from "../ai/career-agent";
 
 const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
 const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
@@ -680,6 +681,49 @@ export const sendLeaderboardUpdates = inngest.createFunction(
         });
       });
     }
+  }
+);
+
+// ============================================
+// ONBOARDING AI BACKGROUND PROCESSING
+// ============================================
+
+export const processOnboardingAI = inngest.createFunction(
+  { id: "process-onboarding-ai", name: "Process Onboarding AI Analysis" },
+  { event: "onboarding/ai.requested" },
+  async ({ event, step }) => {
+    const { industry, experience, skills, bio, targetRole, careerGoals } = event.data as {
+      industry: string;
+      experience: number;
+      skills: string[];
+      bio: string;
+      targetRole?: string;
+      careerGoals?: string[];
+    };
+
+    const careerInsight = await step.run("analyze-career-profile", async () => {
+      return analyzeCareerProfile({
+        industry,
+        experience,
+        skills,
+        bio,
+        targetRole,
+        careerGoals,
+      });
+    });
+
+    await step.run("update-industry-insight", async () => {
+      await db.industryInsight.update({
+        where: { industry },
+        data: {
+          topSkills: careerInsight.skillGaps.map((g) => g.skill),
+          keyTrends: careerInsight.marketTrends.map((t) => t.trend),
+          recommendedSkills: careerInsight.skillGaps.slice(0, 5).map((g) => g.skill),
+          lastUpdated: new Date(),
+          nextUpdated: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+    });
   }
 );
 

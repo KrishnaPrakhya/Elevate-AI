@@ -215,6 +215,12 @@
   }
 }
 
+@keyframes progress {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(200%); }
+}
+
 /* Form styles */
 .form-card {
   @apply relative overflow-hidden border border-border/40 shadow-lg dark:shadow-primary/5 backdrop-blur-sm;

@@ -88,7 +88,9 @@ export default function PathsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Learning Paths</h1>
-          <p className="text-muted-foreground">Master your skills with structured learning</p>
+          <p className="text-muted-foreground">
+            Master your skills with structured learning
+          </p>
         </div>
       </div>
 
@@ -135,11 +137,16 @@ export default function PathsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredPaths.map((path) => {
-            const enrollment = enrollments.find((e) => e.learningPathId === path.id);
+            const enrollment = enrollments.find(
+              (e) => e.learningPathId === path.id,
+            );
             const isEnrolled = enrolledPathIds.has(path.id);
 
             return (
-              <Card key={path.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+              <Card
+                key={path.id}
+                className="hover:shadow-lg transition-shadow overflow-hidden"
+              >
                 <div className="h-2 bg-gradient-to-r from-primary to-primary/50" />
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -151,7 +158,9 @@ export default function PathsPage() {
                         </Badge>
                       )}
                     </div>
-                    <Badge className={getLevelColor(path.level)}>{path.level}</Badge>
+                    <Badge className={getLevelColor(path.level)}>
+                      {path.level}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -187,14 +196,20 @@ export default function PathsPage() {
                   )}
 
                   <Link
-                    href={isEnrolled && enrollment ? `/academy/learn/${enrollment.id}` : `/academy/paths/${path.id}`}
+                    href={
+                      isEnrolled && enrollment
+                        ? `/academy/learn/${enrollment.id}`
+                        : `/academy/paths/${path.id}`
+                    }
                     className={`block text-center py-2 rounded-lg font-medium transition-colors ${
                       isEnrolled
                         ? "bg-primary text-white hover:bg-primary/90"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    {isEnrolled && enrollment ? "Continue Learning" : "View Path"}
+                    {isEnrolled && enrollment
+                      ? "Continue Learning"
+                      : "View Path"}
                   </Link>
                 </CardContent>
               </Card>

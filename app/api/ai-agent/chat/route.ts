@@ -17,7 +17,8 @@ import { db } from "@/lib/prisma";
  * - interview_preparer: Interview preparation
  */
 
-const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:5328";
+const PYTHON_BACKEND_URL =
+  process.env.PYTHON_BACKEND_URL || "https://elevate-ai-flask.onrender.com";
 
 export async function POST(request: NextRequest) {
   try {

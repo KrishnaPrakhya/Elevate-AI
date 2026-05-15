@@ -33,7 +33,9 @@ export default function LeaderboardPage() {
   const [monthly, setMonthly] = useState<Leaderboard | null>(null);
   const [allTime, setAllTime] = useState<Leaderboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"weekly" | "monthly" | "all">("weekly");
+  const [activeTab, setActiveTab] = useState<"weekly" | "monthly" | "all">(
+    "weekly",
+  );
 
   useEffect(() => {
     async function load() {
@@ -64,7 +66,11 @@ export default function LeaderboardPage() {
   }
 
   const currentLeaderboard =
-    activeTab === "weekly" ? weekly : activeTab === "monthly" ? monthly : allTime;
+    activeTab === "weekly"
+      ? weekly
+      : activeTab === "monthly"
+        ? monthly
+        : allTime;
 
   const getRankIcon = (rank: number) => {
     switch (rank) {
@@ -75,9 +81,11 @@ export default function LeaderboardPage() {
       case 3:
         return <Award className="w-6 h-6 text-amber-600" />;
       default:
-        return <span className="w-6 h-6 flex items-center justify-center font-bold text-muted-foreground">
-          {rank}
-        </span>;
+        return (
+          <span className="w-6 h-6 flex items-center justify-center font-bold text-muted-foreground">
+            {rank}
+          </span>
+        );
     }
   };
 
@@ -155,12 +163,17 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
-                    {currentLeaderboard.entries[1].user?.name?.[0] || currentLeaderboard.entries[1].user?.email?.[0]}
+                    {currentLeaderboard.entries[1].user?.name?.[0] ||
+                      currentLeaderboard.entries[1].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[1].user?.name || "Anonymous"}</p>
-              <p className="text-2xl font-bold text-gray-600">{currentLeaderboard.entries[1].points} pts</p>
+              <p className="font-semibold">
+                {currentLeaderboard.entries[1].user?.name || "Anonymous"}
+              </p>
+              <p className="text-2xl font-bold text-gray-600">
+                {currentLeaderboard.entries[1].points} pts
+              </p>
               <Badge className="mt-2">#2</Badge>
             </CardContent>
           </Card>
@@ -182,12 +195,17 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-yellow-600 font-bold text-xl">
-                    {currentLeaderboard.entries[0].user?.name?.[0] || currentLeaderboard.entries[0].user?.email?.[0]}
+                    {currentLeaderboard.entries[0].user?.name?.[0] ||
+                      currentLeaderboard.entries[0].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[0].user?.name || "Anonymous"}</p>
-              <p className="text-3xl font-bold text-yellow-600">{currentLeaderboard.entries[0].points} pts</p>
+              <p className="font-semibold">
+                {currentLeaderboard.entries[0].user?.name || "Anonymous"}
+              </p>
+              <p className="text-3xl font-bold text-yellow-600">
+                {currentLeaderboard.entries[0].points} pts
+              </p>
               <Badge className="mt-2 bg-yellow-500">#1</Badge>
             </CardContent>
           </Card>
@@ -209,12 +227,17 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-amber-600 font-bold">
-                    {currentLeaderboard.entries[2].user?.name?.[0] || currentLeaderboard.entries[2].user?.email?.[0]}
+                    {currentLeaderboard.entries[2].user?.name?.[0] ||
+                      currentLeaderboard.entries[2].user?.email?.[0]}
                   </div>
                 )}
               </div>
-              <p className="font-semibold">{currentLeaderboard.entries[2].user?.name || "Anonymous"}</p>
-              <p className="text-2xl font-bold text-amber-600">{currentLeaderboard.entries[2].points} pts</p>
+              <p className="font-semibold">
+                {currentLeaderboard.entries[2].user?.name || "Anonymous"}
+              </p>
+              <p className="text-2xl font-bold text-amber-600">
+                {currentLeaderboard.entries[2].points} pts
+              </p>
               <Badge className="mt-2 bg-amber-600">#3</Badge>
             </CardContent>
           </Card>
@@ -233,7 +256,9 @@ export default function LeaderboardPage() {
           {!currentLeaderboard || currentLeaderboard.entries.length === 0 ? (
             <div className="text-center py-8">
               <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No rankings yet. Start learning to climb the leaderboard!</p>
+              <p className="text-muted-foreground">
+                No rankings yet. Start learning to climb the leaderboard!
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -242,7 +267,9 @@ export default function LeaderboardPage() {
                   key={entry.id}
                   className={`flex items-center gap-4 p-3 rounded-lg ${getRankBg(entry.rank)}`}
                 >
-                  <div className="w-10 flex justify-center">{getRankIcon(entry.rank + 3)}</div>
+                  <div className="w-10 flex justify-center">
+                    {getRankIcon(entry.rank + 3)}
+                  </div>
                   <div className="relative w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
                     {entry.user?.imageUrl ? (
                       <Image
@@ -259,9 +286,12 @@ export default function LeaderboardPage() {
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{entry.user?.name || "Anonymous"}</p>
+                    <p className="font-medium">
+                      {entry.user?.name || "Anonymous"}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      {currentLeaderboard.entries.indexOf(entry) + 1} of {currentLeaderboard.entries.length} learners
+                      {currentLeaderboard.entries.indexOf(entry) + 1} of{" "}
+                      {currentLeaderboard.entries.length} learners
                     </p>
                   </div>
                   <div className="text-right">

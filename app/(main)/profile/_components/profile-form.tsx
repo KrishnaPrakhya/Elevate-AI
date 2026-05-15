@@ -266,7 +266,11 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                     const redirectUrl = encodeURIComponent(
                       `${window.location.origin}/profile?google_calendar=connected`,
                     );
-                    window.location.href = `http://localhost:5000/api/google/connect?clerk_user_id=${clerkUserId}&next_url=${redirectUrl}`;
+                    const backendBaseUrl = (
+                      process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
+                      "https://elevate-ai-flask.onrender.com"
+                    ).replace(/\/$/, "");
+                    window.location.href = `${backendBaseUrl}/api/google/connect?clerk_user_id=${clerkUserId}&next_url=${redirectUrl}`;
                   }}
                 >
                   {isConnectingCalendar ? (

@@ -365,7 +365,8 @@ export async function POST(request: NextRequest) {
 
 async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
   // Call Python backend for email sending
-  const PYTHON_BACKEND_URL = process.env.FASTAPI_URL || "http://localhost:5000";
+  const PYTHON_BACKEND_URL =
+    process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
 
   const to = getStringParam(params, "to");
   const subject = getStringParam(params, "subject");
@@ -401,7 +402,8 @@ async function executeCreateCalendarEvent(
   user: UserRef,
 ): Promise<ActionResult> {
   // Call Python backend for calendar event creation
-  const PYTHON_BACKEND_URL = process.env.FASTAPI_URL || "http://localhost:5000";
+  const PYTHON_BACKEND_URL =
+    process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
 
   try {
     const response = await fetch(`${PYTHON_BACKEND_URL}/api/tools/create_calendar_event`, {

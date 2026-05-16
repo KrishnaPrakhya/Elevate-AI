@@ -193,22 +193,11 @@ export default function CareerAdvisorChat({
     setIsLoading(true);
 
     try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
-        process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL;
-      if (!backendUrl) {
-        throw new Error(
-          "NEXT_PUBLIC_FLASK_BACKEND_URL environment variable is not set",
-        );
-      }
-      const baseUrl = backendUrl.endsWith("/")
-        ? backendUrl.slice(0, -1)
-        : backendUrl;
       const userTimezone =
         Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
 
-      const response = await axios.post(`${baseUrl}/api/chat`, {
+      const response = await axios.post("/api/chat", {
         message: userMessage.content,
         clerkUserId: userProfile.clerkUserId,
         timezone: userTimezone,

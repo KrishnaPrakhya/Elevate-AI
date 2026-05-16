@@ -62,8 +62,7 @@ async function sendEmailViaBackend(input: {
 // ============================================
 
 export const getIndustryInsights = inngest.createFunction(
-  { id: "AIInsights", name: "Generate industry insights" },
-  { cron: "0 0 * * 0" },
+  { id: "AIInsights", name: "Generate industry insights", triggers: { cron: "0 0 * * 0" } },
   async ({ step }) => {
     const industries = await step.run("Fetch Industries", async () => {
       return await db.industryInsight.findMany({
@@ -116,8 +115,7 @@ export const getIndustryInsights = inngest.createFunction(
 
 // Daily Digest Email - 9 AM daily
 export const sendDailyDigest = inngest.createFunction(
-  { id: "daily-digest", name: "Daily Learning Digest" },
-  { cron: "0 9 * * *" },
+  { id: "daily-digest", name: "Daily Learning Digest", triggers: { cron: "0 9 * * *" } },
   async ({ step }) => {
     const users = await step.run("Fetch users with email preferences", async () => {
       return db.user.findMany({
@@ -197,8 +195,7 @@ export const sendDailyDigest = inngest.createFunction(
 
 // Weekly Progress Report - Monday 9 AM
 export const sendWeeklyProgress = inngest.createFunction(
-  { id: "weekly-progress", name: "Weekly Progress Report" },
-  { cron: "0 9 * * 1" },
+  { id: "weekly-progress", name: "Weekly Progress Report", triggers: { cron: "0 9 * * 1" } },
   async ({ step }) => {
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - 7);
@@ -290,8 +287,7 @@ export const sendWeeklyProgress = inngest.createFunction(
 
 // Streak Reminder - 7 PM if no activity today
 export const sendStreakReminders = inngest.createFunction(
-  { id: "streak-reminder", name: "Streak Reminder" },
-  { cron: "0 19 * * *" },
+  { id: "streak-reminder", name: "Streak Reminder", triggers: { cron: "0 19 * * *" } },
   async ({ step }) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -356,8 +352,7 @@ export const sendStreakReminders = inngest.createFunction(
 
 // Deadline Alert - 24 hours before assignment due
 export const sendDeadlineAlerts = inngest.createFunction(
-  { id: "deadline-alert", name: "Assignment Deadline Alerts" },
-  { cron: "0 10 * * *" },
+  { id: "deadline-alert", name: "Assignment Deadline Alerts", triggers: { cron: "0 10 * * *" } },
   async ({ step }) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -443,8 +438,7 @@ export const sendDeadlineAlerts = inngest.createFunction(
 
 // Achievement Unlocked Email
 export const sendAchievementEmails = inngest.createFunction(
-  { id: "achievement-unlocked", name: "Achievement Notifications" },
-  { event: "academy/achievement-unlocked" },
+  { id: "achievement-unlocked", name: "Achievement Notifications", triggers: { event: "academy/achievement-unlocked" } },
   async ({ event, step }) => {
     const { userId, achievementId } = event.data;
 
@@ -494,8 +488,7 @@ export const sendAchievementEmails = inngest.createFunction(
 
 // Inactivity Alert - 3 days no activity
 export const sendInactivityAlerts = inngest.createFunction(
-  { id: "inactivity-alert", name: "Inactivity Detection" },
-  { cron: "0 10 * * *" },
+  { id: "inactivity-alert", name: "Inactivity Detection", triggers: { cron: "0 10 * * *" } },
   async ({ step }) => {
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
@@ -568,8 +561,7 @@ export const sendInactivityAlerts = inngest.createFunction(
 
 // Leaderboard Update - Weekly
 export const sendLeaderboardUpdates = inngest.createFunction(
-  { id: "leaderboard-update", name: "Leaderboard Notifications" },
-  { cron: "0 18 * * 0" },
+  { id: "leaderboard-update", name: "Leaderboard Notifications", triggers: { cron: "0 18 * * 0" } },
   async ({ step }) => {
     const now = new Date();
     const weekStart = new Date(now);
@@ -689,8 +681,7 @@ export const sendLeaderboardUpdates = inngest.createFunction(
 // ============================================
 
 export const processOnboardingAI = inngest.createFunction(
-  { id: "process-onboarding-ai", name: "Process Onboarding AI Analysis" },
-  { event: "onboarding/ai.requested" },
+  { id: "process-onboarding-ai", name: "Process Onboarding AI Analysis", triggers: { event: "onboarding/ai.requested" } },
   async ({ event, step }) => {
     const { industry, experience, skills, bio, targetRole, careerGoals } = event.data as {
       industry: string;

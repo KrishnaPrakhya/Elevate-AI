@@ -69,7 +69,7 @@ What would you like to know?`,
         },
       ]);
     }
-  }, [isOpen, context?.lessonTitle]);
+  }, [isOpen, context?.lessonTitle, chatMessages.length]);
 
   // Scroll chat to bottom when new message arrives
   useEffect(() => {

@@ -48,11 +48,12 @@ import type {
   LinkObject,
   NodeObject,
 } from "react-force-graph-2d";
-import StudyCompanion from "@/components/study-companion";
+import { pageCache } from "@/lib/page-cache";
 import {
   AIResponseFormatter,
   formatAIResponse,
 } from "@/components/ai-response-formatter";
+import StudyCompanion from "@/components/study-companion";
 
 const ForceGraph2D = dynamic(
   () => import("react-force-graph-2d").then((mod) => mod.default),
@@ -265,40 +266,132 @@ export default function AcademyPage() {
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     async function load() {
       try {
-        const currentUserPromise = getUser().catch(() => null);
-        await refreshAcademyData();
-        const currentUser = await currentUserPromise;
+        // ── Phase 1: fast DB-only data — returned instantly from memory on
+        // repeat navigations (0 ms), background-refreshed when >60 s old. ──
+        const [academyData, currentUser, plannerRes] = await Promise.all([
+          pageCache.get(
+            "academy:dashboard",
+            () =>
+              Promise.all([
+                getAcademyDashboard(),
+                getPersonalizedRecommendations(),
+              ]),
+            60_000,
+            // onRefresh: apply background-refreshed data without re-showing skeleton
+            ([dashData, recData]) => {
+              if (!isMounted) return;
+              setDashboard(dashData);
+              setRecommendations(recData);
+            }
+          ),
+          pageCache.get("academy:user", () => getUser().catch(() => null)),
+          pageCache.get(
+            "academy:planner",
+            () =>
+              fetch("/api/career-planner")
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null),
+            30_000
+          ),
+        ]);
+
+        if (!isMounted) return;
+
+        const [dashData, recData] = academyData as [
+          Awaited<ReturnType<typeof getAcademyDashboard>>,
+          Awaited<ReturnType<typeof getPersonalizedRecommendations>>,
+        ];
+        setDashboard(dashData);
+        setRecommendations(recData);
 
         if (currentUser?.targetRole) {
           setSkillInput((prev) => prev || currentUser.targetRole || "");
         }
 
-        const historyRes = await fetch("/api/career-planner").catch(() => null);
-        if (historyRes?.ok) {
-          const historyData = await historyRes.json();
-          setPlanHistory(historyData.history || []);
-          if (historyData.activePlan) {
-            setGeneratedPlan(historyData.activePlan.planMarkdown || null);
-            setPlanCheckpoints(historyData.activePlan.checkpoints || []);
-            setPlanDetails(historyData.activePlan.planDetails || null);
+        if (plannerRes) {
+          setPlanHistory(plannerRes.history || []);
+          if (plannerRes.activePlan) {
+            setGeneratedPlan(plannerRes.activePlan.planMarkdown || null);
+            setPlanCheckpoints(plannerRes.activePlan.checkpoints || []);
+            setPlanDetails(plannerRes.activePlan.planDetails || null);
             setSkillInput(
               (prev) =>
                 prev ||
-                historyData.activePlan.targetRole ||
+                plannerRes.activePlan.targetRole ||
                 currentUser?.targetRole ||
-                "",
+                ""
             );
           }
         }
+
+        // ── Phase 2: heavier skill analysis (non-blocking background call) ──
+        pageCache.get(
+          "academy:skillAnalysis",
+          () =>
+            Promise.all([
+              getRealTimeSkillAnalysis(),
+              getAgentLearningRecommendations(),
+            ]),
+          // Skill analysis is expensive — reuse for 5 min before refreshing
+          5 * 60_000,
+          ([skillAnalysis, agentRecs]) => {
+            if (!isMounted) return;
+            setSkillGaps(skillAnalysis.topGaps || []);
+            setSkillDataSource(
+              (skillAnalysis.source || "none") as
+                | "none"
+                | "career_plan"
+                | "llm_analysis"
+                | "error"
+            );
+            setHasRealSkillData(
+              Boolean(skillAnalysis.hasData) &&
+                skillAnalysis.source === "llm_analysis"
+            );
+            setAgentRecommendations(agentRecs.recommendations || []);
+            setAgentMessage(agentRecs.message || "");
+            setGraphKey((prev) => prev + 1);
+            setCacheBuster(Date.now());
+            setIsGraphReady(false);
+          }
+        )
+          .then(([skillAnalysis, agentRecs]) => {
+            if (!isMounted) return;
+            setSkillGaps(skillAnalysis.topGaps || []);
+            setSkillDataSource(
+              (skillAnalysis.source || "none") as
+                | "none"
+                | "career_plan"
+                | "llm_analysis"
+                | "error"
+            );
+            setHasRealSkillData(
+              Boolean(skillAnalysis.hasData) &&
+                skillAnalysis.source === "llm_analysis"
+            );
+            setAgentRecommendations(agentRecs.recommendations || []);
+            setAgentMessage(agentRecs.message || "");
+            setGraphKey((prev) => prev + 1);
+            setCacheBuster(Date.now());
+            setIsGraphReady(false);
+          })
+          .catch(() => {/* skill analysis non-critical */});
       } catch (error) {
         console.error("Error loading academy dashboard:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
+
     load();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const stats = dashboard?.stats ?? {

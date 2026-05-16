@@ -2,9 +2,10 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { analyzeCareerProfile, recommendLearningPath } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
 import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
+import { analyzeCareerProfile } from "@/lib/ai/career-agent";
+import { inngest } from "@/lib/inngest/client";
 
 export interface OnboardingData {
   industry: string;
@@ -30,75 +31,9 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
   try {
     const parsedExperience = parseInt(data.experience);
 
-    const [careerInsight, learningPath] = await Promise.all([
-      analyzeCareerProfile({
-        industry: data.industry,
-        experience: parsedExperience,
-        skills: data.skills,
-        bio: data.bio,
-        targetRole: data.targetRole,
-        careerGoals: data.careerGoals,
-      }),
-      recommendLearningPath(
-        data.skills,
-        data.targetRole || `Advance in ${data.industry}`,
-        data.availableHoursPerWeek || 8,
-        data.learningTimeline || "3 months"
-      ),
-    ]);
-
-    const result = await db.$transaction(async (tx) => {
-      // Update user profile with target role
-      const updatedUser = await tx.user.update({
-        where: { id: user.id },
-        data: {
-          industry: data.industry,
-          targetRole: data.targetRole || null,
-          experience: parsedExperience,
-          bio: data.bio,
-          skills: data.skills,
-        },
-      });
-
-      // Create or update industry insight
-      let industryInsight = await tx.industryInsight.findUnique({
-        where: { industry: data.industry },
-      });
-
-      if (!industryInsight) {
-        industryInsight = await tx.industryInsight.create({
-          data: {
-            industry: data.industry,
-            topSkills: careerInsight.skillGaps.map((g) => g.skill),
-            growthRate: 5.0,
-            demandLevel: "HIGH",
-            marketOutLook: "POSITIVE",
-            keyTrends: careerInsight.marketTrends.map((t) => t.trend),
-            recommendedSkills: careerInsight.skillGaps
-              .slice(0, 5)
-              .map((g) => g.skill),
-            lastUpdated: new Date(),
-            nextUpdated: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        });
-      }
-
-      // Create email preference
-      await tx.emailPreference.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id },
-      });
-
-      // Create streak record
-      await tx.streak.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id },
-      });
-
-      // Find matching learning paths in database
-      const industryPath = await tx.learningPath.findFirst({
+    // Pre-fetch / ensure all read-heavy + conditional data OUTSIDE the transaction
+    const [industryPath, careerPath] = await Promise.all([
+      db.learningPath.findFirst({
         where: {
           isPublished: true,
           OR: [
@@ -112,38 +47,8 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
             include: { lessons: { orderBy: { order: "asc" } } },
           },
         },
-      });
-
-      let enrolledPathId: string | null = null;
-      let enrolledPathTitle = "Career Acceleration Program";
-
-      if (industryPath) {
-        enrolledPathId = industryPath.id;
-        enrolledPathTitle = industryPath.title;
-
-        const firstModule = industryPath.modules[0];
-        const firstLesson = firstModule?.lessons[0];
-
-        await tx.enrollment.upsert({
-          where: {
-            userId_learningPathId: {
-              userId: user.id,
-              learningPathId: industryPath.id,
-            },
-          },
-          update: {},
-          create: {
-            userId: user.id,
-            learningPathId: industryPath.id,
-            currentModuleId: firstModule?.id,
-            currentLessonId: firstLesson?.id,
-            lastAccessedAt: new Date(),
-          },
-        });
-      }
-
-      // Also enroll in "Career Acceleration Program" if exists
-      const careerPath = await tx.learningPath.findFirst({
+      }),
+      db.learningPath.findFirst({
         where: {
           isPublished: true,
           OR: [
@@ -157,52 +62,121 @@ export async function completeOnboardingWithAI(data: OnboardingData) {
             include: { lessons: { orderBy: { order: "asc" } } },
           },
         },
-      });
+      }),
+    ]);
 
-      if (careerPath && careerPath.id !== industryPath?.id) {
-        const firstModule = careerPath.modules[0];
-        const firstLesson = firstModule?.lessons[0];
+    // Ensure IndustryInsight row exists BEFORE the transaction (FK dependency)
+    await db.industryInsight.upsert({
+      where: { industry: data.industry },
+      update: {},
+      create: {
+        industry: data.industry,
+        topSkills: [],
+        growthRate: 5.0,
+        demandLevel: "HIGH",
+        marketOutLook: "POSITIVE",
+        keyTrends: [],
+        recommendedSkills: [],
+        lastUpdated: new Date(),
+        nextUpdated: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
 
-        await tx.enrollment.upsert({
-          where: {
-            userId_learningPathId: {
-              userId: user.id,
-              learningPathId: careerPath.id,
-            },
-          },
-          update: {},
-          create: {
-            userId: user.id,
-            learningPathId: careerPath.id,
-            currentModuleId: firstModule?.id,
-            currentLessonId: firstLesson?.id,
-            lastAccessedAt: new Date(),
+    // Transaction: only pure writes — no reads, no conditional creates
+    await db.$transaction(
+      async (tx) => {
+        // 1. Update user profile (FK satisfied above)
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            industry: data.industry,
+            targetRole: data.targetRole || null,
+            experience: parsedExperience,
+            bio: data.bio,
+            skills: data.skills,
           },
         });
-      }
 
-      return {
-        updatedUser,
-        careerInsight,
-        learningPath,
-        enrolledPathId,
-        enrolledPathTitle,
-        skillGaps: careerInsight.skillGaps,
-        recommendedActions: careerInsight.recommendedActions,
-      };
-    }, { timeout: 30000 });
+        // 2. Bootstrap email preference and streak
+        await Promise.all([
+          tx.emailPreference.upsert({
+            where: { userId: user.id },
+            update: {},
+            create: { userId: user.id },
+          }),
+          tx.streak.upsert({
+            where: { userId: user.id },
+            update: {},
+            create: { userId: user.id },
+          }),
+        ]);
 
-    // Ensure onboarding guard reads fresh data after profile completion.
+        // 3. Enroll in pre-fetched learning paths
+        const enrollOps = [];
+
+        if (industryPath) {
+          const firstModule = industryPath.modules[0];
+          const firstLesson = firstModule?.lessons[0];
+          enrollOps.push(
+            tx.enrollment.upsert({
+              where: { userId_learningPathId: { userId: user.id, learningPathId: industryPath.id } },
+              update: {},
+              create: {
+                userId: user.id,
+                learningPathId: industryPath.id,
+                currentModuleId: firstModule?.id,
+                currentLessonId: firstLesson?.id,
+                lastAccessedAt: new Date(),
+              },
+            })
+          );
+        }
+
+        if (careerPath && careerPath.id !== industryPath?.id) {
+          const firstModule = careerPath.modules[0];
+          const firstLesson = firstModule?.lessons[0];
+          enrollOps.push(
+            tx.enrollment.upsert({
+              where: { userId_learningPathId: { userId: user.id, learningPathId: careerPath.id } },
+              update: {},
+              create: {
+                userId: user.id,
+                learningPathId: careerPath.id,
+                currentModuleId: firstModule?.id,
+                currentLessonId: firstLesson?.id,
+                lastAccessedAt: new Date(),
+              },
+            })
+          );
+        }
+
+        if (enrollOps.length > 0) await Promise.all(enrollOps);
+      },
+      { timeout: 15000 }
+    );
+
+    // Fire background AI job — non-blocking, never fails onboarding
+    inngest.send({
+      name: "onboarding/ai.requested",
+      data: {
+        industry: data.industry,
+        experience: parsedExperience,
+        skills: data.skills,
+        bio: data.bio,
+        targetRole: data.targetRole,
+        careerGoals: data.careerGoals,
+      },
+    }).catch((err: unknown) => {
+      console.warn("Inngest background job failed to queue (non-fatal):", err);
+    });
+
     await invalidateCache(`user:onboarding:${userId}`);
 
     revalidatePath("/dashboard");
     revalidatePath("/onboarding");
     revalidatePath("/academy");
 
-    return {
-      success: true,
-      data: result,
-    };
+    return { success: true };
   } catch (error) {
     console.error("Error completing onboarding:", error);
     throw new Error("Failed to complete onboarding");

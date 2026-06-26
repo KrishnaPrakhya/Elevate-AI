@@ -58,7 +58,10 @@
       "Bash(.venv/Scripts/python.exe app.py)",
       "Bash(findstr :3000)",
       "Bash(cd /d D:/elevate-ai)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(kill 1382)",
+      "Bash(pkill -f \"python app.py\")",
+      "PowerShell(Stop-Process -Id 36824 -Force)"
     ]
   }
 }

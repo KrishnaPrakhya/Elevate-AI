@@ -12,8 +12,8 @@ Environment variables:
     LIVEKIT_URL=wss://your-project.livekit.cloud
     DEEPGRAM_API_KEY=your_key (free tier: 1hr/month)
     ELEVENLABS_API_KEY=your_key (free tier: 10K chars/month)
-    OLLAMA_API_KEY=your_ollama_cloud_key
-    OLLAMA_BASE_URL=https://ollama.com/v1
+    OLLAMA_BASE_URL=http://localhost:11434/v1 (or your Cloudflare tunnel URL)
+    OLLAMA_MODEL=llama3.2:3b
 
 Run:
     python livekit-voice-agent.py
@@ -42,10 +42,10 @@ LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
 LIVEKIT_URL = os.getenv("LIVEKIT_URL", "wss://localhost:7880")
 
-# Ollama Cloud configuration (OpenAI-compatible)
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama-3.1-70b-versatile")
+# Self-hosted Ollama configuration (OpenAI-compatible API)
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
 # Speech services
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
@@ -410,7 +410,7 @@ class InterviewAgent(agents.Agent):
 
 if __name__ == "__main__":
     # Validate required environment variables
-    required_vars = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY", "OLLAMA_API_KEY"]
+    required_vars = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY"]
     missing = [var for var in required_vars if not os.getenv(var)]
 
     if missing:
@@ -419,7 +419,7 @@ if __name__ == "__main__":
         exit(1)
 
     logger.info("Starting LiveKit Voice Interview Agent...")
-    logger.info(f"Using Ollama Cloud: {OLLAMA_BASE_URL}")
+    logger.info(f"Using local Ollama: {OLLAMA_BASE_URL}")
     logger.info(f"Model: {OLLAMA_MODEL}")
 
     # Run the worker

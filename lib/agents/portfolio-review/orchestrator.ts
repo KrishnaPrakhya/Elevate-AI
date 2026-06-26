@@ -6,16 +6,9 @@
 
 import { BrowserAgent, type BrowserAnalysisResult } from './browser-agent';
 import { ContentAnalyzerAgent, type ContentAnalysisResult } from './content-analyzer';
-import OpenAI from 'openai';
+import { createOllamaClient } from '@/lib/ai';
 
-// Use Ollama Cloud configuration (same as other AI integrations in the app)
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || '';
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.com/v1';
-const isOllamaConfigured = !!ollamaApiKey;
-
-const ollamaClient = isOllamaConfigured
-  ? new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl })
-  : null;
+const ollamaClient = createOllamaClient();
 
 // ============================================
 // State Types for the Graph
@@ -534,7 +527,7 @@ export class PortfolioReviewOrchestrator {
 
     try {
       const result = await this.client!.chat.completions.create({
-        model: 'gpt-oss:20b-cloud', // Same model used across the app (Ollama Cloud)
+        model: (process.env.OLLAMA_MODEL || 'llama3.2:3b'), // Same model used across the app (Ollama Cloud)
         messages: [
           { role: 'system', content: 'You are an expert portfolio reviewer. Return only valid JSON.' },
           { role: 'user', content: prompt },

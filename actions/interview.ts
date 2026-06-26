@@ -193,13 +193,11 @@ export const saveQuizResult = async (
       Keep it encouraging and actionable (under 3 sentences).
     `;
     try {
-      const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-      const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-      const OpenAI = (await import("openai")).default;
-      const model = new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl });
+      const { createOllamaClient } = await import("@/lib/ai");
+      const model = createOllamaClient();
 
       const tipResult2 = await model.chat.completions.create({
-        model: "gpt-oss:20b-cloud",
+        model: process.env.OLLAMA_MODEL || "llama3.2:3b",
         messages: [{ role: "user", content: improvementPrompt }],
       });
 

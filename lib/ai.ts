@@ -1,14 +1,28 @@
 import OpenAI from "openai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+export function createOllamaClient(): OpenAI {
+  const apiKey = process.env.OLLAMA_API_KEY || "ollama";
+  const baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
+  const basicAuth = process.env.OLLAMA_BASIC_AUTH;
 
-export const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+  if (!basicAuth) {
+    return new OpenAI({ apiKey, baseURL });
+  }
 
-export const MODEL_NAME = "gpt-oss:20b-cloud";
+  const encoded = Buffer.from(basicAuth).toString("base64");
+  return new OpenAI({
+    apiKey,
+    baseURL,
+    fetch: (url, init) => {
+      const headers = new Headers(init?.headers as HeadersInit);
+      headers.set("Authorization", `Basic ${encoded}`);
+      return globalThis.fetch(url as string, { ...init, headers });
+    },
+  });
+}
+
+export const model = createOllamaClient();
+export const MODEL_NAME = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
 // Common prompt templates for cross-feature recommendations
 export const PROMPT_TEMPLATES = {

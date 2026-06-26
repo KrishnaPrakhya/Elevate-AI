@@ -1,15 +1,10 @@
-import OpenAI from "openai";
 import { db } from "../prisma";
 import { inngest } from "./client";
 import { analyzeCareerProfile } from "../ai/career-agent";
+import { createOllamaClient } from "../ai";
+import { redis } from "../redis";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 const getBackendBaseUrl = () => {
   const raw =
@@ -88,7 +83,7 @@ export const getIndustryInsights = inngest.createFunction(
     Include at least 5 skills and trends.`;
       const res = await step.ai.wrap("ollama", async (p) => {
         return await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: p }],
         });
       }, prompt);
@@ -106,6 +101,22 @@ export const getIndustryInsights = inngest.createFunction(
         });
       });
     }
+  }
+);
+
+// ============================================
+// REDIS KEEPALIVE (runs every 5 days — Upstash free tier evicts after 7 days inactivity)
+// ============================================
+
+export const redisKeepalive = inngest.createFunction(
+  { id: "redis-keepalive", name: "Redis keepalive ping" },
+  { cron: "0 0 */5 * *" },
+  async ({ step }) => {
+    await step.run("ping-redis", async () => {
+      await redis.set("keepalive", Date.now(), { ex: 60 * 60 * 24 * 6 });
+      const val = await redis.get("keepalive");
+      return { ok: val !== null };
+    });
   }
 );
 
@@ -731,7 +742,7 @@ async function getAIRecommendation(user: { industry: string | null; experience: 
       Keep it under 20 words and make it actionable.`;
 
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [{ role: "user", content: prompt }],
     });
     return result.choices[0]?.message?.content?.trim() || "";

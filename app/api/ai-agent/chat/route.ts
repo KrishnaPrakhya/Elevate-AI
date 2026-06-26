@@ -262,13 +262,8 @@ async function handleLocalFallback(
   // Import OpenAI locally to avoid bundle issues
   const OpenAI = (await import("openai")).default;
 
-  const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-  const model = new OpenAI({
-    apiKey: ollamaApiKey,
-    baseURL: ollamaBaseUrl,
-  });
+  const { createOllamaClient } = await import("@/lib/ai");
+  const model = createOllamaClient();
 
   const systemPrompt = getAgentSystemPrompt(agent);
 
@@ -289,7 +284,7 @@ async function handleLocalFallback(
 
   try {
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },

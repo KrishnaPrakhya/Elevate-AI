@@ -559,13 +559,18 @@ except ImportError:
 # Load env files explicitly so backend works whether started from repo root or server/.
 _SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SERVER_DIR)
+# Load base defaults first (override=False), then .local files override them (override=True).
+# This mirrors Next.js behaviour: .env.local always wins over .env.
 for _env_file in (
-    os.path.join(_PROJECT_ROOT, ".env"),
-    os.path.join(_PROJECT_ROOT, ".env.local"),
     os.path.join(_SERVER_DIR, ".env"),
-    os.path.join(_SERVER_DIR, ".env.local"),
+    os.path.join(_PROJECT_ROOT, ".env"),
 ):
     load_dotenv(_env_file, override=False)
+for _env_file in (
+    os.path.join(_SERVER_DIR, ".env.local"),
+    os.path.join(_PROJECT_ROOT, ".env.local"),
+):
+    load_dotenv(_env_file, override=True)
 
 # FastAPI App Initialization
 app = FastAPI()
@@ -739,19 +744,26 @@ def init_db():
 
 
 # Initialize LLM
-ollama_api_key = os.getenv("OLLAMA_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-ollama_base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1")
-if not ollama_api_key:
-    logger.error("OLLAMA_API_KEY not found.")
-    raise RuntimeError("Missing OLLAMA_API_KEY environment variable")
+import base64 as _base64
+
+ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+ollama_basic_auth = os.getenv("OLLAMA_BASIC_AUTH", "")
+
+_ollama_headers = {}
+if ollama_basic_auth:
+    _enc = _base64.b64encode(ollama_basic_auth.encode()).decode()
+    _ollama_headers = {"Authorization": f"Basic {_enc}"}
 
 from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(
-    model="gpt-oss:20b-cloud",
+    model=ollama_model,
     openai_api_key=ollama_api_key,
     base_url=ollama_base_url,
+    **({"default_headers": _ollama_headers} if _ollama_headers else {}),
 )
-logger.info(f"Ollama Cloud LLM initialized. Base URL: {ollama_base_url}, Key prefix: {ollama_api_key[:4]}...")
+logger.info(f"Local Ollama LLM initialized. Base URL: {ollama_base_url}, Model: {ollama_model}")
 
 # Test the LLM connection
 try:

@@ -3,15 +3,9 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 /**
  * Sync academy progress to career plan
@@ -174,7 +168,7 @@ async function updateCareerPlanFromSkills(userId: string) {
 
   try {
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -399,7 +393,7 @@ export async function analyzeSkillGapsForRole(targetRole: string) {
 
   try {
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [{ role: "user", content: prompt }],
     });
 

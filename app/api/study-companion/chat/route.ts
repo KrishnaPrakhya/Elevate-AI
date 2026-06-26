@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
-
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+import { createOllamaClient } from "@/lib/ai";
 
 /**
  * Format markdown response for consistent rendering
@@ -29,10 +26,7 @@ function formatMarkdownResponse(content: string): string {
   return formatted.trim();
 }
 
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -152,7 +146,7 @@ export async function POST(request: NextRequest) {
     `;
 
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [
         {
           role: "system",

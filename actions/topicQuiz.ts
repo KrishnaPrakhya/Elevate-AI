@@ -2,16 +2,10 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 import { getCachedData, CACHE_TTL, redis } from "@/lib/redis";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 export async function generateTopicQuiz(topics:string[]){
   const {userId}=await auth();
   if(!userId) throw new Error("User is Unauthorized");
@@ -52,7 +46,7 @@ export async function generateTopicQuiz(topics:string[]){
           }
         `;
         const res = await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
@@ -103,7 +97,7 @@ export async function generateTopicContent(topics: string[]) {
     `;
 
         const res = await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
@@ -168,7 +162,7 @@ export async function getTopTopics(){
         ]
         `;
         const res = await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";

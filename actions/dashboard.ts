@@ -3,16 +3,10 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 import { headers } from "next/headers";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 
 interface SalaryRange {
@@ -195,7 +189,7 @@ export const generateAIinsights = async (
     `;
 
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [{ role: "user", content: prompt }],
     });
     const text = result.choices[0]?.message?.content || "";

@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-const ollamaModel = process.env.OLLAMA_MODEL || "gpt-oss:20b-cloud";
+const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
-const model = ollamaApiKey
-  ? new OpenAI({
-      apiKey: ollamaApiKey,
-      baseURL: ollamaBaseUrl,
-    })
-  : null;
+const model = createOllamaClient();
 
 const toExperienceLevel = (experience?: number | null) => {
   if (typeof experience !== "number") return "Mid-Level";

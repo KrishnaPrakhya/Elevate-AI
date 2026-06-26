@@ -1,14 +1,8 @@
-import OpenAI from "openai";
+import { createOllamaClient } from "../ai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
+export const model = createOllamaClient();
 
-export const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
-
-export const MODEL_NAME = "gpt-oss:20b-cloud";
+export const MODEL_NAME = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
 // ============================================
 // AI CAREER AGENT - Central Intelligence

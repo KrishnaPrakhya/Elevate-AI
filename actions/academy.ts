@@ -4,19 +4,13 @@ import { db } from "@/lib/prisma";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 import { inngest } from "@/lib/inngest/client";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
 import { redis } from "@/lib/redis";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 // ============================================
 // ENROLLMENT & LEARNING PATH
@@ -1033,7 +1027,7 @@ export async function getPersonalizedRecommendations() {
             and active plan gaps: ${planGapText},
             generate a single, actionable learning tip. Keep it under 2 sentences.`;
           const result = await model.chat.completions.create({
-            model: "gpt-oss:20b-cloud",
+            model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
             messages: [{ role: "user", content: prompt }],
           });
           aiTip = result.choices[0]?.message?.content?.trim() || "";
@@ -1133,7 +1127,7 @@ IMPORTANT:
 - Importance: 1-10 scale based on industry relevance`;
 
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [
         { role: "system", content: "You are a career development expert. Analyze skill gaps objectively based on actual learning progress." },
         { role: "user", content: prompt },
@@ -1218,7 +1212,7 @@ Return JSON:
 }`;
 
     const result = await model.chat.completions.create({
-      model: "gpt-oss:20b-cloud",
+      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
       messages: [{ role: "user", content: prompt }],
     });
 

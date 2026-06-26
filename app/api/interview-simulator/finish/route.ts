@@ -2,15 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-const ollamaModel = process.env.OLLAMA_MODEL || "gpt-oss:20b-cloud";
+const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
-const client = ollamaApiKey
-  ? new OpenAI({ apiKey: ollamaApiKey, baseURL: ollamaBaseUrl })
-  : null;
+const client = createOllamaClient();
 
 type InterviewResponse = {
   questionId?: string;

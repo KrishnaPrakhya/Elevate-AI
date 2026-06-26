@@ -4,16 +4,10 @@ import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
 import { auth } from "@clerk/nextjs/server";
 import { optimizeResumeSection, analyzeSkillGaps } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
-import OpenAI from "openai";
+import { createOllamaClient } from "@/lib/ai";
 import { z } from "zod";
 
-const ollamaApiKey = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY || "";
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.com/v1";
-
-const model = new OpenAI({
-  apiKey: ollamaApiKey,
-  baseURL: ollamaBaseUrl,
-});
+const model = createOllamaClient();
 
 // Input validation schemas
 const saveResumeSchema = z.object({
@@ -210,7 +204,7 @@ export async function analyzeResume(resumeContent: string) {
 
       try {
         const result = await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
         let analysisText = result.choices[0]?.message?.content?.trim() || "";
@@ -283,7 +277,7 @@ export async function tailorToJob(data: { resumeContent: string; jobDescription:
 
       try {
         const result = await model.chat.completions.create({
-          model: "gpt-oss:20b-cloud",
+          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
         const tailoredContent = result.choices[0]?.message?.content?.trim() || "";

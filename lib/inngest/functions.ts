@@ -109,8 +109,7 @@ export const getIndustryInsights = inngest.createFunction(
 // ============================================
 
 export const redisKeepalive = inngest.createFunction(
-  { id: "redis-keepalive", name: "Redis keepalive ping" },
-  { cron: "0 0 */5 * *" },
+  { id: "redis-keepalive", name: "Redis keepalive ping", triggers: { cron: "0 0 */5 * *" } },
   async ({ step }) => {
     await step.run("ping-redis", async () => {
       await redis.set("keepalive", Date.now(), { ex: 60 * 60 * 24 * 6 });

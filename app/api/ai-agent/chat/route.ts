@@ -259,9 +259,6 @@ async function handleLocalFallback(
   userContext: UserContext,
   agent: string
 ) {
-  // Import OpenAI locally to avoid bundle issues
-  const OpenAI = (await import("openai")).default;
-
   const { createOllamaClient } = await import("@/lib/ai");
   const model = createOllamaClient();
 

@@ -4,6 +4,7 @@
  * Manages the flow between browser analysis, content analysis, and final synthesis
  */
 
+import OpenAI from 'openai';
 import { BrowserAgent, type BrowserAnalysisResult } from './browser-agent';
 import { ContentAnalyzerAgent, type ContentAnalysisResult } from './content-analyzer';
 import { createOllamaClient } from '@/lib/ai';

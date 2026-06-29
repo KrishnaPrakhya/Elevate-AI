@@ -216,6 +216,88 @@ Return JSON array:
 // RESUME OPTIMIZER AGENT
 // ============================================
 
+/**
+ * Strips conversational preamble, labels, wrapping quotes, and trailing meta
+ * (suggestions/ATS notes) that small models add despite instructions.
+ */
+export function cleanEnhancedText(raw: string): string {
+  let text = (raw || "").trim();
+
+  // Remove markdown code fences
+  text = text.replace(/```[a-z]*\n?/gi, "").trim();
+
+  // Drop a leading conversational preamble line, e.g.
+  // "Here's the optimized version of the summary section ...:"
+  text = text.replace(
+    /^\s*(?:sure|certainly|here(?:'s| is)|below is|i(?:'ve| have)|this is)\b[^\n]*:?\s*\n+/i,
+    ""
+  );
+
+  // Remove standalone label lines like "Optimized Version:" / "Improved Summary:"
+  text = text.replace(
+    /^\s*(?:optimized|improved|enhanced|revised|updated|final)\s+(?:version|content|summary|text|section)\s*:?\s*\n+/i,
+    ""
+  );
+
+  // Cut off trailing meta sections the model appends (suggestions / ATS score / notes)
+  text = text.split(
+    /\n\s*(?:suggestions?|improvements?|ats\s+(?:compatibility\s+)?score|recommendations?|notes?|further\s+improvement)\s*[:\-]/i
+  )[0];
+
+  text = text.trim();
+
+  // Strip a single pair of wrapping quotes around the whole block
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'")) ||
+    (text.startsWith("“") && text.endsWith("”"))
+  ) {
+    text = text.slice(1, -1).trim();
+  }
+
+  return text;
+}
+
+/**
+ * Returns ONLY an improved version of a single piece of text (no JSON, no meta).
+ * Used by inline "Enhance with AI" actions where the result directly replaces input.
+ */
+export async function enhanceTextSection(
+  section: string,
+  content: string,
+  industry: string
+): Promise<string> {
+  try {
+    const systemPrompt =
+      "You are a professional resume and cover-letter rewriting engine. " +
+      "You receive a piece of text and return an improved version that is impactful, " +
+      "quantifiable where possible, and ATS-friendly. " +
+      "CRITICAL: Output ONLY the rewritten text that will directly replace the user's input. " +
+      "Do NOT include any preamble, introduction, labels, headings, explanations, " +
+      "suggestions, scores, bullet commentary, markdown, or surrounding quotation marks.";
+
+    const userPrompt =
+      `Rewrite the following ${section} for a ${industry || "general"} professional. ` +
+      `Return only the improved ${section} text.\n\n${content}`;
+
+    const result = await model.chat.completions.create({
+      model: MODEL_NAME,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.5,
+    });
+
+    const raw = result.choices[0]?.message?.content?.trim() || "";
+    const cleaned = cleanEnhancedText(raw);
+    return cleaned || content;
+  } catch (error) {
+    console.error("Error enhancing text section:", error);
+    return content;
+  }
+}
+
 export async function optimizeResumeSection(
   section: string,
   content: string,

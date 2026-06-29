@@ -124,8 +124,7 @@ export const redisKeepalive = inngest.createFunction(
 // ============================================
 
 export const renderKeepalive = inngest.createFunction(
-  { id: "render-keepalive", name: "Render backend keepalive ping" },
-  { cron: "*/10 * * * *" },
+  { id: "render-keepalive", name: "Render backend keepalive ping", triggers: { cron: "*/10 * * * *" } },
   async ({ step }) => {
     await step.run("ping-render", async () => {
       const base = process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";

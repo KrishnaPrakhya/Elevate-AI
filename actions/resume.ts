@@ -100,20 +100,27 @@ export async function improveWithAI(content: props) {
   if (!user) throw new Error("User not found");
   const cacheKey = `improve:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
 
-  return getCachedData(
+  const cached = await getCachedData(
     cacheKey,
     async () => {
-      // Use AI career agent for resume optimization
       const result = await optimizeResumeSection(
         type,
         current,
         user.industry || "general"
       );
-
       return result.optimized;
     },
     CACHE_TTL.MEDIUM
   );
+
+  // If cached result is unchanged (previous failed attempt), bust it and retry
+  if (cached === current) {
+    await invalidateCache(cacheKey);
+    const result = await optimizeResumeSection(type, current, user.industry || "general");
+    return result.optimized;
+  }
+
+  return cached;
 }
 
 export async function getResumeAIAnalysis(resumeContent: string) {

@@ -249,9 +249,18 @@ Return JSON:
       messages: [{ role: "user", content: prompt }],
     });
 
-    const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    const text = result.choices[0]?.message?.content?.trim() || "";
+    const stripped = text.replace(/```(?:json)?|```/g, "").trim();
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { optimized: stripped || content, suggestions: [], atsScore: 50 };
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      optimized: parsed.optimized || content,
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      atsScore: typeof parsed.atsScore === "number" ? parsed.atsScore : 50,
+    };
   } catch (error) {
     console.error("Error optimizing resume:", error);
     return { optimized: content, suggestions: [], atsScore: 50 };

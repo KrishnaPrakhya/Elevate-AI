@@ -120,6 +120,22 @@ export const redisKeepalive = inngest.createFunction(
 );
 
 // ============================================
+// RENDER KEEPALIVE (pings every 10 min — free tier spins down after 15 min)
+// ============================================
+
+export const renderKeepalive = inngest.createFunction(
+  { id: "render-keepalive", name: "Render backend keepalive ping" },
+  { cron: "*/10 * * * *" },
+  async ({ step }) => {
+    await step.run("ping-render", async () => {
+      const base = process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+      const res = await fetch(`${base}/health`, { method: "GET" }).catch(() => null);
+      return { status: res?.status ?? "unreachable" };
+    });
+  }
+);
+
+// ============================================
 // ACADEMY EMAIL FUNCTIONS
 // ============================================
 

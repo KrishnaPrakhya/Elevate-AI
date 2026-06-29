@@ -3,21 +3,19 @@ import OpenAI from "openai";
 export function createOllamaClient(): OpenAI {
   const apiKey = process.env.OLLAMA_API_KEY || "ollama";
   const baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-  const basicAuth = process.env.OLLAMA_BASIC_AUTH;
+  const cfClientId = process.env.CF_ACCESS_CLIENT_ID;
+  const cfClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
 
-  if (!basicAuth) {
-    return new OpenAI({ apiKey, baseURL });
+  const defaultHeaders: Record<string, string> = {};
+  if (cfClientId && cfClientSecret) {
+    defaultHeaders["CF-Access-Client-Id"] = cfClientId;
+    defaultHeaders["CF-Access-Client-Secret"] = cfClientSecret;
   }
 
-  const encoded = Buffer.from(basicAuth).toString("base64");
   return new OpenAI({
     apiKey,
     baseURL,
-    fetch: (url, init) => {
-      const headers = new Headers(init?.headers as HeadersInit);
-      headers.set("Authorization", `Basic ${encoded}`);
-      return globalThis.fetch(url as string, { ...init, headers });
-    },
+    ...(Object.keys(defaultHeaders).length ? { defaultHeaders } : {}),
   });
 }
 

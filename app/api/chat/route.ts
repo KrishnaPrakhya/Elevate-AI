@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+export const maxDuration = 60;
+
 const getBackendBaseUrl = () => {
   const raw =
     process.env.FASTAPI_URL ||

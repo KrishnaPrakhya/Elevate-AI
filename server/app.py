@@ -749,12 +749,15 @@ import base64 as _base64
 ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-ollama_basic_auth = os.getenv("OLLAMA_BASIC_AUTH", "")
+cf_client_id = os.getenv("CF_ACCESS_CLIENT_ID", "")
+cf_client_secret = os.getenv("CF_ACCESS_CLIENT_SECRET", "")
 
 _ollama_headers = {}
-if ollama_basic_auth:
-    _enc = _base64.b64encode(ollama_basic_auth.encode()).decode()
-    _ollama_headers = {"Authorization": f"Basic {_enc}"}
+if cf_client_id and cf_client_secret:
+    _ollama_headers = {
+        "CF-Access-Client-Id": cf_client_id,
+        "CF-Access-Client-Secret": cf_client_secret,
+    }
 
 from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(

@@ -2,7 +2,7 @@
 import { db } from "@/lib/prisma";
 import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
 import { auth } from "@clerk/nextjs/server";
-import { optimizeResumeSection, analyzeSkillGaps } from "@/lib/ai/career-agent";
+import { optimizeResumeSection, analyzeSkillGaps, enhanceTextSection } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
 import { createOllamaClient } from "@/lib/ai";
 import { z } from "zod";
@@ -98,22 +98,22 @@ export async function improveWithAI(content: props) {
   });
 
   if (!user) throw new Error("User not found");
-  const cacheKey = `improve:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
+  // v2: clean-text enhancement (old cache held raw prose with preambles)
+  const cacheKey = `improve:v2:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
 
-  return getCachedData(
+  const cached = await getCachedData(
     cacheKey,
-    async () => {
-      // Use AI career agent for resume optimization
-      const result = await optimizeResumeSection(
-        type,
-        current,
-        user.industry || "general"
-      );
-
-      return result.optimized;
-    },
+    async () => enhanceTextSection(type, current, user.industry || "general"),
     CACHE_TTL.MEDIUM
   );
+
+  // If cached result is unchanged (previous failed attempt), bust it and retry once
+  if (cached === current) {
+    await invalidateCache(cacheKey);
+    return enhanceTextSection(type, current, user.industry || "general");
+  }
+
+  return cached;
 }
 
 export async function getResumeAIAnalysis(resumeContent: string) {

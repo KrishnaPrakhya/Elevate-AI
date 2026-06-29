@@ -3,6 +3,7 @@
 import { db } from "@/lib/prisma"
 import { auth } from "@clerk/nextjs/server"
 import { createOllamaClient } from "@/lib/ai"
+import { enhanceTextSection } from "@/lib/ai/career-agent"
 import { revalidatePath } from "next/cache"
 import { getCachedData, invalidateCache, CACHE_TTL } from "@/lib/redis"
 
@@ -159,42 +160,22 @@ export async function improveWithAICoverLetter(content: ImproveProps) {
 
   if (!user) throw new Error("User not found")
 
-  // Create a cache key based on the content and type
-  const cacheKey = `improve:coverLetter:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
+  // v2: clean-text enhancement (old cache held raw prose with preambles)
+  const cacheKey = `improve:coverLetter:v2:${user.id}:${type}:${Buffer.from(current).toString("base64").substring(0, 20)}`
 
-  return getCachedData(
+  const cached = await getCachedData(
     cacheKey,
-    async () => {
-      const prompt = `
-        As an expert Cover Letter writer, improve the following ${type} for a ${user.industry} professional.
-        Make it more impactful, quantifiable, and aligned with industry standards.
-        Current content: "${current}"
-
-        Requirements:
-        1. Use action verbs
-        2. Include metrics and results where possible
-        3. Highlight relevant technical skills
-        4. Keep it concise but detailed
-        5. Focus on achievements over responsibilities
-        6. Use industry-specific keywords
-        
-        Format the response as a single paragraph without any additional text or explanations.
-      `
-
-      try {
-        const result = await model.chat.completions.create({
-        model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
-        messages: [{ role: "user", content: prompt }],
-      });
-      const improvedContent = result.choices[0]?.message?.content?.trim() || ""
-        return improvedContent
-      } catch (error) {
-        console.error("Error improving content:", error)
-        throw new Error("Failed to improve content")
-      }
-    },
+    async () => enhanceTextSection(`cover letter ${type}`, current, user.industry || "general"),
     CACHE_TTL.LONG,
   )
+
+  // If cached result is unchanged (previous failed attempt), bust it and retry once
+  if (cached === current) {
+    await invalidateCache(cacheKey)
+    return enhanceTextSection(`cover letter ${type}`, current, user.industry || "general")
+  }
+
+  return cached
 }
 
 export const analyzeCoverLetter = async (content: string) => {

@@ -1,6 +1,7 @@
 import type { AIRecommendation } from "@/lib/ai/career-agent";
 import { db } from "@/lib/prisma";
 import { invalidateCachePattern } from "@/lib/redis";
+import { isInterviewCategory, isTechnicalCategory } from "@/lib/growth/categories";
 import { ActionType, ExecutionStatus, Prisma } from "@prisma/client";
 
 export type TrackedActionInput = {
@@ -33,6 +34,8 @@ export type PerformanceStats = {
   lessonsCompleted7d: number;
   activeEnrollments: number;
   operationsTracked7d: number;
+  skillMasteryAverage: number | null;
+  skillsTracked: number;
 };
 
 export type PerformanceIntelligence = {
@@ -208,6 +211,7 @@ export async function computePerformanceIntelligence(params: {
     activeEnrollmentsCount,
     lessonsCompleted7dCount,
     operationsTracked7dCount,
+    skillProgress,
   ] =
     await Promise.all([
       db.assessments.findMany({
@@ -248,17 +252,19 @@ export async function computePerformanceIntelligence(params: {
           executedAt: { gte: last7Days },
         },
       }),
+      db.userSkillProgress.findMany({
+        where: { userId },
+        select: { masteryLevel: true, skill: { select: { name: true } } },
+      }),
     ]);
 
-  const technicalAssessments = assessments30d.filter((assessment) => {
-    const category = assessment.category.toLowerCase();
-    return category.includes("technical") || category.includes("quiz");
-  });
+  const technicalAssessments = assessments30d.filter((assessment) =>
+    isTechnicalCategory(assessment.category)
+  );
 
-  const interviewSimAssessments = assessments30d.filter((assessment) => {
-    const category = assessment.category.toLowerCase();
-    return category.includes("interview simulation");
-  });
+  const interviewSimAssessments = assessments30d.filter((assessment) =>
+    isInterviewCategory(assessment.category)
+  );
 
   const technicalQuizAttempts14d = technicalAssessments.filter(
     (assessment) => assessment.createdAt >= last14Days
@@ -278,7 +284,16 @@ export async function computePerformanceIntelligence(params: {
     lessonsCompleted7d: lessonsCompleted7dCount,
     activeEnrollments: activeEnrollmentsCount,
     operationsTracked7d: operationsTracked7dCount,
+    skillMasteryAverage: average(skillProgress.map((s) => s.masteryLevel)),
+    skillsTracked: skillProgress.length,
   };
+
+  // Surface low-mastery tracked skills as concrete weak areas.
+  const lowMasterySkills = skillProgress
+    .filter((s) => s.masteryLevel < 50 && s.skill?.name)
+    .sort((a, b) => a.masteryLevel - b.masteryLevel)
+    .slice(0, 3)
+    .map((s) => s.skill.name);
 
   const { nextActions, rationaleSummary } = buildStatsBasedActions({ targetRole, stats });
 
@@ -296,6 +311,7 @@ export async function computePerformanceIntelligence(params: {
         stats.activeEnrollments > 0 && stats.lessonsCompleted7d < 3
           ? "learning consistency"
           : "",
+        ...lowMasterySkills,
       ].filter(Boolean)
     )
   );

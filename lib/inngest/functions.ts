@@ -2,6 +2,7 @@ import { db } from "../prisma";
 import { inngest } from "./client";
 import { analyzeCareerProfile } from "../ai/career-agent";
 import { createOllamaClient } from "../ai";
+import { parseLLMJson } from "../ai/json";
 import { redis } from "../redis";
 
 const model = createOllamaClient();
@@ -33,6 +34,7 @@ async function sendEmailViaBackend(input: {
       from_name: input.fromName || "ElevateAI Academy",
       email_type: "general",
     }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!response.ok) {
@@ -88,8 +90,13 @@ export const getIndustryInsights = inngest.createFunction(
         });
       }, prompt);
       const text = res.choices[0]?.message?.content || "";
-      const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-      const insights = JSON.parse(cleanedText);
+      const insights = parseLLMJson<Record<string, unknown> | null>(text, null);
+      // Skip this industry if the model returned unusable output, so one bad
+      // response can't crash the whole weekly cron and block the others.
+      if (!insights || typeof insights !== "object") {
+        console.error(`Skipping ${industry}: could not parse industry insights from model output`);
+        continue;
+      }
       await step.run(`Update ${industry} insights`, async () => {
         await db.industryInsight.update({
           where: { industry },
@@ -128,7 +135,11 @@ export const renderKeepalive = inngest.createFunction(
   async ({ step }) => {
     await step.run("ping-render", async () => {
       const base = process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
-      const res = await fetch(`${base}/health`, { method: "GET" }).catch(() => null);
+      // Render cold start can take ~50s; allow time but cap it.
+      const res = await fetch(`${base}/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(55000),
+      }).catch(() => null);
       return { status: res?.status ?? "unreachable" };
     });
   }

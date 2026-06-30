@@ -5,6 +5,8 @@ import { auth } from "@clerk/nextjs/server";
 import { optimizeResumeSection, analyzeSkillGaps, enhanceTextSection } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson } from "@/lib/ai/json";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { z } from "zod";
 
 const model = createOllamaClient();
@@ -46,6 +48,13 @@ try {
     }
   })
   await invalidateCache(`resume:${user.id}`)
+  await recordExecutedAction({
+    userId: user.id,
+    type: "GENERATE_DOCUMENT",
+    title: "Resume updated",
+    description: "Your resume was saved and is now part of your growth profile and AI context.",
+    metadata: { source: "resume", reason: "Resume freshness feeds document-improvement and career-plan recommendations." },
+  });
   revalidatePath("/resume");
   return resume;
 } catch (error) {
@@ -207,14 +216,12 @@ export async function analyzeResume(resumeContent: string) {
           model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
           messages: [{ role: "user", content: prompt }],
         });
-        let analysisText = result.choices[0]?.message?.content?.trim() || "";
-        if (analysisText.startsWith("```json") || analysisText.startsWith("```")) {
-          analysisText = analysisText.replace(/```json|```/g, "").trim();
-        }
-        return JSON.parse(analysisText);
+        const analysisText = result.choices[0]?.message?.content?.trim() || "";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return parseLLMJson<any>(analysisText, { overall: 0, sections: [], suggestions: [] });
       } catch (error) {
         console.error("Error analyzing resume:", error);
-        throw new Error("Failed to analyze resume");
+        return { overall: 0, sections: [], suggestions: [] };
       }
     },
     CACHE_TTL.MEDIUM
@@ -281,10 +288,11 @@ export async function tailorToJob(data: { resumeContent: string; jobDescription:
           messages: [{ role: "user", content: prompt }],
         });
         const tailoredContent = result.choices[0]?.message?.content?.trim() || "";
-        return JSON.parse(tailoredContent);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return parseLLMJson<any>(tailoredContent, {});
       } catch (error) {
         console.error("Error tailoring resume:", error);
-        throw new Error("Failed to tailor resume");
+        return {};
       }
     },
     CACHE_TTL.MEDIUM

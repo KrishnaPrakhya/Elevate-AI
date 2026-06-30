@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { parseLLMJson } from "@/lib/ai/json";
 
 export function createOllamaClient(): OpenAI {
   const apiKey = process.env.OLLAMA_API_KEY || "ollama";
@@ -117,8 +118,13 @@ export async function generateSkillRecommendations(
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "[]";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    const parsed = parseLLMJson<Array<{
+      skill: string;
+      reason: string;
+      priority: "high" | "medium" | "low";
+      category: "technical" | "soft" | "domain";
+    }>>(text, []);
+    return Array.isArray(parsed) ? parsed.filter((s) => s && typeof s.skill === "string") : [];
   } catch (error) {
     console.error("Error generating skill recommendations:", error);
     return [];
@@ -146,8 +152,12 @@ export async function analyzeResumeSkillGaps(
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "[]";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    const parsed = parseLLMJson<Array<{
+      skill: string;
+      importance: "critical" | "important" | "nice-to-have";
+      category: "technical" | "soft" | "tool";
+    }>>(text, []);
+    return Array.isArray(parsed) ? parsed.filter((s) => s && typeof s.skill === "string") : [];
   } catch (error) {
     console.error("Error analyzing resume skill gaps:", error);
     return [];

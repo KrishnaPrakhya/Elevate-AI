@@ -792,6 +792,38 @@ async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, 
         raise
 
 
+def parse_llm_json(text: Any, fallback: Any = None) -> Any:
+    """Tolerantly extract a JSON object/array from LLM output.
+
+    Small models (llama3.2:3b) often wrap JSON in markdown fences or add a
+    conversational preamble. This strips fences, tries a direct parse, then
+    falls back to slicing the outermost {...} or [...]. Returns ``fallback``
+    instead of raising so callers degrade gracefully.
+    """
+    import re as _re
+
+    if text is None:
+        return fallback
+    s = str(text).strip()
+    s = _re.sub(r"```[a-zA-Z]*", "", s).replace("```", "").strip()
+
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start = s.find(open_ch)
+        end = s.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(s[start:end + 1])
+            except Exception:
+                continue
+
+    return fallback
+
+
 # Validate Tavily API Key
 if not os.getenv("TAVILY_API_KEY"):
     logger.critical("❌ TAVILY_API_KEY required for search functionality")
@@ -1417,18 +1449,9 @@ Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
         ])
 
         result = await invoke_prompt_template(prompt, {"message": user_message})
-        result_str = str(result).strip()
-
-        # Clean markdown code blocks
-        if result_str.startswith("```json"):
-            result_str = result_str[7:]
-        elif result_str.startswith("```"):
-            result_str = result_str[3:]
-        if result_str.endswith("```"):
-            result_str = result_str[:-3]
-        result_str = result_str.strip()
-
-        parsed = json.loads(result_str)
+        parsed = parse_llm_json(result)
+        if not isinstance(parsed, dict):
+            raise ValueError("Intent detection returned non-object JSON")
         return parsed
 
     except Exception as e:
@@ -1535,7 +1558,7 @@ async def document_improver(state: AgentState) -> AgentState:
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
             
             try:
-                extracted_data = json.loads(extracted_str)
+                extracted_data = parse_llm_json(extracted_str, {}) or {}
                 target_role = extracted_data.get("target_role")
                 job_description = extracted_data.get("job_description")
                 company_name = extracted_data.get("company_name")
@@ -1702,7 +1725,7 @@ async def career_advisor(state: AgentState) -> AgentState:
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
 
             try:
-                extracted_data = json.loads(extracted_str)
+                extracted_data = parse_llm_json(extracted_str, {}) or {}
                 target_role = extracted_data.get("target_role")
                 career_goals = extracted_data.get("career_goals")
             except json.JSONDecodeError:
@@ -1791,7 +1814,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
 
             try:
-                extracted_data = json.loads(extracted_str)
+                extracted_data = parse_llm_json(extracted_str, {}) or {}
                 if extracted_data.get("target_role"):
                     target_role = extracted_data.get("target_role")
                 if extracted_data.get("timeline_weeks") is not None:
@@ -1919,7 +1942,7 @@ async def interview_preparer(state: AgentState) -> AgentState:
             extracted_str = await invoke_prompt_template(extract_prompt, {"user_query_for_extraction": latest_message_content})
 
             try:
-                extracted_data = json.loads(extracted_str)
+                extracted_data = parse_llm_json(extracted_str, {}) or {}
                 if extracted_data.get("target_role"):
                     target_role = extracted_data.get("target_role")
             except json.JSONDecodeError:

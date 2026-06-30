@@ -4,6 +4,8 @@ import { db } from "@/lib/prisma"
 import { auth } from "@clerk/nextjs/server"
 import { createOllamaClient } from "@/lib/ai"
 import { enhanceTextSection } from "@/lib/ai/career-agent"
+import { parseLLMJson } from "@/lib/ai/json"
+import { recordExecutedAction } from "@/lib/performance/intelligence"
 import { revalidatePath } from "next/cache"
 import { getCachedData, invalidateCache, CACHE_TTL } from "@/lib/redis"
 
@@ -44,6 +46,15 @@ export const saveCoverLetter = async (contentRes: CoverLetterProp) => {
 
     // Invalidate the cover letters cache for this user
     await invalidateCache(`coverLetters:${user.id}`)
+
+    await recordExecutedAction({
+      userId: user.id,
+      type: "GENERATE_DOCUMENT",
+      title: `Cover letter saved${jobTitle ? ` for ${jobTitle}` : ""}`,
+      description: "A cover letter was created and added to your growth profile.",
+      params: { jobTitle, companyName },
+      metadata: { source: "cover-letter", reason: "Cover-letter activity signals active job-search progress." },
+    })
 
     revalidatePath("/coverLetter")
     return coverLetter
@@ -232,14 +243,12 @@ export const analyzeCoverLetter = async (content: string) => {
         model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
         messages: [{ role: "user", content: prompt }],
       });
-      let analysisText = result.choices[0]?.message?.content?.trim() || ""
-        if (analysisText.startsWith("```json") || analysisText.startsWith("```")) {
-          analysisText = analysisText.replace(/```json|```/g, "").trim()
-        }
-        return JSON.parse(analysisText)
+      const analysisText = result.choices[0]?.message?.content?.trim() || ""
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return parseLLMJson<any>(analysisText, { overall: 0, sections: [], suggestions: [] })
       } catch (error) {
         console.error("Error analyzing Cover Letter:", error)
-        throw new Error("Failed to analyze Cover Letter")
+        return { overall: 0, sections: [], suggestions: [] }
       }
     },
     CACHE_TTL.MEDIUM,
@@ -297,10 +306,11 @@ export async function tailorToJobCoverLetter(data: TailorProps) {
         messages: [{ role: "user", content: prompt }],
       });
       const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
-        return JSON.parse(tailoredContent)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return parseLLMJson<any>(tailoredContent, {})
       } catch (error) {
         console.error("Error tailoring Cover Letter:", error)
-        throw new Error("Failed to tailor Cover Letter")
+        return {}
       }
     },
     CACHE_TTL.MEDIUM,
@@ -362,7 +372,9 @@ export const generateCoverLetter = async (jobTitle: string, companyName: string,
         model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
         messages: [{ role: "user", content: prompt }],
       });
-      return result.choices[0]?.message?.content?.trim() || ""
+      const raw = result.choices[0]?.message?.content?.trim() || ""
+        // Strip stray ```markdown / ``` fences the model may wrap around the letter
+        return raw.replace(/^```[a-z]*\n?/i, "").replace(/```$/i, "").trim()
       } catch (error) {
         console.error("Error generating cover letter:", error)
         throw new Error("Failed to generate cover letter")

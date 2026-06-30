@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
         timezoneOffsetMinutes,
       }),
       cache: "no-store",
+      // Allow for Render cold starts but cap below the 60s function limit.
+      signal: AbortSignal.timeout(55000),
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -74,9 +76,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (error) {
     console.error("/api/chat proxy error:", error);
+    const isTimeout = error instanceof Error && error.name === "TimeoutError";
     return NextResponse.json(
-      { error: "Failed to process chat request" },
-      { status: 500 },
+      {
+        error: isTimeout
+          ? "The assistant is taking longer than expected (the backend may be waking up). Please try again."
+          : "Failed to process chat request",
+      },
+      { status: isTimeout ? 504 : 500 },
     );
   }
 }

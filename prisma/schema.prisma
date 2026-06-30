@@ -53,6 +53,7 @@ model User {
   executedActions ExecutedAction[]
   jobApplications JobApplication[]
   calendarEvents  CalendarEvent[]
+  careerPlans     CareerPlan[]
 }
 
 model Resume {
@@ -750,6 +751,29 @@ model ExecutedAction {
 
   @@index([userId])
   @@index([executedAt])
+}
+
+// Durable career plan (previously stored only in Redis, which expired).
+// Redis is now used purely as a fast cache; this table is the source of truth.
+model CareerPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version       Int      @default(1)
+  source        String   @default("career-tools")
+  targetRole    String
+  timelineWeeks Int      @default(8)
+  weeklyHours   Int      @default(8)
+  planMarkdown  String   @db.Text
+  checkpoints   Json?
+  planDetails   Json?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isActive])
+  @@index([userId, version])
 }
 
 model JobApplication {

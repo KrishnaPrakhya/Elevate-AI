@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { createOllamaClient } from "@/lib/ai";
+import { extractJsonObject } from "@/lib/ai/json";
+
+export const maxDuration = 60;
 
 /**
  * Format markdown response for consistent rendering
@@ -160,38 +163,37 @@ export async function POST(request: NextRequest) {
       throw err;
     });
 
-    let responseText = result.choices[0]?.message?.content?.trim() || "";
+    const responseText = result.choices[0]?.message?.content?.trim() || "";
 
-    console.log("Raw AI response:", responseText);
+    // Tolerant parse: extract the JSON object, falling back to treating the
+    // raw text as the answer if the model ignored the JSON instruction.
+    const parsed = extractJsonObject(responseText) as {
+      response?: string;
+      type?: string;
+      suggestions?: string[];
+      resources?: unknown[];
+    } | null;
 
-    // Clean up markdown
-    if (responseText.startsWith("```json") || responseText.startsWith("```")) {
-      responseText = responseText.replace(/```json|```/g, "").trim();
-    }
-
-    // Also clean any text before/after JSON
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      responseText = jsonMatch[0];
-    }
-
-    // Fallback if parsing fails
-    let response;
-    try {
-      response = JSON.parse(responseText);
-      // Format the response content for consistent markdown rendering
-      if (response.response) {
-        response.response = formatMarkdownResponse(response.response);
-      }
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", parseError, "Response was:", responseText);
-      response = {
-        response: formatMarkdownResponse("I apologize, but I'm having trouble formatting my response. Let me help you directly: " + responseText),
-        type: "answer",
-        suggestions: ["Can you explain more?", "Give me an example", "What should I learn next?"],
-        resources: []
-      };
-    }
+    const response = parsed
+      ? {
+          response: formatMarkdownResponse(
+            typeof parsed.response === "string" ? parsed.response : responseText
+          ),
+          type: typeof parsed.type === "string" ? parsed.type : "answer",
+          suggestions: Array.isArray(parsed.suggestions)
+            ? parsed.suggestions
+            : ["Can you explain more?", "Give me an example", "What should I learn next?"],
+          resources: Array.isArray(parsed.resources) ? parsed.resources : [],
+        }
+      : {
+          response: formatMarkdownResponse(
+            responseText ||
+              "I apologize, but I'm having trouble responding right now. Please try again."
+          ),
+          type: "answer",
+          suggestions: ["Can you explain more?", "Give me an example", "What should I learn next?"],
+          resources: [],
+        };
 
     // Generate new conversation ID (in production, use actual conversation tracking)
     const newConversationId = `conv-${Date.now()}`;

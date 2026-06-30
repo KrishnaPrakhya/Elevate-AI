@@ -3,6 +3,8 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson } from "@/lib/ai/json";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { getCachedData, CACHE_TTL, redis } from "@/lib/redis";
 
 const model = createOllamaClient();
@@ -50,12 +52,18 @@ export async function generateTopicQuiz(topics:string[]){
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
-        const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-        const quiz=JSON.parse(cleanedText);
-        return quiz.questions;
-      } catch (error:any) {
-        console.log(error);
-        throw new Error(error);
+        const quiz = parseLLMJson<{
+          questions: {
+            question: string;
+            options: string[];
+            correctAnswer: string;
+            explanation: string;
+          }[];
+        }>(text, { questions: [] });
+        return Array.isArray(quiz.questions) ? quiz.questions : [];
+      } catch (error) {
+        console.error("Error generating topic quiz:", error);
+        return [];
       }
     },
     CACHE_TTL.LONG // Cache for 24 hours
@@ -74,7 +82,7 @@ export async function generateTopicContent(topics: string[]) {
 
   const cacheKey = `topicContent:v2:${user.id}:${Buffer.from(topics.map((t) => t.trim().toLowerCase()).sort().join(",")).toString("base64").substring(0, 28)}`;
 
-  return getCachedData(
+  const content = await getCachedData(
     cacheKey,
     async () => {
       try {
@@ -102,13 +110,28 @@ export async function generateTopicContent(topics: string[]) {
         });
         const text = res.choices[0]?.message?.content || "";
         return text;
-      } catch (error: any) {
-        console.error(error);
+      } catch (error) {
+        console.error("Error generating topic content:", error);
         throw new Error("Failed to generate topic content");
       }
     },
     CACHE_TTL.LONG
   );
+
+  // Record the study session so learning time is visible to growth analytics.
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: `Studied ${topics.length} topic${topics.length === 1 ? "" : "s"}`,
+    description: `Reviewed learning content for: ${topics.slice(0, 5).join(", ")}.`,
+    params: { topics: topics.slice(0, 10) },
+    metadata: {
+      source: "topic-study",
+      reason: "Self-directed study sessions contribute to learning-consistency and weak-area coverage signals.",
+    },
+  });
+
+  return content;
 }
 
 export async function getTopTopics(){
@@ -166,12 +189,10 @@ export async function getTopTopics(){
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
-        const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-        const topics=JSON.parse(cleanedText);
-        return topics;
-      } catch (error:any) {
-        console.log(error);
-        throw new Error(error);
+        return parseLLMJson<Array<{ name: string; subtopics: string[] }>>(text, []);
+      } catch (error) {
+        console.error("Error generating top topics:", error);
+        return [];
       }
     },
     CACHE_TTL.WEEK // Cache for a week since topics don't change often

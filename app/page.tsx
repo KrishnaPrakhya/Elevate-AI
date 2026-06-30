@@ -117,9 +117,7 @@ export default function Home() {
   const formatMetric = (value?: number) =>
     typeof value === "number" ? value.toLocaleString("en-US") : "—";
 
-  const lastSynced = metrics?.updatedAt
-    ? new Date(metrics.updatedAt)
-    : null;
+  const lastSynced = metrics?.updatedAt ? new Date(metrics.updatedAt) : null;
 
   const statItems = [
     {
@@ -366,8 +364,8 @@ export default function Home() {
                   {metricsError
                     ? "Live metrics are temporarily unavailable."
                     : lastSynced
-                    ? `Last synced ${lastSynced.toLocaleTimeString()}`
-                    : "Syncing live metrics..."}
+                      ? `Last synced ${lastSynced.toLocaleTimeString()}`
+                      : "Syncing live metrics..."}
                 </div>
               </motion.div>
             </motion.div>
@@ -737,131 +735,131 @@ export default function Home() {
         </section>
 
         {/* Pricing Section */}
-        <section
+        {/* <section
           id="pricing"
           className="py-20 md:py-32 bg-muted/30 relative overflow-hidden"
         >
           {/* Decorative elements */}
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{
-              backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
-              backgroundSize: "30px 30px",
-            }}
-          ></div>
+        {/* <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
+            backgroundSize: "30px 30px",
+          }}
+        ></div>
 
-          <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
-          <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
+        <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
+        <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
 
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
-            <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <BarChart className="h-3.5 w-3.5" />
-                    Pricing Plans
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  Choose the Right Plan for You
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Affordable options to support your career journey at every
-                  stage.
-                </p>
-              </motion.div>
-            </motion.div>
-
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-3 gap-8"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <PricingCard
-                title="Starter"
-                price="$9.99"
-                period="per month"
-                description="Perfect for those just beginning their career journey"
-                features={[
-                  "Resume analysis and feedback",
-                  "Basic interview preparation",
-                  "Career path recommendations",
-                  "Email support",
-                ]}
-                buttonText="Choose Starter"
-                buttonHref="/sign-up"
-                popular={false}
-                variants={fadeInUpVariants}
-              />
-              <PricingCard
-                title="Professional"
-                price="$19.99"
-                period="per month"
-                description="Comprehensive support for career advancement"
-                features={[
-                  "Everything in Starter",
-                  "Advanced interview simulation",
-                  "Salary negotiation coaching",
-                  "Personalized skill development plan",
-                  "Priority support",
-                ]}
-                buttonText="Choose Professional"
-                buttonHref="/sign-up"
-                popular={true}
-                variants={fadeInUpVariants}
-              />
-              <PricingCard
-                title="Executive"
-                price="$39.99"
-                period="per month"
-                description="Premium guidance for senior professionals"
-                features={[
-                  "Everything in Professional",
-                  "Executive coaching sessions",
-                  "Leadership skill development",
-                  "Network expansion strategies",
-                  "24/7 priority support",
-                  "Quarterly career strategy review",
-                ]}
-                buttonText="Contact Sales"
-                buttonHref="/sign-up"
-                popular={false}
-                variants={fadeInUpVariants}
-              />
-            </motion.div>
-
-            {/* Guarantee */}
-            <motion.div
-              className="mt-16 flex flex-col md:flex-row items-center justify-center gap-6 p-8 rounded-2xl bg-background border shadow-sm"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true, margin: "-100px" }}
-            >
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
-                <CheckCircle className="h-8 w-8 text-primary" />
+        <div className="container mx-auto px-4 md:px-6 relative z-10">
+          <motion.div
+            className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-100px" }}
+            variants={staggerContainerVariants}
+          >
+            <motion.div className="space-y-2" variants={fadeInUpVariants}>
+              <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
+                <span className="flex items-center gap-1.5">
+                  <BarChart className="h-3.5 w-3.5" />
+                  Pricing Plans
+                </span>
               </div>
-              <div className="text-center md:text-left">
-                <h3 className="text-xl font-bold mb-2">
-                  14-Day Money-Back Guarantee
-                </h3>
-                <p className="text-muted-foreground">
-                  Try Career AI risk-free. If you&apos;re not completely
-                  satisfied within 14 days, we&apos;ll refund your payment. No
-                  questions asked.
-                </p>
-              </div>
+              <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
+                Choose the Right Plan for You
+              </h2>
+              <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
+                Affordable options to support your career journey at every
+                stage.
+              </p>
             </motion.div>
+          </motion.div>
+
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-100px" }}
+            variants={staggerContainerVariants}
+          >
+            <PricingCard
+              title="Starter"
+              price="$9.99"
+              period="per month"
+              description="Perfect for those just beginning their career journey"
+              features={[
+                "Resume analysis and feedback",
+                "Basic interview preparation",
+                "Career path recommendations",
+                "Email support",
+              ]}
+              buttonText="Choose Starter"
+              buttonHref="/sign-up"
+              popular={false}
+              variants={fadeInUpVariants}
+            />
+            <PricingCard
+              title="Professional"
+              price="$19.99"
+              period="per month"
+              description="Comprehensive support for career advancement"
+              features={[
+                "Everything in Starter",
+                "Advanced interview simulation",
+                "Salary negotiation coaching",
+                "Personalized skill development plan",
+                "Priority support",
+              ]}
+              buttonText="Choose Professional"
+              buttonHref="/sign-up"
+              popular={true}
+              variants={fadeInUpVariants}
+            />
+            <PricingCard
+              title="Executive"
+              price="$39.99"
+              period="per month"
+              description="Premium guidance for senior professionals"
+              features={[
+                "Everything in Professional",
+                "Executive coaching sessions",
+                "Leadership skill development",
+                "Network expansion strategies",
+                "24/7 priority support",
+                "Quarterly career strategy review",
+              ]}
+              buttonText="Contact Sales"
+              buttonHref="/sign-up"
+              popular={false}
+              variants={fadeInUpVariants}
+            />
+          </motion.div>
+
+          {/* Guarantee */}
+        {/* <motion.div
+          className="mt-16 flex flex-col md:flex-row items-center justify-center gap-6 p-8 rounded-2xl bg-background border shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true, margin: "-100px" }}
+        >
+          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
+            <CheckCircle className="h-8 w-8 text-primary" />
           </div>
-        </section>
+          <div className="text-center md:text-left">
+            <h3 className="text-xl font-bold mb-2">
+              14-Day Money-Back Guarantee
+            </h3>
+            <p className="text-muted-foreground">
+              Try Career AI risk-free. If you&apos;re not completely satisfied
+              within 14 days, we&apos;ll refund your payment. No questions
+              asked.
+            </p>
+          </div>
+        </motion.div> */}
+        {/* </div> */}
+        {/* </section> */}
 
         {/* FAQ Section */}
         <section

@@ -3,6 +3,8 @@ import { analyzeCareerProfile } from "@/lib/ai/career-agent";
 import { CACHE_TTL, getCachedData } from "@/lib/redis";
 import { createHash } from "crypto";
 
+export const maxDuration = 60;
+
 function normalizeSkills(skills: unknown): string[] {
   if (!Array.isArray(skills)) return [];
   return Array.from(

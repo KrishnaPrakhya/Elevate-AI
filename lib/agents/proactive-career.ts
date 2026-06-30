@@ -46,6 +46,7 @@ async function sendEmailViaBackend(input: {
       from_name: input.fromName || "ElevateAI",
       email_type: "general",
     }),
+    signal: AbortSignal.timeout(45000),
   });
 
   if (!response.ok) {

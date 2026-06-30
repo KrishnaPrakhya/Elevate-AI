@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/prisma";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson } from "@/lib/ai/json";
+import { recordExecutedAction } from "@/lib/performance/intelligence";
+import { ASSESSMENT_CATEGORY } from "@/lib/growth/categories";
+
+export const maxDuration = 60;
 
 const model = createOllamaClient();
 
@@ -51,6 +57,11 @@ export async function POST(
       );
     }
 
+    // Ensure the attempt belongs to the requesting user (prevent IDOR).
+    if (attempt.userId !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Generate AI evaluation
     const prompt = `
       Evaluate the following simulation attempt.
@@ -78,14 +89,36 @@ export async function POST(
       temperature: 0.5,
     });
 
-    let evaluationText = result.choices[0]?.message?.content?.trim() || "";
+    const evaluationText = result.choices[0]?.message?.content?.trim() || "";
 
-    // Clean up markdown
-    if (evaluationText.startsWith("```json") || evaluationText.startsWith("```")) {
-      evaluationText = evaluationText.replace(/```json|```/g, "").trim();
-    }
+    const rawEvaluation = parseLLMJson<{
+      score?: unknown;
+      feedback?: unknown;
+      strengths?: unknown;
+      improvements?: unknown;
+      skillMasteryDelta?: unknown;
+    }>(evaluationText, {});
 
-    const evaluation = JSON.parse(evaluationText);
+    const clamp = (value: unknown, min: number, max: number, fallback: number) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : fallback;
+    };
+
+    // Validate & sanitize so a malformed model response can't store garbage
+    const evaluation = {
+      score: clamp(rawEvaluation.score, 0, 100, 60),
+      feedback:
+        typeof rawEvaluation.feedback === "string" && rawEvaluation.feedback.trim().length > 0
+          ? rawEvaluation.feedback.trim()
+          : "Evaluation completed. Keep practicing to improve your performance.",
+      strengths: Array.isArray(rawEvaluation.strengths)
+        ? rawEvaluation.strengths.filter((s) => typeof s === "string")
+        : [],
+      improvements: Array.isArray(rawEvaluation.improvements)
+        ? rawEvaluation.improvements.filter((s) => typeof s === "string")
+        : [],
+      skillMasteryDelta: clamp(rawEvaluation.skillMasteryDelta, 0, 10, 1),
+    };
 
     // Update attempt
     const updatedAttempt = await db.simulationAttempt.update({
@@ -99,9 +132,10 @@ export async function POST(
       },
     });
 
-    // Update user skill progress if primary skill exists
+    // Update user skill progress if primary skill exists (upsert so first-time
+    // practice of a skill still creates a progress record).
     if (attempt.scenario.primarySkillId) {
-      const skillProgress = await db.userSkillProgress.findUnique({
+      const existing = await db.userSkillProgress.findUnique({
         where: {
           userId_skillId: {
             userId: user.id,
@@ -110,21 +144,56 @@ export async function POST(
         },
       });
 
-      if (skillProgress) {
-        await db.userSkillProgress.update({
-          where: {
-            userId_skillId: {
-              userId: user.id,
-              skillId: attempt.scenario.primarySkillId,
-            },
+      await db.userSkillProgress.upsert({
+        where: {
+          userId_skillId: {
+            userId: user.id,
+            skillId: attempt.scenario.primarySkillId,
           },
-          data: {
-            masteryLevel: Math.min(100, skillProgress.masteryLevel + (evaluation.skillMasteryDelta || 1)),
-            lastPracticed: new Date(),
-          },
-        });
-      }
+        },
+        update: {
+          masteryLevel: Math.min(100, (existing?.masteryLevel ?? 0) + evaluation.skillMasteryDelta),
+          lastPracticed: new Date(),
+        },
+        create: {
+          userId: user.id,
+          skillId: attempt.scenario.primarySkillId,
+          masteryLevel: Math.min(100, evaluation.skillMasteryDelta),
+          lastPracticed: new Date(),
+        },
+      });
     }
+
+    // Record as an assessment so academy simulations show up in performance
+    // intelligence (interview-readiness bucket) alongside mock interviews.
+    const assessmentQuestions: Prisma.InputJsonValue[] = Array.isArray(responses)
+      ? responses
+      : Array.isArray(transcript)
+      ? transcript
+      : [];
+
+    await db.assessments.create({
+      data: {
+        userId: user.id,
+        quizScore: evaluation.score,
+        questions: assessmentQuestions,
+        category: ASSESSMENT_CATEGORY.ACADEMY_SIMULATION,
+        improvementTip: evaluation.feedback,
+      },
+    });
+
+    await recordExecutedAction({
+      userId: user.id,
+      type: "UPDATE_PROGRESS",
+      title: `Simulation completed (${evaluation.score}%)`,
+      description: "An academy scenario simulation was completed and scored.",
+      params: { attemptId, scenarioId: attempt.scenarioId },
+      result: { score: evaluation.score, skillMasteryDelta: evaluation.skillMasteryDelta },
+      metadata: {
+        source: "academy-simulation",
+        reason: "Simulation outcomes feed interview-readiness trends and skill mastery.",
+      },
+    });
 
     return NextResponse.json({
       attempt: updatedAttempt,

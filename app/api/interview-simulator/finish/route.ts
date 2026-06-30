@@ -3,6 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { createOllamaClient } from "@/lib/ai";
+import { extractJsonObject } from "@/lib/ai/json";
+import { ASSESSMENT_CATEGORY } from "@/lib/growth/categories";
+
+export const maxDuration = 60;
 
 const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
@@ -12,34 +16,6 @@ type InterviewResponse = {
   questionId?: string;
   answer?: string;
   duration?: number;
-};
-
-const safeJsonParse = (value: string) => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
-const extractJsonObject = (value: string) => {
-  const cleaned = value.replace(/```json|```/g, "").trim();
-  const direct = safeJsonParse(cleaned);
-  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
-    return direct as Record<string, unknown>;
-  }
-
-  const startIndex = cleaned.indexOf("{");
-  const endIndex = cleaned.lastIndexOf("}");
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
-    return null;
-  }
-
-  const extracted = cleaned.slice(startIndex, endIndex + 1);
-  const parsed = safeJsonParse(extracted);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : null;
 };
 
 const clampScore = (value: number, min = 0, max = 100) =>
@@ -196,7 +172,7 @@ Responses: ${JSON.stringify(responseList)}`;
         userId: user.id,
         quizScore: feedbackData.overall || 75,
         questions: responseList,
-        category: "Interview Simulation",
+        category: ASSESSMENT_CATEGORY.INTERVIEW_SIMULATION,
         improvementTip: feedbackData.summary || "Continue practicing interview questions",
       },
     });

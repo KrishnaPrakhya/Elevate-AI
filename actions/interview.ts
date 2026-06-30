@@ -5,6 +5,8 @@ import { auth } from "@clerk/nextjs/server";
 import { generatePersonalizedInterviewQuiz } from "@/lib/ai/career-agent";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { CACHE_TTL, getCachedData, invalidateCache, redis } from "@/lib/redis";
+import { ASSESSMENT_CATEGORY } from "@/lib/growth/categories";
+import { recordDailyActivity } from "@/actions/academy";
 import { z } from "zod";
 
 type ActivePlan = {
@@ -213,7 +215,7 @@ export const saveQuizResult = async (
         userId:user.id,
         quizScore:computedScore,
         questions:questionResults,
-        category:"Technical",
+        category:ASSESSMENT_CATEGORY.TECHNICAL,
         improvementTip,
       }
     })
@@ -241,7 +243,10 @@ export const saveQuizResult = async (
     });
 
     await invalidateCache(`interview:assessments:${user.id}`)
-    
+
+    // Count this quiz toward today's learning activity (daily goal + streak).
+    await recordDailyActivity(user.id, { quizzes: 1 });
+
     return assessment;
   } catch (error) {
     

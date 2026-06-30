@@ -21,6 +21,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
+import { pageCache } from "@/lib/page-cache";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AIResponseFormatter, formatAIResponse } from "@/components/ai-response-formatter";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -171,6 +172,10 @@ export default function CareerPlanGenerator({
       if (data.savedPlan) {
         setHistory((prev) => [data.savedPlan, ...prev].slice(0, 20));
       }
+      // Invalidate the dashboard's in-memory cache so the new plan, recommended
+      // actions, and skill gaps show up immediately on next navigation.
+      pageCache.clearPrefix("dashboard:");
+      toast.success("Career plan generated and saved.");
     } catch (error) {
       console.error("Error generating career plan:", error);
       toast.error("Failed to generate career plan");

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/prisma";
+import {
+  getUserGrowthContext,
+  formatGrowthContextForPrompt,
+  type UserGrowthContext,
+} from "@/lib/growth/getUserGrowthContext";
+
+export const maxDuration = 60;
 
 /**
  * Unified AI Agent Chat Endpoint
@@ -37,59 +43,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user profile for context
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-      include: {
-        resume: true,
-        coverLetter: true,
-        assessments: {
-          orderBy: { createdAt: "desc" },
-          take: 3,
-        },
-        skillProgress: {
-          include: { skill: true },
-        },
-        enrollments: {
-          include: {
-            learningPath: true,
-            lessonProgress: {
-              include: { lesson: true },
-            },
-          },
-        },
-      },
-    });
+    // Build the canonical, cross-feature growth context (single source of truth).
+    const ctx = await getUserGrowthContext(userId);
 
-    if (!user) {
+    if (!ctx) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Build comprehensive user context
+    // Map the canonical context into the payload shape the Python backend expects,
+    // enriched with career-plan and performance signals so both AI paths agree.
     const userContext = {
       clerkUserId: userId,
-      email: user.email,
-      name: user.name,
-      industry: user.industry,
-      experience: user.experience,
-      skills: user.skills,
-      bio: user.bio,
-      resume: user.resume?.content,
-      coverLetter: user.coverLetter?.[0]?.content,
-      recentAssessments: user.assessments.map((a) => ({
+      email: ctx.user.email,
+      name: ctx.user.name,
+      industry: ctx.user.industry,
+      experience: ctx.user.experience,
+      skills: ctx.user.skills,
+      bio: ctx.user.bio,
+      targetRole: ctx.user.targetRole,
+      resume: ctx.documents.resumeContent,
+      coverLetter: ctx.documents.latestCoverLetter,
+      recentAssessments: ctx.assessments.map((a) => ({
         category: a.category,
-        score: a.quizScore,
+        score: a.score,
         improvementTip: a.improvementTip,
       })),
-      skillProgress: user.skillProgress.map((sp) => ({
-        skill: sp.skill.name,
-        mastery: sp.masteryLevel,
+      skillProgress: ctx.skills.map((s) => ({ skill: s.name, mastery: s.mastery })),
+      activeLearning: ctx.learning.activePaths.map((p) => ({
+        path: p.title,
+        progress: p.progress,
+        currentLesson: p.currentLesson ?? undefined,
       })),
-      activeLearning: user.enrollments.map((e) => ({
-        path: e.learningPath.title,
-        progress: e.progress,
-        currentLesson: e.lessonProgress.find((lp) => lp.status === "IN_PROGRESS")?.lesson.title,
-      })),
+      careerPlan: ctx.careerPlan,
+      weakAreas: ctx.performance.weakAreas,
     };
 
     // Detect intent if agent not specified
@@ -108,12 +94,14 @@ export async function POST(request: NextRequest) {
           agent: detectedAgent,
           context,
         }),
+        // Cap below the 60s function limit; on timeout we fall back to local AI.
+        signal: AbortSignal.timeout(45000),
       });
 
       if (!response.ok) {
         // Fallback to local AI if Python backend is unavailable
         console.warn("Python backend unavailable, using fallback");
-        return handleLocalFallback(message, userContext, detectedAgent);
+        return handleLocalFallback(message, ctx, detectedAgent);
       }
 
       const data = await response.json();
@@ -127,7 +115,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       console.error("Python backend error, using fallback:", error);
-      return handleLocalFallback(message, userContext, detectedAgent);
+      return handleLocalFallback(message, ctx, detectedAgent);
     }
   } catch (error) {
     console.error("Error in AI agent chat:", error);
@@ -244,19 +232,12 @@ function formatMarkdownResponse(content: string): string {
 }
 
 /**
- * Local fallback when Python backend is unavailable
+ * Local fallback when Python backend is unavailable. Uses the same canonical
+ * growth context as the primary path so answers stay consistent across both.
  */
-interface UserContext {
-  name?: string | null;
-  industry?: string | null;
-  experience?: number | null;
-  skills: string[];
-  activeLearning: { path: string }[];
-}
-
 async function handleLocalFallback(
   message: string,
-  userContext: UserContext,
+  ctx: UserGrowthContext,
   agent: string
 ) {
   const { createOllamaClient } = await import("@/lib/ai");
@@ -268,11 +249,7 @@ async function handleLocalFallback(
     ${systemPrompt}
 
     User Profile:
-    - Name: ${userContext.name || "Not provided"}
-    - Industry: ${userContext.industry || "Not specified"}
-    - Experience: ${userContext.experience || 0} years
-    - Skills: ${userContext.skills.join(", ") || "Not specified"}
-    - Current Learning: ${userContext.activeLearning.map((l) => l.path).join(", ") || "None"}
+${formatGrowthContextForPrompt(ctx)}
 
     User Message: ${message}
 

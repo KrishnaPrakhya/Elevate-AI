@@ -8,6 +8,7 @@ import OpenAI from 'openai';
 import { BrowserAgent, type BrowserAnalysisResult } from './browser-agent';
 import { ContentAnalyzerAgent, type ContentAnalysisResult } from './content-analyzer';
 import { createOllamaClient } from '@/lib/ai';
+import { extractJsonObject } from '@/lib/ai/json';
 
 const ollamaClient = createOllamaClient();
 
@@ -536,25 +537,17 @@ export class PortfolioReviewOrchestrator {
         temperature: 0.7,
       });
 
-      let content = result.choices[0]?.message?.content?.trim() || '';
+      const content = result.choices[0]?.message?.content?.trim() || '';
+      const parsed = extractJsonObject(content);
 
-      // Clean up markdown code blocks if present
-      if (content.startsWith('```json') || content.startsWith('```')) {
-        content = content.replace(/```json|```/g, '').trim();
+      if (!parsed) {
+        return this.generateFallbackAIFeedback(state, scores);
       }
-
-      // Extract JSON from content if wrapped in other text
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        content = jsonMatch[0];
-      }
-
-      const parsed = JSON.parse(content);
 
       return {
-        score: parsed.score || scores.overallScore,
-        feedback: parsed.feedback || 'Review completed.',
-        suggestions: parsed.suggestions || [],
+        score: typeof parsed.score === 'number' ? parsed.score : scores.overallScore,
+        feedback: typeof parsed.feedback === 'string' ? parsed.feedback : 'Review completed.',
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
       };
     } catch (error) {
       console.error('AI feedback generation failed:', error);

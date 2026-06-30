@@ -4,6 +4,7 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson } from "@/lib/ai/json";
 import { headers } from "next/headers";
 
 const model = createOllamaClient();
@@ -193,9 +194,7 @@ export const generateAIinsights = async (
       messages: [{ role: "user", content: prompt }],
     });
     const text = result.choices[0]?.message?.content || "";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-  
-    const parsed = JSON.parse(cleanedText) as AIInsights;
+    const parsed = parseLLMJson<AIInsights>(text, {} as AIInsights);
     return sanitizeInsights(parsed, industry, normalizedCountryCode);
     },CACHE_TTL.WEEK
   )

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { createOllamaClient } from "@/lib/ai";
+import { extractJsonArray } from "@/lib/ai/json";
+
+export const maxDuration = 60;
 
 const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
 
@@ -44,32 +47,6 @@ const buildFallbackQuestions = (role: string, level: string, numQuestions: numbe
       expectedDuration: difficulty === "hard" ? 150 : 120,
     };
   });
-};
-
-const safeJsonParse = (value: string) => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
-const extractJsonArray = (value: string) => {
-  const cleaned = value.replace(/```json|```/g, "").trim();
-  const direct = safeJsonParse(cleaned);
-  if (Array.isArray(direct)) {
-    return direct;
-  }
-
-  const startIndex = cleaned.indexOf("[");
-  const endIndex = cleaned.lastIndexOf("]");
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
-    return [];
-  }
-
-  const extracted = cleaned.slice(startIndex, endIndex + 1);
-  const parsed = safeJsonParse(extracted);
-  return Array.isArray(parsed) ? parsed : [];
 };
 
 const sanitizeQuestions = (
@@ -156,7 +133,7 @@ Avoid markdown or extra text.`;
       });
 
       const content = result.choices[0]?.message?.content?.trim() || "";
-      const rawQuestions = extractJsonArray(content);
+      const rawQuestions = extractJsonArray(content) as Array<Record<string, unknown>>;
       const questions = sanitizeQuestions(rawQuestions, safeNumQuestions).filter(
         (question) => question.question.length > 0
       );

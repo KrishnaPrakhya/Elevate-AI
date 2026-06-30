@@ -4,6 +4,11 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson, safeJsonParse } from "@/lib/ai/json";
+import {
+  computePerformanceIntelligence,
+  recordExecutedAction,
+} from "@/lib/performance/intelligence";
 
 const model = createOllamaClient();
 
@@ -172,12 +177,18 @@ async function updateCareerPlanFromSkills(userId: string) {
       messages: [{ role: "user", content: prompt }],
     });
 
-    let responseText = result.choices[0]?.message?.content?.trim() || "";
-    if (responseText.startsWith("```json") || responseText.startsWith("```")) {
-      responseText = responseText.replace(/```json|```/g, "").trim();
-    }
-
-    const recommendations = JSON.parse(responseText);
+    const responseText = result.choices[0]?.message?.content?.trim() || "";
+    const recommendations = parseLLMJson<{
+      recommendedRoles: string[];
+      nextSkillsToLearn: string[];
+      suggestedLearningPaths: string[];
+      careerReadinessScore: number;
+    }>(responseText, {
+      recommendedRoles: [],
+      nextSkillsToLearn: [],
+      suggestedLearningPaths: [],
+      careerReadinessScore: 0,
+    });
 
     // Store in Redis for quick access (career dashboard)
     const redisKey = `career:recommendations:${userId}`;
@@ -215,8 +226,11 @@ export async function getAcademyRecommendationsForCareer() {
 
   let careerGoals: string[] = [];
   if (cachedRecs) {
-    const parsed = JSON.parse(cachedRecs as string);
-    careerGoals = (parsed as any).nextSkillsToLearn || [];
+    // Upstash may return an already-parsed object or a JSON string; tolerate both.
+    const parsed =
+      typeof cachedRecs === "string" ? safeJsonParse(cachedRecs) : cachedRecs;
+    const skills = (parsed as { nextSkillsToLearn?: unknown } | null)?.nextSkillsToLearn;
+    careerGoals = Array.isArray(skills) ? (skills as string[]) : [];
   }
 
   // Find learning paths that match career goals
@@ -397,13 +411,12 @@ export async function analyzeSkillGapsForRole(targetRole: string) {
       messages: [{ role: "user", content: prompt }],
     });
 
-    let responseText = result.choices[0]?.message?.content?.trim() || "";
-    if (responseText.startsWith("```json") || responseText.startsWith("```")) {
-      responseText = responseText.replace(/```json|```/g, "").trim();
-    }
-
-    const analysis = JSON.parse(responseText);
-    return analysis;
+    const responseText = result.choices[0]?.message?.content?.trim() || "";
+    return parseLLMJson(responseText, {
+      gaps: [],
+      estimatedTimeToReady: "Unknown",
+      readinessPercentage: 0,
+    });
   } catch (error) {
     console.error("Error analyzing skill gaps:", error);
     return {
@@ -412,4 +425,131 @@ export async function analyzeSkillGapsForRole(targetRole: string) {
       readinessPercentage: 0,
     };
   }
+}
+
+/**
+ * INTERVIEW -> ACADEMY cascade.
+ * Recommend published learning paths that address a user's weak areas. Weak
+ * areas are sourced from (in priority order): explicit input, the active career
+ * plan's top gaps, and the performance-intelligence weak-area signals (which
+ * now include low quiz/interview scores and low skill mastery). This closes the
+ * loop so struggling in interviews surfaces concrete learning paths.
+ */
+export async function getRecommendedPathsForWeakAreas(
+  explicitWeakAreas: string[] = []
+): Promise<{
+  weakAreas: string[];
+  paths: { id: string; title: string; description: string; reason: string }[];
+}> {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    select: { id: true, industry: true, targetRole: true },
+  });
+  if (!user) throw new Error("User not found");
+
+  // Gather weak areas from all available growth signals.
+  const weakAreaSet = new Set<string>(
+    explicitWeakAreas.map((w) => w.trim()).filter(Boolean)
+  );
+
+  const [activePlan, performance] = await Promise.all([
+    db.careerPlan
+      .findFirst({ where: { userId: user.id, isActive: true }, orderBy: { version: "desc" } })
+      .catch(() => null),
+    computePerformanceIntelligence({ userId: user.id, targetRole: user.targetRole }).catch(
+      () => null
+    ),
+  ]);
+
+  const planGaps =
+    (activePlan?.planDetails as { topGaps?: { skill: string }[] } | null)?.topGaps || [];
+  planGaps.forEach((g) => g?.skill && weakAreaSet.add(g.skill));
+  (performance?.weakAreas || []).forEach((w) => weakAreaSet.add(w));
+
+  const weakAreas = Array.from(weakAreaSet).slice(0, 8);
+
+  if (weakAreas.length === 0) {
+    return { weakAreas, paths: [] };
+  }
+
+  // Find published paths whose title/description match any weak area, or match
+  // the user's industry as a fallback signal.
+  const paths = await db.learningPath.findMany({
+    where: {
+      isPublished: true,
+      OR: [
+        ...weakAreas.flatMap((area) => [
+          { title: { contains: area, mode: "insensitive" as const } },
+          { description: { contains: area, mode: "insensitive" as const } },
+        ]),
+        ...(user.industry ? [{ industry: user.industry }] : []),
+      ],
+    },
+    select: { id: true, title: true, description: true },
+    take: 5,
+  });
+
+  return {
+    weakAreas,
+    paths: paths.map((p) => ({
+      ...p,
+      reason: "Targets a weak area identified from your quizzes, interviews, or career plan.",
+    })),
+  };
+}
+
+/**
+ * ACADEMY -> RESUME/PROFILE cascade.
+ * Merge skills the user has demonstrably built in the Academy (mastery >=
+ * threshold) into their profile skills array, so the resume/cover-letter AI
+ * context and career planner reflect what they actually learned.
+ * Returns the skills that were newly added.
+ */
+export async function syncMasteredSkillsToProfile(
+  masteryThreshold = 60
+): Promise<{ addedSkills: string[] }> {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    include: { skillProgress: { include: { skill: true } } },
+  });
+  if (!user) throw new Error("User not found");
+
+  const existing = new Set((user.skills || []).map((s) => s.toLowerCase()));
+  const mastered = user.skillProgress
+    .filter((sp) => sp.masteryLevel >= masteryThreshold)
+    .map((sp) => sp.skill.name)
+    .filter((name) => !existing.has(name.toLowerCase()));
+
+  const addedSkills = Array.from(new Set(mastered));
+  if (addedSkills.length === 0) {
+    return { addedSkills: [] };
+  }
+
+  await db.user.update({
+    where: { id: user.id },
+    data: { skills: { set: [...(user.skills || []), ...addedSkills] } },
+  });
+
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: `Added ${addedSkills.length} mastered skill${addedSkills.length === 1 ? "" : "s"} to profile`,
+    description: `Academy-mastered skills were added to your profile: ${addedSkills.join(", ")}.`,
+    params: { addedSkills },
+    metadata: {
+      source: "academy-to-profile",
+      reason: "Learned skills now flow into resume/cover-letter AI context and career planning.",
+    },
+  });
+
+  revalidatePath("/resume");
+  revalidatePath("/dashboard");
+
+  return { addedSkills };
 }

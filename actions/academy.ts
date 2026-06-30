@@ -5,8 +5,9 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { createOllamaClient } from "@/lib/ai";
+import { parseLLMJson } from "@/lib/ai/json";
 import { inngest } from "@/lib/inngest/client";
-import { getCachedData, CACHE_TTL } from "@/lib/redis";
+import { getCachedData, CACHE_TTL, invalidateCache } from "@/lib/redis";
 import { redis } from "@/lib/redis";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 
@@ -222,6 +223,9 @@ export async function updateLessonProgress(
 
   // Check for achievements
   if (status === "COMPLETED") {
+    // Auto-aggregate this completion into today's daily goal + streak.
+    await recordDailyActivity(user.id, { lessons: 1, minutes: timeSpentMinutes || 0 });
+
     await inngest.send({
       name: "academy/lesson-completed",
       data: { userId, enrollmentId, lessonId },
@@ -501,6 +505,45 @@ async function updateStreak(userId: string) {
   });
 }
 
+/**
+ * Auto-aggregate real learning activity into today's DailyGoal.
+ * Call this from actual events (lesson/quiz/assignment completion) so the
+ * daily goal reflects what the user did instead of relying on manual updates.
+ * Best-effort: never throws, so it can't block the primary flow.
+ */
+export async function recordDailyActivity(
+  userId: string,
+  delta: { minutes?: number; lessons?: number; assignments?: number; quizzes?: number }
+) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    await db.dailyGoal.upsert({
+      where: { userId_date: { userId, date: today } },
+      update: {
+        actualMinutes: delta.minutes ? { increment: delta.minutes } : undefined,
+        lessonsCompleted: delta.lessons ? { increment: delta.lessons } : undefined,
+        assignmentsCompleted: delta.assignments ? { increment: delta.assignments } : undefined,
+        quizzesCompleted: delta.quizzes ? { increment: delta.quizzes } : undefined,
+      },
+      create: {
+        userId,
+        date: today,
+        actualMinutes: delta.minutes ?? 0,
+        lessonsCompleted: delta.lessons ?? 0,
+        assignmentsCompleted: delta.assignments ?? 0,
+        quizzesCompleted: delta.quizzes ?? 0,
+      },
+    });
+
+    await updateStreak(userId);
+    await invalidateCache(`academy:userStreak:${userId}`);
+  } catch (error) {
+    console.error("Failed to record daily activity:", error);
+  }
+}
+
 export async function getUserStreak() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
@@ -574,6 +617,18 @@ export async function submitAssignment(
     data: submissionData,
   });
 
+  await recordExecutedAction({
+    userId: user.id,
+    type: "UPDATE_PROGRESS",
+    title: "Assignment submitted",
+    description: "An academy assignment was submitted and recorded in your growth profile.",
+    params: { assignmentId, lessonId, isLate: submissionData.isLate },
+    result: { submissionId: submission.id },
+    metadata: { source: "academy-assignment", reason: "Assignment activity contributes to learning-consistency signals." },
+  });
+
+  await recordDailyActivity(user.id, { assignments: 1 });
+
   // Trigger submission email to mentor if assigned
   await inngest.send({
     name: "academy/assignment-submitted",
@@ -593,6 +648,17 @@ export async function gradeSubmission(
     where: { id: submissionId },
     data: { score, feedback, gradedAt: new Date() },
   });
+
+  if (submission) {
+    await recordExecutedAction({
+      userId: submission.userId,
+      type: "UPDATE_PROGRESS",
+      title: `Assignment graded (${Math.round(score)}%)`,
+      description: "An academy assignment was graded and recorded in your growth profile.",
+      params: { submissionId, score },
+      metadata: { source: "academy-grading", reason: "Graded outcomes feed mastery and weak-area signals." },
+    });
+  }
 
   // Award achievement if passed
   if (submission && score >= 60) {
@@ -1135,7 +1201,10 @@ IMPORTANT:
     });
 
     const content = result.choices[0]?.message?.content?.trim() || "[]";
-    const parsedGaps = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+    const parsedGaps = parseLLMJson<Array<{ skill: string; importance: number; reason: string }>>(
+      content,
+      []
+    );
 
     return {
       topGaps: Array.isArray(parsedGaps) ? parsedGaps : [],
@@ -1217,11 +1286,14 @@ Return JSON:
     });
 
     const content = result.choices[0]?.message?.content?.trim() || "{}";
-    const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, ""));
+    const parsed = parseLLMJson<{
+      recommendations?: { title: string; description: string; action: string; priority: string }[];
+      message?: string;
+    }>(content, {});
 
     return {
-      recommendations: parsed.recommendations || [],
-      message: parsed.message || "",
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      message: typeof parsed.message === "string" ? parsed.message : "",
     };
   } catch (error) {
     console.error("Error generating agent recommendations:", error);

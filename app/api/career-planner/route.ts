@@ -12,6 +12,8 @@ import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { createHash } from "crypto";
 import { rateLimit } from "@/lib/rate-limit";
 
+export const maxDuration = 60;
+
 type PlannerPayload = {
   targetRole?: string;
   timelineWeeks?: number;
@@ -90,39 +92,174 @@ function buildCheckpoints(params: {
   ];
 }
 
+// Map a durable CareerPlan DB row back to the PlanHistoryEntry shape the UI/clients expect.
+function rowToPlanEntry(row: {
+  id: string;
+  version: number;
+  createdAt: Date;
+  source: string;
+  targetRole: string;
+  timelineWeeks: number;
+  weeklyHours: number;
+  planMarkdown: string;
+  checkpoints: unknown;
+  planDetails: unknown;
+}): PlanHistoryEntry {
+  return {
+    id: row.id,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    source: (row.source as "academy" | "career-tools") || "career-tools",
+    targetRole: row.targetRole,
+    timelineWeeks: row.timelineWeeks,
+    weeklyHours: row.weeklyHours,
+    planMarkdown: row.planMarkdown,
+    checkpoints: (row.checkpoints as PlanCheckpoint[]) || [],
+    planDetails: (row.planDetails as PlanHistoryEntry["planDetails"]) || {
+      topGaps: [],
+      topActions: [],
+      weeklyPlan: [],
+      milestones: [],
+      recommendedPaths: [],
+    },
+  };
+}
+
 async function getPlanHistory(userId: string): Promise<PlanHistoryEntry[]> {
   try {
-    return (await redis.get<PlanHistoryEntry[]>(buildHistoryKey(userId))) || [];
+    const rows = await db.careerPlan.findMany({
+      where: { userId },
+      orderBy: { version: "desc" },
+      take: PLAN_HISTORY_LIMIT,
+    });
+    return rows.map(rowToPlanEntry);
   } catch (error) {
     console.error("Failed to read career planner history:", error);
     return [];
   }
 }
 
-async function savePlanHistory(userId: string, entry: PlanHistoryEntry): Promise<void> {
+// Persist the plan durably (DB = source of truth) and refresh the Redis cache.
+// The Redis "active" key is intentionally kept up to date because other
+// features (interview quiz, topic quiz, academy recommendations) read it.
+async function savePlan(userId: string, entry: PlanHistoryEntry): Promise<void> {
   try {
-    const existing = await getPlanHistory(userId);
-    const next = [entry, ...existing].slice(0, PLAN_HISTORY_LIMIT);
-    await redis.set(buildHistoryKey(userId), next, { ex: PLAN_HISTORY_TTL });
+    await db.$transaction([
+      db.careerPlan.updateMany({
+        where: { userId, isActive: true },
+        data: { isActive: false },
+      }),
+      db.careerPlan.create({
+        data: {
+          id: entry.id,
+          userId,
+          version: entry.version,
+          source: entry.source,
+          targetRole: entry.targetRole,
+          timelineWeeks: entry.timelineWeeks,
+          weeklyHours: entry.weeklyHours,
+          planMarkdown: entry.planMarkdown,
+          checkpoints: entry.checkpoints as unknown as object,
+          planDetails: entry.planDetails as unknown as object,
+          isActive: true,
+        },
+      }),
+    ]);
   } catch (error) {
-    console.error("Failed to persist career planner history:", error);
+    console.error("Failed to persist career plan to database:", error);
+  }
+
+  // Best-effort cache refresh for fast reads by other features.
+  try {
+    await redis.set(buildActiveKey(userId), entry, { ex: PLAN_HISTORY_TTL });
+    const history = await getPlanHistory(userId);
+    await redis.set(buildHistoryKey(userId), history, { ex: PLAN_HISTORY_TTL });
+  } catch (error) {
+    console.error("Failed to refresh career plan cache:", error);
   }
 }
 
-async function saveActivePlan(userId: string, entry: PlanHistoryEntry): Promise<void> {
-  try {
-    await redis.set(buildActiveKey(userId), entry, { ex: PLAN_HISTORY_TTL });
-  } catch (error) {
-    console.error("Failed to persist active career plan:", error);
+/**
+ * Seed UserSkillProgress entries for the plan's target skill gaps so skill
+ * tracking reflects the active plan. Creates a SkillNode for any new skill and
+ * a 0% progress row (existing mastery is left untouched). Best-effort.
+ */
+async function seedSkillTrackingFromPlan(
+  userId: string,
+  gaps: { skill: string; importance: number }[]
+): Promise<void> {
+  for (const gap of gaps || []) {
+    const name = gap?.skill?.trim();
+    if (!name) continue;
+
+    try {
+      let skill = await db.skillNode.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
+
+      if (!skill) {
+        skill = await db.skillNode
+          .create({ data: { name, category: "career-plan" } })
+          .catch(async () =>
+            // Handle a race / case-collision on the unique name.
+            db.skillNode.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })
+          );
+      }
+
+      if (!skill) continue;
+
+      await db.userSkillProgress.upsert({
+        where: { userId_skillId: { userId, skillId: skill.id } },
+        update: {}, // don't reset progress the user has already built
+        create: { userId, skillId: skill.id, masteryLevel: 0 },
+      });
+    } catch (error) {
+      console.error(`Failed to seed skill tracking for "${name}":`, error);
+    }
   }
 }
 
 async function getActivePlan(userId: string): Promise<PlanHistoryEntry | null> {
   try {
-    return (await redis.get<PlanHistoryEntry>(buildActiveKey(userId))) || null;
+    const row = await db.careerPlan.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { version: "desc" },
+    });
+    if (row) return rowToPlanEntry(row);
+
+    // No DB row yet (e.g. a plan created before the CareerPlan table existed) —
+    // fall back to the Redis cache so existing plans still surface, and migrate
+    // it into the DB so it becomes the durable source of truth going forward.
+    const cached = (await redis.get<PlanHistoryEntry>(buildActiveKey(userId))) || null;
+    if (cached) {
+      await db.careerPlan
+        .create({
+          data: {
+            id: cached.id,
+            userId,
+            version: cached.version || 1,
+            source: cached.source,
+            targetRole: cached.targetRole,
+            timelineWeeks: cached.timelineWeeks,
+            weeklyHours: cached.weeklyHours,
+            planMarkdown: cached.planMarkdown,
+            checkpoints: cached.checkpoints as unknown as object,
+            planDetails: cached.planDetails as unknown as object,
+            isActive: true,
+          },
+        })
+        .catch(() => {
+          /* already migrated or race — ignore */
+        });
+    }
+    return cached;
   } catch (error) {
     console.error("Failed to read active career plan:", error);
-    return null;
+    try {
+      return (await redis.get<PlanHistoryEntry>(buildActiveKey(userId))) || null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -472,8 +609,11 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    await savePlanHistory(user.id, savedPlan);
-    await saveActivePlan(user.id, savedPlan);
+    await savePlan(user.id, savedPlan);
+
+    // Seed skill tracking from the plan's target gaps so the user's progress can
+    // be measured against the plan (lessons/quizzes/sims then raise mastery).
+    await seedSkillTrackingFromPlan(user.id, savedPlan.planDetails.topGaps);
 
     await recordExecutedAction({
       userId: user.id,

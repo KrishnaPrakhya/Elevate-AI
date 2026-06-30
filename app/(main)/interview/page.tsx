@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import InterviewQuiz from "./_components/interviewQuiz";
 import SubTopicQuiz from "./_components/subTopicQuiz";
+import CloseYourGaps from "@/components/growth/CloseYourGaps";
 import { getTopTopics } from "@/actions/topicQuiz";
 import { InterviewSkeleton } from "@/components/loaders/skeleton-loader";
 import { useState, useEffect } from "react";
@@ -36,6 +37,9 @@ export default function Page() {
 
   return (
     <div className="container">
+      <div className="mb-6">
+        <CloseYourGaps />
+      </div>
       <Tabs defaultValue="interviewQuiz" className="w-full min-h-screen">
         <TabsList className="mb-4">
           <TabsTrigger value="interviewQuiz">Interview Quiz</TabsTrigger>

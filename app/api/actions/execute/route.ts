@@ -381,6 +381,7 @@ async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      signal: AbortSignal.timeout(45000),
     });
 
     if (!response.ok) {
@@ -410,6 +411,7 @@ async function executeCreateCalendarEvent(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      signal: AbortSignal.timeout(45000),
     });
 
     if (!response.ok) {

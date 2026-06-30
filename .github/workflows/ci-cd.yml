@@ -1,0 +1,129 @@
+name: ElevateAI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & Test Applications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Frontend tests & linting
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Run Next.js Lint
+        run: npm run lint --if-present
+
+      # Python Microservices tests & linting
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+
+      - name: Lint Python Microservices
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings.
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  build-and-push:
+    name: Build & Push to AWS ECR
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, Tag, and Push Docker Images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Build and push Frontend
+          docker build -f Dockerfile.prod -t $ECR_REGISTRY/elevate-ai-frontend:$COMMIT_SHA -t $ECR_REGISTRY/elevate-ai-frontend:latest .
+          docker push $ECR_REGISTRY/elevate-ai-frontend:$COMMIT_SHA
+          docker push $ECR_REGISTRY/elevate-ai-frontend:latest
+
+          # Build and push User Service
+          docker build -t $ECR_REGISTRY/elevate-ai-user-service:$COMMIT_SHA -t $ECR_REGISTRY/elevate-ai-user-service:latest ./server/microservices/services/user-service
+          docker push $ECR_REGISTRY/elevate-ai-user-service:$COMMIT_SHA
+          docker push $ECR_REGISTRY/elevate-ai-user-service:latest
+
+          # Build and push Document Service
+          docker build -t $ECR_REGISTRY/elevate-ai-document-service:$COMMIT_SHA -t $ECR_REGISTRY/elevate-ai-document-service:latest ./server/microservices/services/document-service
+          docker push $ECR_REGISTRY/elevate-ai-document-service:$COMMIT_SHA
+          docker push $ECR_REGISTRY/elevate-ai-document-service:latest
+
+          # Build and push Chat Orchestrator
+          docker build -t $ECR_REGISTRY/elevate-ai-chat-orchestrator:$COMMIT_SHA -t $ECR_REGISTRY/elevate-ai-chat-orchestrator:latest ./server/microservices/services/chat-orchestrator
+          docker push $ECR_REGISTRY/elevate-ai-chat-orchestrator:$COMMIT_SHA
+          docker push $ECR_REGISTRY/elevate-ai-chat-orchestrator:latest
+
+          # Build and push Agent Worker
+          docker build -t $ECR_REGISTRY/elevate-ai-agent-worker:$COMMIT_SHA -t $ECR_REGISTRY/elevate-ai-agent-worker:latest ./server/microservices/services/agent-worker
+          docker push $ECR_REGISTRY/elevate-ai-agent-worker:$COMMIT_SHA
+          docker push $ECR_REGISTRY/elevate-ai-agent-worker:latest
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/elevate-ai
+            
+            # Login to ECR
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+            
+            # Pull new images
+            docker-compose pull
+            
+            # Restart services
+            docker-compose up -d --remove-orphans
+            
+            # Prune obsolete images
+            docker image prune -f

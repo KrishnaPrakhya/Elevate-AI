@@ -1,6 +1,6 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { getIndustryInsights, processOnboardingAI, redisKeepalive, renderKeepalive } from "@/lib/inngest/functions";
+import { getIndustryInsights, processOnboardingAI, redisKeepalive, renderKeepalive, automatedJobSearch } from "@/lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -9,5 +9,6 @@ export const { GET, POST, PUT } = serve({
     processOnboardingAI,
     redisKeepalive,
     renderKeepalive,
+    automatedJobSearch,
   ],
 });

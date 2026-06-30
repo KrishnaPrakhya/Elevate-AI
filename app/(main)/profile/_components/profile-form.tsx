@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import {
   Card,
@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { User, Briefcase, FileText, Loader2, Sparkles } from "lucide-react";
 import useFetch from "@/hooks/use-fetch";
-import { updateUser } from "@/actions/user";
+import { updateUser, invalidateUserCache } from "@/actions/user";
 import { toast } from "sonner";
 
 // Adapted simple profile schema. We omit separated industry/subIndustry since it was flattened
@@ -62,7 +62,34 @@ interface ProfileFormProps {
 
 export default function ProfileForm({ initialUser }: ProfileFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isConnectingCalendar, setIsConnectingCalendar] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(
+    Boolean(initialUser.googleCalendarRefreshToken),
+  );
+
+  // Detect redirect back from Google OAuth and update UI immediately.
+  useEffect(() => {
+    const calendarParam = searchParams.get("google_calendar");
+    if (!calendarParam) return;
+
+    if (calendarParam === "connected") {
+      setCalendarConnected(true);
+      setIsConnectingCalendar(false);
+      toast.success("Google Calendar connected successfully!");
+      // Bust Redis cache then re-fetch server data.
+      invalidateUserCache().catch(() => null);
+      router.refresh();
+    } else if (calendarParam === "failed") {
+      const reason = searchParams.get("reason") ?? "unknown";
+      setIsConnectingCalendar(false);
+      toast.error(`Failed to connect Google Calendar (${reason}). Please try again.`);
+    }
+
+    // Clean query params from URL without triggering a navigation.
+    router.replace("/profile", { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Attempt to nicely pre-format skills array to a comma separated string
   const defaultSkills = initialUser.skills ? initialUser.skills.join(", ") : "";
@@ -230,7 +257,7 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
               Connect your Google Calendar to enable AI-powered scheduling for
               study sessions, interviews, and mentorship meetings.
             </p>
-            {initialUser.googleCalendarRefreshToken ? (
+            {calendarConnected ? (
               <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                 <p className="text-sm text-green-700 dark:text-green-300 font-medium flex items-center gap-2">
                   <svg

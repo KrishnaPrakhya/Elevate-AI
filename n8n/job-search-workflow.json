@@ -1,0 +1,137 @@
+{
+  "name": "Elevate AI — Automated Job Search (Tavily)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "elevate-ai-job-search",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "elevate-ai-job-search",
+      "notes": "Receives trigger from Elevate AI /api/n8n/trigger-search. Body includes clerkUserId, targetRole, skills[], careerPlanGaps[], tavilyApiKey, callbackUrl, secret."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({received: true}) }}",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [460, 160],
+      "notes": "Immediately ack the trigger so Elevate AI doesn't time out waiting."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.callbackUrl.replace('/api/webhooks/n8n/job-results', '') }}/api/n8n/user-context",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "clerkUserId", "value": "={{ $json.body.clerkUserId }}" },
+            { "name": "secret", "value": "={{ $json.body.secret }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-user-context",
+      "name": "Get User Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 420],
+      "notes": "Fetches user's targetRole, skills, careerPlanGaps, and searchKeywords from Elevate AI."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  api_key: $('Webhook Trigger').first().json.body.tavilyApiKey,\n  query: ($json.targetRole || 'Software Engineer') + ' jobs hiring now ' + ($json.industry || '') + ' remote OR onsite',\n  search_depth: 'advanced',\n  max_results: 15,\n  include_domains: [\n    'linkedin.com',\n    'indeed.com',\n    'glassdoor.com',\n    'wellfound.com',\n    'jobs.lever.co',\n    'greenhouse.io',\n    'remotive.com',\n    'builtin.com',\n    'dice.com'\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "node-tavily-search",
+      "name": "Search Jobs via Tavily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 420],
+      "notes": "Calls Tavily search API (already configured in Elevate AI .env). Searches across LinkedIn, Indeed, Glassdoor, Wellfound etc. API key is passed securely from Elevate AI trigger payload."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Tavily web search results into the Elevate AI job shape\n// and compute a keyword-based match score.\n\nconst userContext = $('Get User Context').first().json;\nconst tavilyData = $input.first().json;\n\nconst userSkills = (userContext.skills || []).map(s => s.toLowerCase());\nconst userRole = (userContext.targetRole || '').toLowerCase();\nconst gaps = (userContext.careerPlanGaps || []).map(s => s.toLowerCase());\n\nfunction extractCompany(title, url) {\n  // Try \"Role at Company\" pattern\n  const atMatch = title.match(/(?:\\bat\\b|@)\\s+([A-Z][A-Za-z0-9\\s&.,'-]+?)(?:\\s*[-|–•|]|\\s+in\\s|\\s*$)/);\n  if (atMatch) return atMatch[1].trim().slice(0, 60);\n\n  // Try subdomain of known job boards (e.g. jobs.lever.co/company → company)\n  try {\n    const urlObj = new URL(url);\n    const parts = urlObj.pathname.split('/').filter(Boolean);\n    if (['lever', 'greenhouse', 'wellfound'].some(b => urlObj.hostname.includes(b))) {\n      if (parts[0]) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);\n    }\n  } catch {}\n\n  return 'Unknown';\n}\n\nfunction extractTitle(rawTitle) {\n  // Strip trailing \"at Company | Location\" fragments\n  return rawTitle\n    .replace(/\\s*[|–-].*$/, '')\n    .replace(/\\s+at\\s+.+$/i, '')\n    .replace(/\\s+in\\s+.+$/i, '')\n    .trim() || rawTitle;\n}\n\nfunction extractLocation(content) {\n  const m = content.match(/(?:location|based in|office in)[:\\s]+([A-Za-z ,]+?)(?:\\.|\\n|$)/i);\n  return m ? m[1].trim().slice(0, 60) : null;\n}\n\nfunction extractSalary(content) {\n  const m = content.match(/\\$[\\d,]+k?\\s*[-–]\\s*\\$[\\d,]+k?|\\$[\\d,]+k?\\s*(?:\\/yr|\\/year|per year|annually)/i);\n  return m ? m[0] : null;\n}\n\nfunction isRemote(title, content) {\n  return /\\bremote\\b|\\banywhere\\b|\\bwfh\\b|work from home/i.test(title + ' ' + content);\n}\n\nconst results = tavilyData.results || [];\n\nconst jobs = results.map(result => {\n  const title = result.title || '';\n  const content = result.content || result.snippet || '';\n  const url = result.url || '';\n  const combined = (title + ' ' + content).toLowerCase();\n\n  // Match score: role keywords + skill hits + gap hits + Tavily relevance score\n  let score = Math.round((result.score || 0) * 30); // Tavily gives 0-1 relevance\n  if (combined.includes(userRole)) score += 35;\n  for (const skill of userSkills) {\n    if (combined.includes(skill)) score += Math.min(5, 25); // cap skill contribution\n  }\n  for (const gap of gaps) {\n    if (combined.includes(gap)) score += 3;\n  }\n  score = Math.min(score, 100);\n\n  return {\n    company: extractCompany(title, url),\n    role: extractTitle(title),\n    jobUrl: url,\n    description: content.slice(0, 500),\n    location: extractLocation(content),\n    salaryRange: extractSalary(content),\n    remote: isRemote(title, content),\n    matchScore: score,\n  };\n});\n\n// Only forward jobs with a meaningful score and a valid URL\nconst filtered = jobs.filter(j => j.matchScore >= 15 && j.jobUrl && j.role && j.role.length > 3);\n\nreturn [{ json: { jobs: filtered } }];"
+      },
+      "id": "node-score-jobs",
+      "name": "Score & Filter Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420],
+      "notes": "Extracts company/title/salary/location from Tavily search results and scores 0-100 based on role + skill + career-plan-gap keyword matches. Filters out low-relevance results."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook Trigger').first().json.body.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $('Webhook Trigger').first().json.body.secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ clerkUserId: $('Webhook Trigger').first().json.body.clerkUserId, jobs: $json.jobs }) }}",
+        "options": {}
+      },
+      "id": "node-post-results",
+      "name": "Send Results to Elevate AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 420],
+      "notes": "POSTs filtered/scored jobs to /api/webhooks/n8n/job-results. Elevate AI upserts them into JobApplication table and they appear in /jobs."
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Get User Context", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Get User Context": {
+      "main": [[{ "node": "Search Jobs via Tavily", "type": "main", "index": 0 }]]
+    },
+    "Search Jobs via Tavily": {
+      "main": [[{ "node": "Score & Filter Jobs", "type": "main", "index": 0 }]]
+    },
+    "Score & Filter Jobs": {
+      "main": [[{ "node": "Send Results to Elevate AI", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "_meta": {
+    "setup_instructions": {
+      "step1": "Import this file into n8n: Workflows → Import from File",
+      "step2": "NO API key config needed in n8n — Elevate AI passes your TAVILY_API_KEY securely in the trigger payload",
+      "step3": "Add to .env.local: N8N_WEBHOOK_URL=<your n8n webhook URL>  N8N_WEBHOOK_SECRET=<any secret>",
+      "step4": "Activate the workflow in n8n and copy the Production Webhook URL into N8N_WEBHOOK_URL",
+      "step5_optional_schedule": "Add a Schedule Trigger node (daily at 9am) for automatic daily searches — wire it into 'Get User Context' and set clerkUserId + secret + callbackUrl directly in the node"
+    }
+  }
+}

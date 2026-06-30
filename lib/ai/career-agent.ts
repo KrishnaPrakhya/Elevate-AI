@@ -1,4 +1,5 @@
 import { createOllamaClient } from "../ai";
+import { parseLLMJson } from "./json";
 
 export const model = createOllamaClient();
 
@@ -92,10 +93,20 @@ Return ONLY valid JSON in this format:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    const parsed = JSON.parse(cleanedText) as CareerInsight;
+    const emptyInsight: CareerInsight = {
+      skillGaps: [],
+      marketTrends: [],
+      recommendedActions: [],
+      careerPathSuggestions: [],
+    };
+    const parsed = parseLLMJson<CareerInsight>(text, emptyInsight);
 
-    return parsed;
+    return {
+      skillGaps: Array.isArray(parsed.skillGaps) ? parsed.skillGaps : [],
+      marketTrends: Array.isArray(parsed.marketTrends) ? parsed.marketTrends : [],
+      recommendedActions: Array.isArray(parsed.recommendedActions) ? parsed.recommendedActions : [],
+      careerPathSuggestions: Array.isArray(parsed.careerPathSuggestions) ? parsed.careerPathSuggestions : [],
+    };
   } catch (error) {
     console.error("Error analyzing career profile:", error);
     return {
@@ -141,8 +152,14 @@ Return JSON:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    const parsed = parseLLMJson<{ gaps: string[]; learningResources: string[] }>(text, {
+      gaps: [],
+      learningResources: [],
+    });
+    return {
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
+      learningResources: Array.isArray(parsed.learningResources) ? parsed.learningResources : [],
+    };
   } catch (error) {
     console.error("Error analyzing skill gaps:", error);
     return { gaps: [], learningResources: [] };
@@ -204,8 +221,17 @@ Return JSON array:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "[]";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    const parsed = parseLLMJson<Array<{
+      question: string;
+      options: string[];
+      correctAnswer: string;
+      explanation: string;
+      topic: string;
+      difficulty: "easy" | "medium" | "hard";
+    }>>(text, []);
+    return Array.isArray(parsed)
+      ? parsed.filter((q) => q && typeof q.question === "string" && Array.isArray(q.options))
+      : [];
   } catch (error) {
     console.error("Error generating interview quiz:", error);
     return [];
@@ -400,8 +426,12 @@ Return JSON:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    return parseLLMJson(text, {
+      pathName: "Career Advancement Path",
+      weeklyPlan: [],
+      resources: [],
+      milestones: [],
+    });
   } catch (error) {
     console.error("Error recommending learning path:", error);
     return {
@@ -457,8 +487,7 @@ Return JSON:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    return parseLLMJson(text, { content: "", highlights: [], suggestions: [] });
   } catch (error) {
     console.error("Error generating cover letter:", error);
     return { content: "", highlights: [], suggestions: [] };
@@ -514,8 +543,12 @@ Return JSON:
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "{}";
-    const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
-    return JSON.parse(cleanedText);
+    return parseLLMJson(text, {
+      overallScore: 50,
+      skillMatch: { matched: [] as string[], missing: [] as string[] },
+      experienceMatch: false,
+      recommendations: [] as string[],
+    });
   } catch (error) {
     console.error("Error scoring job match:", error);
     return {

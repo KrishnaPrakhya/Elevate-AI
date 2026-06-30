@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { DashboardSkeleton } from "@/components/loaders/skeleton-loader";
+import CloseYourGaps from "@/components/growth/CloseYourGaps";
 export interface SalaryRange {
   role: string;
   min: number;
@@ -447,6 +448,10 @@ function DashboardPage() {
           </Card>
         </div>
       )}
+
+      <div className="mb-6">
+        <CloseYourGaps />
+      </div>
 
       <DashBoardView
         insights={rawInsights}

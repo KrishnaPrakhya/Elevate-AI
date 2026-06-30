@@ -275,6 +275,13 @@ export async function updateUser(data: UpdateUserData) {
 }
 
 
+export async function invalidateUserCache() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  await invalidateCachePattern(`user:profile:${userId}`);
+  revalidatePath("/profile");
+}
+
 export async function getOnboardingStatus(){
   const {userId}=await auth();
   if(!userId) throw new Error("Unauthorized");

@@ -13,6 +13,7 @@ import {
   User,
   LogOut,
   FolderOpen,
+  Search,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -123,6 +124,15 @@ async function Header() {
                   >
                     <Mic className="h-4 w-4 text-emerald-500" />
                     <span>Voice Interview</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/jobs"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Search className="h-4 w-4 text-primary" />
+                    <span>Job Search</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -271,6 +281,15 @@ async function Header() {
                   >
                     <Mic className="h-4 w-4 text-emerald-500" />
                     <span>Voice Interview</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/jobs"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Search className="h-4 w-4 text-primary" />
+                    <span>Job Search</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -934,3 +934,131 @@ function getInactivityNudgeMessage(streakDays: number): string {
   if (streakDays > 0) return `Don't let your ${streakDays}-day streak go to waste!`;
   return "Every expert was once a beginner. Start today!";
 }
+
+// ============================================
+// AUTOMATED N8N JOB SEARCH (daily cron)
+// ============================================
+
+export const automatedJobSearch = inngest.createFunction(
+  {
+    id: "automated-job-search",
+    name: "Automated Daily Job Search via n8n",
+    triggers: { cron: "0 8 * * *" }, // Every day at 8:00 AM UTC
+  },
+  async ({ step }) => {
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+    const n8nSecret = process.env.N8N_WEBHOOK_SECRET ?? "";
+    const tavilyApiKey = process.env.TAVILY_API_KEY ?? "";
+    const appBaseUrl =
+      process.env.N8N_APP_BASE_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "https://elevate-ai-snowy.vercel.app";
+
+    if (!n8nWebhookUrl) {
+      console.warn("[automatedJobSearch] N8N_WEBHOOK_URL not set — skipping.");
+      return { skipped: true, reason: "N8N_WEBHOOK_URL not configured" };
+    }
+
+    // Step 1: Fetch all users who have a targetRole or an active career plan
+    const eligibleUsers = await step.run("fetch-eligible-users", async () => {
+      const users = await db.user.findMany({
+        where: {
+          OR: [
+            { targetRole: { not: null } },
+            { careerPlans: { some: { isActive: true } } },
+          ],
+        },
+        select: {
+          clerkUserId: true,
+          targetRole: true,
+          skills: true,
+          experience: true,
+          industry: true,
+          careerPlans: {
+            where: { isActive: true },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { planDetails: true, targetRole: true },
+          },
+        },
+      });
+
+      return users.map((u) => {
+        const plan = u.careerPlans[0];
+        const planDetails = plan?.planDetails as Record<string, unknown> | null;
+        const topGaps: string[] = Array.isArray(planDetails?.topGaps)
+          ? (planDetails.topGaps as { skill?: string }[])
+              .map((g) => (typeof g === "string" ? g : g?.skill ?? ""))
+              .filter(Boolean)
+          : [];
+
+        return {
+          clerkUserId: u.clerkUserId,
+          targetRole: plan?.targetRole ?? u.targetRole ?? "",
+          skills: u.skills ?? [],
+          experience: u.experience ?? 0,
+          industry: u.industry ?? "",
+          careerPlanGaps: topGaps,
+        };
+      });
+    });
+
+    if (eligibleUsers.length === 0) {
+      return { triggered: 0, reason: "No eligible users found" };
+    }
+
+    // Step 2: Trigger n8n webhook for each eligible user (with concurrency guard)
+    let triggered = 0;
+    let failed = 0;
+
+    await step.run("trigger-n8n-for-users", async () => {
+      for (const user of eligibleUsers) {
+        if (!user.targetRole) continue; // Skip users without a target role
+
+        const payload = {
+          clerkUserId: user.clerkUserId,
+          targetRole: user.targetRole,
+          skills: user.skills,
+          experience: user.experience,
+          industry: user.industry,
+          careerPlanGaps: user.careerPlanGaps,
+          callbackUrl: `${appBaseUrl}/api/webhooks/n8n/job-results`,
+          secret: n8nSecret,
+          tavilyApiKey,
+        };
+
+        try {
+          const res = await fetch(n8nWebhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15_000),
+          });
+
+          if (res.ok) {
+            triggered++;
+          } else {
+            console.error(
+              `[automatedJobSearch] n8n trigger failed for ${user.clerkUserId}: ${res.status}`
+            );
+            failed++;
+          }
+        } catch (err) {
+          console.error(
+            `[automatedJobSearch] n8n trigger error for ${user.clerkUserId}:`,
+            err
+          );
+          failed++;
+        }
+
+        // Small delay between triggers to avoid overwhelming n8n
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    });
+
+    console.log(
+      `[automatedJobSearch] Complete: ${triggered} triggered, ${failed} failed out of ${eligibleUsers.length} eligible users`
+    );
+    return { triggered, failed, total: eligibleUsers.length };
+  }
+);

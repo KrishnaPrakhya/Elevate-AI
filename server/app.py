@@ -572,6 +572,15 @@ for _env_file in (
 ):
     load_dotenv(_env_file, override=True)
 
+# Google returns previously-granted scopes (e.g. gmail.send) alongside the ones
+# we request because we pass include_granted_scopes=true. oauthlib treats that
+# superset as a mismatch and raises "Scope has changed". Relaxing scope checking
+# lets the token exchange succeed with the broader grant. Also allow http
+# localhost redirect URIs during local development.
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+if (os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "").startswith("http://")):
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
 # FastAPI App Initialization
 app = FastAPI()
 
@@ -1290,7 +1299,8 @@ async def detect_intent(
     Returns: {"intent": str, "confidence": float, "params": {}}
     """
     import re
-    message = user_message.lower().strip()
+    # Normalize common "calender" misspelling so all downstream checks work correctly.
+    message = user_message.lower().strip().replace("calender", "calendar")
 
     # === PRIORITY 1: Calendar Events (HIGHEST - must check first) ===
     # Check for ANY calendar-related intent first (including "add to calendar", "google calendar", etc.)
@@ -1298,7 +1308,9 @@ async def detect_intent(
         r"add.*to (my )?calendar", r"add (my )?.*to calendar",
         r"create (an? )?event", r"schedule.*calendar",
         r"put.*on calendar", r"on my calendar", r"to (my )?(google )?calendar",
-        r"google calendar", r"add.*calendar", r"calendar event"
+        r"google calendar", r"add.*calendar", r"calendar event",
+        # scheduling verb + specific time (e.g. "schedule a session at 11pm today")
+        r"(schedule|book|set up|create|add)\s+.{0,40}\b(at|from)\s+\d{1,2}(:\d{2})?\s*(am|pm)",
     ]
     for pattern in calendar_patterns:
         if re.search(pattern, message):
@@ -1399,7 +1411,9 @@ async def detect_intent(
     has_schedule = any(k in message for k in ["schedule", "plan", "roadmap", "timeline"])
     has_timeframe = any(k in message for k in ["week", "month", "day", "30", "60", "90"])
     has_prep = any(k in message for k in ["prep", "preparation", "study", "learn"])
-    if has_schedule and (has_timeframe or has_prep):
+    # A specific clock time (e.g. "11 pm", "10:30 am") means it's a calendar event, not a multi-week plan.
+    has_specific_time = bool(re.search(r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b", message))
+    if has_schedule and (has_timeframe or has_prep) and not has_specific_time:
         return {"intent": "preparation_schedule", "confidence": 0.9, "params": {}}
 
     # === PRIORITY 6: Document Improvement ===
@@ -1568,7 +1582,11 @@ async def document_improver(state: AgentState) -> AgentState:
 
         result = await improve_document(DocumentInput(
             content=content,
-            target_role=target_role or user_profile.get("current_role"), # Fallback to profile
+            # Prefer the centralized targetRole the rest of the platform uses,
+            # so document improvements align with the user's actual career focus.
+            target_role=target_role
+            or user_profile.get("targetRole")
+            or user_profile.get("current_role"),
             industry=user_profile.get("industry"),
             job_description=job_description,
             company_name=company_name
@@ -2288,22 +2306,24 @@ async def chat_endpoint(
 
    
         try:
+            # ChatMessage.createdAt is TIMESTAMP WITHOUT TIME ZONE (offset-naive).
+            # Pass naive UTC datetimes to avoid asyncpg's offset-aware/naive mismatch error.
+            now_naive = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
             # Save user's message
             user_msg_db = ChatHistory(
                 userId=user.id,
-                # role="user" #  <-- Would be ideal if schema supported it
                 content=user_message_content,
-                createdAt=datetime.datetime.now(datetime.UTC) # Ensure timestamp for ordering
+                createdAt=now_naive,
             )
             db.add(user_msg_db)
 
             # Save assistant's response
             if assistant_response_content:
                 assistant_msg_db = ChatHistory(
-                    userId=user.id, # Still associating with user ID due to schema
+                    userId=user.id,
                     content=assistant_response_content,
-                    # role="assistant" # <-- Would be ideal
-                    createdAt=datetime.datetime.now(datetime.UTC) # Ensure it's later or has distinct timestamp
+                    createdAt=now_naive,
                 )
                 db.add(assistant_msg_db)
             
@@ -2720,18 +2740,34 @@ async def google_callback(
     if not clerk_user_id:
         raise HTTPException(status_code=400, detail="Missing user context in OAuth state")
 
+    failure_url = os.getenv(
+        "GOOGLE_OAUTH_FAILURE_REDIRECT",
+        "https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed",
+    )
+
     client_config = _google_oauth_client_config()
     if not client_config:
-        raise HTTPException(status_code=500, detail="Google OAuth client configuration is missing")
+        return RedirectResponse(
+            url=_append_query_params(failure_url, {"reason": "client_config_missing"})
+        )
 
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, state=state)
-    flow.redirect_uri = _google_oauth_redirect_uri()
-    flow.fetch_token(code=code)
+    try:
+        flow = Flow.from_client_config(client_config, scopes=SCOPES, state=state)
+        flow.redirect_uri = _google_oauth_redirect_uri()
+        flow.fetch_token(code=code)
+    except Exception as exc:
+        # Surface the real reason (e.g. scope mismatch, invalid_grant) instead of
+        # a bare 500, and log the full traceback for diagnosis.
+        logger.exception("Google OAuth token exchange failed")
+        return RedirectResponse(
+            url=_append_query_params(
+                failure_url, {"reason": "token_exchange_failed", "detail": str(exc)[:200]}
+            )
+        )
 
     credentials = flow.credentials
     if not credentials or not credentials.refresh_token:
         # This can happen if consent was previously granted without prompt=consent.
-        failure_url = os.getenv("GOOGLE_OAUTH_FAILURE_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed")
         return RedirectResponse(
             url=_append_query_params(
                 failure_url,
@@ -2739,17 +2775,27 @@ async def google_callback(
             )
         )
 
-    async with AsyncSessionLocal() as db:
-        stmt = select(User).where(User.clerkUserId == clerk_user_id)
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+    try:
+        async with AsyncSessionLocal() as db:
+            stmt = select(User).where(User.clerkUserId == clerk_user_id)
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
 
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found for provided clerk_user_id")
+            if not user:
+                return RedirectResponse(
+                    url=_append_query_params(failure_url, {"reason": "user_not_found"})
+                )
 
-        user.googleCalendarRefreshToken = credentials.refresh_token
-        user.googleCalendarConnectedAt = datetime.datetime.utcnow()
-        await db.commit()
+            user.googleCalendarRefreshToken = credentials.refresh_token
+            user.googleCalendarConnectedAt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            await db.commit()
+    except Exception as exc:
+        logger.exception("Failed to persist Google refresh token")
+        return RedirectResponse(
+            url=_append_query_params(
+                failure_url, {"reason": "persist_failed", "detail": str(exc)[:200]}
+            )
+        )
 
     success_url = next_url or os.getenv("GOOGLE_OAUTH_SUCCESS_REDIRECT", "https://elevate-ai-snowy.vercel.app/profile?google_calendar=connected")
     return RedirectResponse(url=_append_query_params(success_url, {"google_calendar": "connected"}))

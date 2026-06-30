@@ -179,16 +179,82 @@ async function savePlan(userId: string, entry: PlanHistoryEntry): Promise<void> 
   }
 }
 
+/**
+ * Seed UserSkillProgress entries for the plan's target skill gaps so skill
+ * tracking reflects the active plan. Creates a SkillNode for any new skill and
+ * a 0% progress row (existing mastery is left untouched). Best-effort.
+ */
+async function seedSkillTrackingFromPlan(
+  userId: string,
+  gaps: { skill: string; importance: number }[]
+): Promise<void> {
+  for (const gap of gaps || []) {
+    const name = gap?.skill?.trim();
+    if (!name) continue;
+
+    try {
+      let skill = await db.skillNode.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+      });
+
+      if (!skill) {
+        skill = await db.skillNode
+          .create({ data: { name, category: "career-plan" } })
+          .catch(async () =>
+            // Handle a race / case-collision on the unique name.
+            db.skillNode.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })
+          );
+      }
+
+      if (!skill) continue;
+
+      await db.userSkillProgress.upsert({
+        where: { userId_skillId: { userId, skillId: skill.id } },
+        update: {}, // don't reset progress the user has already built
+        create: { userId, skillId: skill.id, masteryLevel: 0 },
+      });
+    } catch (error) {
+      console.error(`Failed to seed skill tracking for "${name}":`, error);
+    }
+  }
+}
+
 async function getActivePlan(userId: string): Promise<PlanHistoryEntry | null> {
   try {
     const row = await db.careerPlan.findFirst({
       where: { userId, isActive: true },
       orderBy: { version: "desc" },
     });
-    return row ? rowToPlanEntry(row) : null;
+    if (row) return rowToPlanEntry(row);
+
+    // No DB row yet (e.g. a plan created before the CareerPlan table existed) —
+    // fall back to the Redis cache so existing plans still surface, and migrate
+    // it into the DB so it becomes the durable source of truth going forward.
+    const cached = (await redis.get<PlanHistoryEntry>(buildActiveKey(userId))) || null;
+    if (cached) {
+      await db.careerPlan
+        .create({
+          data: {
+            id: cached.id,
+            userId,
+            version: cached.version || 1,
+            source: cached.source,
+            targetRole: cached.targetRole,
+            timelineWeeks: cached.timelineWeeks,
+            weeklyHours: cached.weeklyHours,
+            planMarkdown: cached.planMarkdown,
+            checkpoints: cached.checkpoints as unknown as object,
+            planDetails: cached.planDetails as unknown as object,
+            isActive: true,
+          },
+        })
+        .catch(() => {
+          /* already migrated or race — ignore */
+        });
+    }
+    return cached;
   } catch (error) {
     console.error("Failed to read active career plan:", error);
-    // Fall back to the Redis cache if the DB read fails.
     try {
       return (await redis.get<PlanHistoryEntry>(buildActiveKey(userId))) || null;
     } catch {
@@ -544,6 +610,10 @@ export async function POST(request: NextRequest) {
     }
 
     await savePlan(user.id, savedPlan);
+
+    // Seed skill tracking from the plan's target gaps so the user's progress can
+    // be measured against the plan (lessons/quizzes/sims then raise mastery).
+    await seedSkillTrackingFromPlan(user.id, savedPlan.planDetails.topGaps);
 
     await recordExecutedAction({
       userId: user.id,

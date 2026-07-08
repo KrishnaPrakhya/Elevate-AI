@@ -315,6 +315,73 @@
   @apply pt-6 pb-2;
 }
 
+/* ============================================
+   Landing page — scoped token overrides.
+   "Instrument panel" palette: cool ink ground + one
+   signal-amber accent + a muted cyan reserved for
+   diagram edges only. Overriding the base shadcn tokens
+   here (rather than globally) means every existing
+   utility class (bg-primary, border, text-muted-foreground,
+   the Button component, FeatureCard, etc.) automatically
+   re-themes inside .landing-scope in both light and dark
+   mode, without touching the rest of the app.
+   ============================================ */
+.landing-scope {
+  --background: hsl(200 24% 97%);
+  --foreground: hsl(222 34% 13%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 34% 13%);
+  --primary: hsl(36 96% 47%);
+  --primary-foreground: hsl(28 55% 12%);
+  --secondary: hsl(210 20% 93%);
+  --secondary-foreground: hsl(222 34% 13%);
+  --muted: hsl(210 18% 93%);
+  --muted-foreground: hsl(222 14% 42%);
+  --accent: hsl(210 20% 93%);
+  --accent-foreground: hsl(222 34% 13%);
+  --border: hsl(210 18% 87%);
+  --input: hsl(210 18% 87%);
+  --ring: hsl(36 96% 47%);
+  --landing-data: hsl(193 55% 38%);
+  --landing-ground: hsl(200 24% 97%);
+  --landing-ground-deep: hsl(200 20% 93%);
+}
+
+.dark .landing-scope {
+  --background: hsl(224 36% 6%);
+  --foreground: hsl(204 24% 95%);
+  --card: hsl(223 30% 9%);
+  --card-foreground: hsl(204 24% 95%);
+  --primary: hsl(38 94% 58%);
+  --primary-foreground: hsl(28 55% 12%);
+  --secondary: hsl(222 26% 13%);
+  --secondary-foreground: hsl(204 24% 95%);
+  --muted: hsl(222 26% 13%);
+  --muted-foreground: hsl(216 14% 66%);
+  --accent: hsl(222 26% 13%);
+  --accent-foreground: hsl(204 24% 95%);
+  --border: hsl(220 22% 19%);
+  --input: hsl(220 22% 19%);
+  --ring: hsl(38 94% 58%);
+  --landing-data: hsl(193 65% 62%);
+  --landing-ground: hsl(224 36% 6%);
+  --landing-ground-deep: hsl(224 40% 4%);
+}
+
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-landing-body {
+  font-family: var(--font-landing-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-mono-data {
+  font-family: var(--font-mono-data), ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
 @layer utilities {
   .animate-dash {
     stroke-dasharray: 8;

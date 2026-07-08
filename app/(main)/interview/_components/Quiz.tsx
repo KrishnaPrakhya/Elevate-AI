@@ -324,7 +324,7 @@ export default function Quiz() {
     );
   }
 
-  if (!quizData) {
+  if (!quizData || quizData.length === 0) {
     return (
       <Card className="overflow-hidden border-t-4 border-t-primary transition-all hover:shadow-md">
         <CardHeader className="pb-2">
@@ -335,7 +335,7 @@ export default function Quiz() {
         </CardHeader>
         <CardContent className="pt-4 pb-6">
           <p className="text-muted-foreground mb-6">
-            This quiz contains 10 questions specific to your industry and
+            This quiz contains 5 questions specific to your industry and
             skills. Take your time and choose the best answer for each question.
           </p>
 
@@ -403,6 +403,16 @@ export default function Quiz() {
   }
 
   const question = quizData[currentQuestion];
+  if (!question) {
+    return (
+      <Card className="p-8">
+        <div className="text-center space-y-4">
+          <p className="text-muted-foreground">Something went wrong loading the question.</p>
+          <Button onClick={startNewQuiz}>Try Again</Button>
+        </div>
+      </Card>
+    );
+  }
   const progress = ((currentQuestion + 1) / quizData.length) * 100;
 
   return (

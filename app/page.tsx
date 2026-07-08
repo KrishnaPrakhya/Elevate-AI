@@ -1,990 +1,435 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  Award,
-  BookOpen,
   CheckCircle,
   FileText,
-  MessageSquare,
-  Star,
+  Mic,
+  Route,
+  BookOpen,
+  CalendarClock,
+  Search,
+  GitBranch,
   Target,
-  Sparkles,
-  TrendingUp,
-  Zap,
-  BarChart,
-  Users,
-  Briefcase,
-  PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import FeatureCard from "@/components/LandingPage/feature-card";
-import PricingCard from "@/components/LandingPage/pricing-card";
 import FaqAccordion from "@/components/LandingPage/faq-accordion";
-import StatCard from "@/components/LandingPage/stat-card";
-import AnimatedGradient from "@/components/LandingPage/animated-gradient";
-import { useMobile } from "@/hooks/use-mobile";
+import TopoCanvas from "@/components/LandingPage/topo-canvas";
+import AgentNetwork from "@/components/LandingPage/agent-network";
 import { motion } from "framer-motion";
-import { redirect } from "next/navigation";
-import Image from "next/image";
 
-type LandingMetrics = {
-  totalUsers: number;
-  resumesReviewed: number;
-  simulationsRun: number;
-  coverLettersGenerated: number;
-  assessmentsCompleted: number;
-  portfoliosBuilt: number;
-  updatedAt: string;
+const EASE = [0.16, 1, 0.3, 1] as const;
+
+const FEATURES = [
+  {
+    icon: <Route className="h-5 w-5" />,
+    title: "A career plan that persists",
+    description:
+      "Generates a week-by-week roadmap toward your target role, stores it durably, and seeds trackable skill gaps automatically — no starting over when a cache expires.",
+  },
+  {
+    icon: <FileText className="h-5 w-5" />,
+    title: "Resumes, actually edited",
+    description:
+      '"Enhance with AI" rewrites the section you\'re on and replaces it in place — not a wall of generic suggestions left for you to copy in by hand.',
+  },
+  {
+    icon: <Mic className="h-5 w-5" />,
+    title: "A voice interview simulator",
+    description:
+      "A live voice call with an AI interviewer — real transcription, real-time responses, and structured feedback after each session.",
+  },
+  {
+    icon: <BookOpen className="h-5 w-5" />,
+    title: "Academy & skill tracking",
+    description:
+      "Structured learning paths with lessons and assignments feed a real mastery score per skill, visible across your plan, resume, and dashboard.",
+  },
+  {
+    icon: <CalendarClock className="h-5 w-5" />,
+    title: "Agents that take action",
+    description:
+      "Ask for a study session or interview prep block, and the scheduling agent creates the actual Google Calendar event — with your confirmation first.",
+  },
+  {
+    icon: <Search className="h-5 w-5" />,
+    title: "Automated job matching",
+    description:
+      "A search agent scores open roles against your target role and skill gaps, then tracks each one from first match through offer.",
+  },
+];
+
+const PHASES = [
+  {
+    title: "Build your profile & plan",
+    description:
+      "Add your background and target role. The career agent maps the gaps between where you are and where you're headed.",
+  },
+  {
+    title: "Practice and create",
+    description:
+      "Sharpen your resume, cover letter, and interview answers — including a full voice interview simulation — with feedback tied to your target role.",
+  },
+  {
+    title: "Let the agents run it",
+    description:
+      "Approve an action once and the right agent executes it: a calendar event, a job search pass, or a scheduled study block.",
+  },
+];
+
+const TOUR_HIGHLIGHTS = [
+  {
+    title: "Resume refinement",
+    description:
+      "In-place AI edits and ATS-aware feedback tied to a target role.",
+  },
+  {
+    title: "Interview practice",
+    description:
+      "Timed simulations, including live voice, with structured feedback.",
+  },
+  {
+    title: "Role targeting",
+    description:
+      "Skill-gap analysis mapped directly to your chosen target role.",
+  },
+  {
+    title: "Action planning",
+    description:
+      "Agent-executed calendar events and job search, not just checklists.",
+  },
+];
+
+// Section eyebrow + heading reveal — used directly on each header block so
+// it fires independently of any parent stagger container.
+const headerReveal = {
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-100px" },
+  transition: { duration: 0.6, ease: EASE },
 };
 
 export default function Home() {
   const currentYear = new Date().getFullYear();
-  const isMobile = useMobile();
-  const heroRef = useRef<HTMLDivElement>(null);
-  const featuresRef = useRef<HTMLDivElement>(null);
-  const statsRef = useRef<HTMLDivElement>(null);
-  const [metrics, setMetrics] = useState<LandingMetrics | null>(null);
-  const [metricsError, setMetricsError] = useState(false);
+  const router = useRouter();
 
-  const fadeInUpVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.6 },
-    },
-  };
-
-  const staggerContainerVariants = {
+  const heroStagger = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
   };
-
-  const floatAnimation = {
-    initial: { y: 0 },
-    animate: {
-      y: [0, -10, 0],
-      transition: {
-        duration: 3,
-        repeat: Number.POSITIVE_INFINITY,
-        ease: "easeInOut",
-      },
-    },
+  const heroItem = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } },
   };
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadMetrics = async () => {
-      try {
-        const response = await fetch("/api/landing/metrics", {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to load landing metrics");
-        }
-
-        const data = (await response.json()) as LandingMetrics;
-        if (isActive) {
-          setMetrics(data);
-          setMetricsError(false);
-        }
-      } catch (error) {
-        if (isActive) {
-          setMetricsError(true);
-        }
-      }
-    };
-
-    loadMetrics();
-    const refreshInterval = setInterval(loadMetrics, 1000 * 60 * 60 * 4);
-
-    return () => {
-      isActive = false;
-      clearInterval(refreshInterval);
-    };
-  }, []);
-
-  const formatMetric = (value?: number) =>
-    typeof value === "number" ? value.toLocaleString("en-US") : "—";
-
-  const lastSynced = metrics?.updatedAt ? new Date(metrics.updatedAt) : null;
-
-  const statItems = [
-    {
-      value: formatMetric(metrics?.totalUsers),
-      label: "Members onboarded",
-      icon: <Users className="h-5 w-5 text-primary" />,
-    },
-    {
-      value: formatMetric(metrics?.resumesReviewed),
-      label: "Resumes reviewed",
-      icon: <FileText className="h-5 w-5 text-primary" />,
-    },
-    {
-      value: formatMetric(metrics?.simulationsRun),
-      label: "Interview simulations",
-      icon: <MessageSquare className="h-5 w-5 text-primary" />,
-    },
-    {
-      value: formatMetric(metrics?.coverLettersGenerated),
-      label: "Cover letters created",
-      icon: <Briefcase className="h-5 w-5 text-primary" />,
-    },
-  ];
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="landing-scope font-landing-body flex min-h-screen flex-col bg-background text-foreground">
       <main className="flex-1">
-        {/* Hero Section with animated gradient background */}
-        <section
-          className="relative overflow-hidden dark:bg-background/50 pt-16 min-h-[calc(100svh-4rem)] flex items-center"
-          ref={heroRef}
-        >
-          <AnimatedGradient />
+        {/* Hero */}
+        <section className="relative overflow-hidden pt-16">
+          <div className="absolute inset-0">
+            <TopoCanvas />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background" />
+          </div>
 
-          {/* Decorative elements */}
-          <div className="absolute top-20 left-10 w-24 h-24 rounded-full bg-primary/10 dark:bg-primary/5 blur-xl"></div>
-          <div className="absolute bottom-40 right-10 w-32 h-32 rounded-full bg-primary/10 dark:bg-primary/5 blur-xl"></div>
-          <div className="absolute top-1/3 right-1/4 w-8 h-8 rounded-full bg-primary/30 dark:bg-primary/20 blur-sm"></div>
-          <div className="absolute bottom-1/4 left-1/3 w-6 h-6 rounded-full bg-primary/20 dark:bg-primary/10 blur-sm"></div>
-
-          {/* Floating shapes */}
-          <motion.div
-            className="absolute top-40 right-[15%] w-12 h-12 rounded-lg rotate-12 border border-primary/20 dark:border-primary/10 hidden lg:block"
-            initial={{ y: 0, rotate: 12 }}
-            animate={{
-              y: [0, -15, 0],
-              rotate: [12, 20, 12],
-              transition: {
-                y: {
-                  duration: 3,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "easeInOut",
-                },
-                rotate: {
-                  duration: 5,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "easeInOut",
-                },
-              },
-            }}
-          />
-
-          <motion.div
-            className="absolute bottom-32 left-[20%] w-10 h-10 rounded-full border border-primary/20 hidden lg:block"
-            initial={{ y: 0 }}
-            animate={{
-              y: [0, 15, 0],
-              transition: {
-                duration: 4,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              },
-            }}
-          />
-
-          <div className="container mx-auto relative z-10 px-4 md:px-6 py-10 md:py-14">
+          <div className="container relative z-10 mx-auto px-4 py-16 md:px-6 md:py-24">
             <motion.div
-              className="grid gap-8 items-center lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:gap-14"
+              className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16"
               initial="hidden"
               animate="visible"
-              variants={staggerContainerVariants}
+              variants={heroStagger}
             >
-              <motion.div
-                className="flex flex-col items-center lg:items-start justify-center space-y-6 text-center lg:text-left"
-                variants={fadeInUpVariants}
-              >
-                <div className="inline-block w-fit rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary backdrop-blur-sm border border-primary/20 mx-auto lg:mx-0">
-                  <span className="flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    AI Career Command Center
+              <motion.div className="space-y-7" variants={heroItem}>
+                <div className="inline-flex items-center gap-2 rounded-sm border border-primary/30 bg-primary/5 px-3 py-1.5">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                  </span>
+                  <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-primary">
+                    System status — 5 agents online
                   </span>
                 </div>
-                <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
-                  Turn your experience into{" "}
-                  <span className="gradient-text">interviews</span>.
+
+                <h1
+                  className="font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
+                  style={{ textWrap: "balance" }}
+                >
+                  Plan it once.
+                  <br />
+                  Let the agents run it.
                 </h1>
-                <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl mx-auto lg:mx-0">
-                  ElevateAI turns your resume, goals, and skills into a focused
-                  job-search plan with resume clarity, role targeting, and
-                  interview practice that keeps you moving.
+
+                <p className="max-w-[54ch] text-lg leading-relaxed text-muted-foreground">
+                  Elevate AI turns a career plan into calendar events,
+                  applications, and interview practice. A supervisor reads each
+                  request and dispatches it to the agent built for the job, so
+                  nothing stalls in a to-do list.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4 items-center lg:items-start justify-center lg:justify-start">
+
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <Button
-                    onClick={() => {
-                      redirect("/dashboard");
-                    }}
+                    onClick={() => router.push("/dashboard")}
                     size="lg"
-                    className="gap-1.5 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all group relative overflow-hidden"
+                    className="group gap-1.5"
                   >
-                    <span className="relative z-10">Open Dashboard</span>
-                    <ArrowRight className="h-4 w-4 relative z-10" />
-                    <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
+                    Open Dashboard
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                   <Button size="lg" variant="outline" asChild>
-                    <Link href="#product-tour">Watch Product Tour</Link>
+                    <Link href="#faq">Know More</Link>
                   </Button>
                 </div>
-                <div className="grid gap-3 pt-4 sm:grid-cols-2 text-sm text-muted-foreground w-full max-w-xl">
-                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2">
-                    <CheckCircle className="h-4 w-4 text-primary" />
-                    Resume clarity and role alignment
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2">
-                    <CheckCircle className="h-4 w-4 text-primary" />
-                    Interview practice with feedback
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 sm:col-span-2">
-                    <CheckCircle className="h-4 w-4 text-primary" />
-                    Action plans you can execute daily
-                  </div>
-                </div>
-              </motion.div>
-              <motion.div
-                className="flex w-full items-center justify-center lg:justify-end lg:pl-4"
-                variants={fadeInUpVariants}
-                {...floatAnimation}
-              >
-                <div className="relative">
-                  <div className="absolute -top-6 -left-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
-                  <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl"></div>
 
-                  <div className="relative bg-gradient-to-br from-background to-background/80 backdrop-blur-sm border rounded-2xl shadow-xl p-2 md:p-3 max-w-[500px]">
-                    <Image
-                      width={1000}
-                      height={100}
-                      alt="AI Career Coach Dashboard"
-                      className="rounded-xl w-full"
-                      src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
-                    />
-
-                    <div className="absolute -top-4 -right-4 bg-background rounded-lg border shadow-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        </div>
-                        <div className="text-sm">
-                          <p className="font-medium">Resume Review Ready</p>
-                          <p className="text-xs text-muted-foreground">
-                            Structured feedback generated
-                          </p>
-                        </div>
-                      </div>
+                <div className="grid gap-2.5 pt-2 sm:grid-cols-2">
+                  {[
+                    "Durable plan — persists across sessions",
+                    "Real calendar events, not suggestions",
+                    "Job matches scored against your plan",
+                  ].map((item, i) => (
+                    <div
+                      key={item}
+                      className={`flex items-center gap-2 rounded-sm border bg-card/60 px-3 py-2 text-sm text-muted-foreground ${
+                        i === 2 ? "sm:col-span-2" : ""
+                      }`}
+                    >
+                      <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      {item}
                     </div>
+                  ))}
+                </div>
+              </motion.div>
 
-                    <div className="absolute -bottom-6 -left-6 bg-background rounded-lg border shadow-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Target className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="text-sm">
-                          <p className="font-medium">Interview Preparation</p>
-                          <p className="text-xs text-muted-foreground">
-                            Questions and feedback organized
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+              <motion.div variants={heroItem}>
+                <div className="rounded-md border bg-card/80 backdrop-blur-sm">
+                  <div className="flex items-center justify-between border-b px-4 py-3">
+                    <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                      Agent routing
+                    </span>
+                    <span className="font-mono-data text-[11px] text-muted-foreground/70">
+                      supervisor.dispatch()
+                    </span>
                   </div>
+                  <div className="h-[340px] p-2 sm:h-[380px]">
+                    <AgentNetwork />
+                  </div>
+                  <p className="border-t px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                    A supervisor reads each request and hands it to the agent
+                    built for the job — career advice, scheduling, interview
+                    prep, job search, or document edits.
+                  </p>
                 </div>
               </motion.div>
-            </motion.div>
-          </div>
-
-          {/* Curved divider */}
-          <div className="absolute bottom-0 left-0 right-0">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 1440 120"
-              className="w-full h-auto"
-            >
-              <path
-                fill="currentColor"
-                fillOpacity="1"
-                d="M0,64L80,69.3C160,75,320,85,480,80C640,75,800,53,960,48C1120,43,1280,53,1360,58.7L1440,64L1440,120L1360,120C1280,120,1120,120,960,120C800,120,640,120,480,120C320,120,160,120,80,120L0,120Z"
-                className="text-background"
-              ></path>
-            </svg>
-          </div>
-        </section>
-
-        {/* Stats Section */}
-        <section
-          className="py-16 relative dark:bg-background/50"
-          ref={statsRef}
-        >
-          {/* Decorative elements */}
-          <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-            <div className="absolute -top-10 -left-10 w-40 h-40 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl"></div>
-            <div className="absolute top-1/2 right-0 w-60 h-60 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl"></div>
-
-            {/* Grid pattern */}
-            <div
-              className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]"
-              style={{
-                backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
-                backgroundSize: "40px 40px",
-              }}
-            ></div>
-          </div>
-
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
-            <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-12"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" />
-                    Live Platform Activity
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  Real usage, updated frequently
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Live counts from ElevateAI usage. Metrics refresh every few
-                  hours.
-                </p>
-                <div className="text-xs text-muted-foreground">
-                  {metricsError
-                    ? "Live metrics are temporarily unavailable."
-                    : lastSynced
-                      ? `Last synced ${lastSynced.toLocaleTimeString()}`
-                      : "Syncing live metrics..."}
-                </div>
-              </motion.div>
-            </motion.div>
-            <motion.div
-              className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              {statItems.map((item) => (
-                <StatCard
-                  key={item.label}
-                  value={item.value}
-                  label={item.label}
-                  icon={item.icon}
-                  variants={fadeInUpVariants}
-                />
-              ))}
             </motion.div>
           </div>
         </section>
 
-        {/* Features Section */}
-        <section
-          id="features"
-          className="py-20 md:py-32 relative overflow-hidden"
-          ref={featuresRef}
-        >
-          {/* Background decoration */}
-          <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl"></div>
-
-          {/* Decorative elements */}
-          <div className="absolute top-1/4 left-1/4 w-4 h-4 bg-primary/20 rounded-full"></div>
-          <div className="absolute top-1/3 right-1/3 w-6 h-6 bg-primary/10 rounded-full"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-5 h-5 bg-primary/15 rounded-full"></div>
-
-          {/* Animated shapes */}
-          <motion.div
-            className="absolute top-1/4 right-1/4 w-16 h-16 border border-primary/20 rounded-lg hidden lg:block"
-            initial={{ rotate: 0 }}
-            animate={{
-              rotate: 360,
-              transition: {
-                duration: 20,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "linear",
-              },
-            }}
-          />
-
-          <motion.div
-            className="absolute bottom-1/3 left-1/3 w-12 h-12 border border-primary/10 rounded-full hidden lg:block"
-            initial={{ scale: 1 }}
-            animate={{
-              scale: [1, 1.2, 1],
-              transition: {
-                duration: 8,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              },
-            }}
-          />
-
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
-            <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5" />
-                    Key Features
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  Everything You Need to Advance Your Career
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Our AI-powered platform provides comprehensive career guidance
-                  tailored to your unique goals and skills.
-                </p>
-              </motion.div>
-            </motion.div>
-
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <FeatureCard
-                icon={<FileText className="h-10 w-10 text-primary" />}
-                title="Resume Building"
-                description="Get AI-powered feedback on your resume with specific suggestions to make it stand out to recruiters and ATS systems."
-                variants={fadeInUpVariants}
-              />
-              <FeatureCard
-                icon={<MessageSquare className="h-10 w-10 text-primary" />}
-                title="Interview Preparation"
-                description="Practice with our AI interviewer that simulates real interviews and provides instant feedback on your responses."
-                variants={fadeInUpVariants}
-              />
-              <FeatureCard
-                icon={<Target className="h-10 w-10 text-primary" />}
-                title="Career Planning"
-                description="Receive personalized career path recommendations based on your skills, experience, and goals."
-                variants={fadeInUpVariants}
-              />
-              <FeatureCard
-                icon={<BookOpen className="h-10 w-10 text-primary" />}
-                title="Skill Development"
-                description="Identify skill gaps and get customized learning resources to enhance your professional profile."
-                variants={fadeInUpVariants}
-              />
-              <FeatureCard
-                icon={<Award className="h-10 w-10 text-primary" />}
-                title="Salary Negotiation"
-                description="Learn effective negotiation strategies with market-based salary insights for your role and location."
-                variants={fadeInUpVariants}
-              />
-              <FeatureCard
-                icon={<Star className="h-10 w-10 text-primary" />}
-                title="24/7 Career Advice"
-                description="Get instant answers to your career questions anytime, anywhere with our always-available AI coach."
-                variants={fadeInUpVariants}
-              />
-            </motion.div>
-          </div>
-        </section>
-
-        {/* How It Works Section */}
-        <section
-          id="how-it-works"
-          className="py-20 md:py-32 bg-muted/30 relative overflow-hidden"
-        >
-          {/* Decorative elements */}
-          <div
-            className="absolute inset-0 opacity-[0.02]"
-            style={{
-              backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-              backgroundSize: "60px 60px",
-            }}
-          ></div>
-
-          <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
-          <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
-
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
-            <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <TrendingUp className="h-3.5 w-3.5" />
-                    Simple Process
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  How Career AI Works
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Our platform makes career advancement simple with just a few
-                  easy steps.
-                </p>
-              </motion.div>
-            </motion.div>
-
-            <div className="relative">
-              {/* Connection line */}
-              {!isMobile && (
-                <div className="absolute top-24 left-[calc(16.666%-8px)] right-[calc(16.666%-8px)] h-0.5 bg-primary/20">
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-primary"></div>
-                  <div className="absolute left-1/2 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2.5 w-2.5 rounded-full bg-primary"></div>
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-primary"></div>
-                </div>
-              )}
-
-              <motion.div
-                className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12"
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-100px" }}
-                variants={staggerContainerVariants}
+        {/* Features */}
+        <section id="features" className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div className="mb-14 max-w-2xl" {...headerReveal}>
+              <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-primary">
+                What&apos;s built
+              </span>
+              <h2
+                className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl"
+                style={{ textWrap: "balance" }}
               >
-                <motion.div
-                  className="flex flex-col items-center text-center relative"
-                  variants={fadeInUpVariants}
-                >
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-6 relative border border-primary/20 shadow-lg">
-                    <span className="text-3xl font-bold text-primary">1</span>
-                    {isMobile && (
-                      <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 h-8 w-0.5 bg-primary/20"></div>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">
-                    Create Your Profile
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Upload your resume and answer a few questions about your
-                    career goals and preferences.
-                  </p>
-                </motion.div>
-
-                <motion.div
-                  className="flex flex-col items-center text-center relative"
-                  variants={fadeInUpVariants}
-                >
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-6 relative border border-primary/20 shadow-lg">
-                    <span className="text-3xl font-bold text-primary">2</span>
-                    {isMobile && (
-                      <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 h-8 w-0.5 bg-primary/20"></div>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">
-                    Receive Personalized Guidance
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Our AI analyzes your profile and provides tailored
-                    recommendations and feedback.
-                  </p>
-                </motion.div>
-
-                <motion.div
-                  className="flex flex-col items-center text-center"
-                  variants={fadeInUpVariants}
-                >
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-6 relative border border-primary/20 shadow-lg">
-                    <span className="text-3xl font-bold text-primary">3</span>
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">
-                    Implement and Succeed
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Apply the insights, practice with our tools, and track your
-                    progress as you advance your career.
-                  </p>
-                </motion.div>
-              </motion.div>
-            </div>
-
-            {/* Demo/Screenshot */}
-            <motion.div
-              className="mt-20 md:mt-32 bg-background rounded-2xl border shadow-xl overflow-hidden"
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true, margin: "-100px" }}
-            >
-              <div className="p-1">
-                <div className="w-full bg-muted/30 h-8 rounded-t-lg flex items-center px-4">
-                  <div className="flex space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  </div>
-                </div>
-                <Image
-                  width={1000}
-                  height={100}
-                  src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2072&q=80"
-                  alt="Career AI Dashboard"
-                  className="w-full rounded-b-lg"
-                />
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Product Tour Section */}
-        <section
-          id="product-tour"
-          className="py-20 md:py-32 relative overflow-hidden"
-        >
-          {/* Background decoration */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-3xl"></div>
-
-          {/* Decorative elements */}
-          <div className="absolute top-20 right-20 w-40 h-40 rounded-full border border-primary/10 opacity-30"></div>
-          <div className="absolute bottom-40 left-20 w-60 h-60 rounded-full border border-primary/10 opacity-20"></div>
-
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
-            <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
-            >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <PlayCircle className="h-3.5 w-3.5" />
-                    Product Tour
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  See the workflow end to end
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Follow the full path from resume review to interview practice
-                  and a clear action plan.
-                </p>
-              </motion.div>
-            </motion.div>
-
-            <div className="relative">
-              <motion.div
-                className="rounded-2xl overflow-hidden relative"
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
-              >
-                <div className="flex justify-center items-center aspect-video relative p-3">
-                  <video
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="w-full max-w-5xl h-full border rounded-lg shadow-2xl"
-                  >
-                    <source src="elevate-ai-showcase.mp4" type="video/mp4" />
-                  </video>
-                </div>
-              </motion.div>
-
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="rounded-xl border bg-background p-4 text-left">
-                  <p className="text-sm font-semibold">Resume Refinement</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Clarity checks and ATS-friendly guidance tied to target
-                    roles.
-                  </p>
-                </div>
-                <div className="rounded-xl border bg-background p-4 text-left">
-                  <p className="text-sm font-semibold">Interview Practice</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Timed simulations with structured feedback on responses.
-                  </p>
-                </div>
-                <div className="rounded-xl border bg-background p-4 text-left">
-                  <p className="text-sm font-semibold">Role Targeting</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Role-fit insights aligned to skills and experience.
-                  </p>
-                </div>
-                <div className="rounded-xl border bg-background p-4 text-left">
-                  <p className="text-sm font-semibold">Action Planning</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Daily checkpoints that keep your search moving.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Pricing Section */}
-        {/* <section
-          id="pricing"
-          className="py-20 md:py-32 bg-muted/30 relative overflow-hidden"
-        >
-          {/* Decorative elements */}
-        {/* <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
-            backgroundSize: "30px 30px",
-          }}
-        ></div>
-
-        <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-background to-transparent"></div>
-        <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-background to-transparent"></div>
-
-        <div className="container mx-auto px-4 md:px-6 relative z-10">
-          <motion.div
-            className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={staggerContainerVariants}
-          >
-            <motion.div className="space-y-2" variants={fadeInUpVariants}>
-              <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                <span className="flex items-center gap-1.5">
-                  <BarChart className="h-3.5 w-3.5" />
-                  Pricing Plans
-                </span>
-              </div>
-              <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                Choose the Right Plan for You
+                Six tools, one shared model of your growth
               </h2>
-              <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                Affordable options to support your career journey at every
-                stage.
+              <p className="mt-3 text-muted-foreground">
+                Every feature writes to the same profile, so a mastered skill
+                shows up in your resume and a failed practice round shows up as
+                a recommendation — nothing is siloed.
               </p>
             </motion.div>
-          </motion.div>
 
-          <motion.div
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-100px" }}
-            variants={staggerContainerVariants}
-          >
-            <PricingCard
-              title="Starter"
-              price="$9.99"
-              period="per month"
-              description="Perfect for those just beginning their career journey"
-              features={[
-                "Resume analysis and feedback",
-                "Basic interview preparation",
-                "Career path recommendations",
-                "Email support",
-              ]}
-              buttonText="Choose Starter"
-              buttonHref="/sign-up"
-              popular={false}
-              variants={fadeInUpVariants}
-            />
-            <PricingCard
-              title="Professional"
-              price="$19.99"
-              period="per month"
-              description="Comprehensive support for career advancement"
-              features={[
-                "Everything in Starter",
-                "Advanced interview simulation",
-                "Salary negotiation coaching",
-                "Personalized skill development plan",
-                "Priority support",
-              ]}
-              buttonText="Choose Professional"
-              buttonHref="/sign-up"
-              popular={true}
-              variants={fadeInUpVariants}
-            />
-            <PricingCard
-              title="Executive"
-              price="$39.99"
-              period="per month"
-              description="Premium guidance for senior professionals"
-              features={[
-                "Everything in Professional",
-                "Executive coaching sessions",
-                "Leadership skill development",
-                "Network expansion strategies",
-                "24/7 priority support",
-                "Quarterly career strategy review",
-              ]}
-              buttonText="Contact Sales"
-              buttonHref="/sign-up"
-              popular={false}
-              variants={fadeInUpVariants}
-            />
-          </motion.div>
-
-          {/* Guarantee */}
-        {/* <motion.div
-          className="mt-16 flex flex-col md:flex-row items-center justify-center gap-6 p-8 rounded-2xl bg-background border shadow-sm"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-        >
-          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
-            <CheckCircle className="h-8 w-8 text-primary" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {FEATURES.map((feature, i) => (
+                <FeatureCard
+                  key={feature.title}
+                  icon={feature.icon}
+                  title={feature.title}
+                  description={feature.description}
+                  index={i}
+                />
+              ))}
+            </div>
           </div>
-          <div className="text-center md:text-left">
-            <h3 className="text-xl font-bold mb-2">
-              14-Day Money-Back Guarantee
-            </h3>
-            <p className="text-muted-foreground">
-              Try Career AI risk-free. If you&apos;re not completely satisfied
-              within 14 days, we&apos;ll refund your payment. No questions
-              asked.
-            </p>
-          </div>
-        </motion.div> */}
-        {/* </div> */}
-        {/* </section> */}
+        </section>
 
-        {/* FAQ Section */}
+        {/* How it works */}
         <section
-          id="faq"
-          className="py-20 md:py-32 relative dark:bg-background/50"
+          id="how-it-works"
+          className="border-y bg-card/30 py-20 md:py-28"
         >
-          {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl -z-10"></div>
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl -z-10"></div>
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div className="mb-14 max-w-2xl" {...headerReveal}>
+              <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-primary">
+                The flow
+              </span>
+              <h2
+                className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl"
+                style={{ textWrap: "balance" }}
+              >
+                Three phases, in order
+              </h2>
+            </motion.div>
 
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
+            <div className="relative grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-6">
+              <div className="absolute left-0 right-0 top-6 hidden border-t border-dashed border-border md:block" />
+              {PHASES.map((phase, i) => (
+                <motion.div
+                  key={phase.title}
+                  className="relative space-y-3"
+                  initial={{ opacity: 0, y: 28 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-60px" }}
+                  transition={{ duration: 0.55, ease: EASE, delay: i * 0.12 }}
+                >
+                  <div className="relative flex h-12 w-12 items-center justify-center rounded-md border bg-background">
+                    <span className="font-mono-data text-sm font-semibold text-primary">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <h3 className="font-display text-lg font-semibold">
+                    {phase.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {phase.description}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Product Tour */}
+        <section id="product-tour" className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div className="mb-14 max-w-2xl" {...headerReveal}>
+              <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-primary">
+                Walkthrough
+              </span>
+              <h2
+                className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl"
+                style={{ textWrap: "balance" }}
+              >
+                See the workflow end to end
+              </h2>
+              <p className="mt-3 text-muted-foreground">
+                Resume review through interview practice to a plan you can
+                actually execute.
+              </p>
+            </motion.div>
+
             <motion.div
-              className="flex flex-col items-center justify-center space-y-4 text-center mb-16"
-              initial="hidden"
-              whileInView="visible"
+              className="overflow-hidden rounded-md border bg-card"
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
-              variants={staggerContainerVariants}
+              transition={{ duration: 0.6, ease: EASE }}
             >
-              <motion.div className="space-y-2" variants={fadeInUpVariants}>
-                <div className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary border border-primary/20">
-                  <span className="flex items-center gap-1.5">
-                    <Briefcase className="h-3.5 w-3.5" />
-                    FAQ
-                  </span>
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter md:text-5xl">
-                  Frequently Asked Questions
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed mx-auto">
-                  Find answers to common questions about our AI career coaching
-                  platform.
-                </p>
-              </motion.div>
+              <div className="flex items-center justify-between border-b px-4 py-2.5">
+                <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                  Recording
+                </span>
+                <span className="font-mono-data text-[11px] text-muted-foreground/70">
+                  elevate-ai-showcase.mp4
+                </span>
+              </div>
+              <div className="flex items-center justify-center p-3">
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="h-full w-full max-w-5xl rounded-sm"
+                >
+                  <source src="/elevate-ai-showcase.mp4" type="video/mp4" />
+                </video>
+              </div>
+            </motion.div>
+
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {TOUR_HIGHLIGHTS.map((item, i) => (
+                <motion.div
+                  key={item.title}
+                  className="rounded-md border bg-card p-4 transition-colors hover:border-primary/40"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-60px" }}
+                  transition={{ duration: 0.5, ease: EASE, delay: i * 0.08 }}
+                  whileHover={{ y: -2, transition: { duration: 0.2 } }}
+                >
+                  <p className="text-sm font-semibold">{item.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {item.description}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="border-t bg-card/30 py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div className="mb-14 max-w-2xl" {...headerReveal}>
+              <span className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-primary">
+                FAQ
+              </span>
+              <h2
+                className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl"
+                style={{ textWrap: "balance" }}
+              >
+                Questions people actually ask
+              </h2>
             </motion.div>
 
             <motion.div
               className="mx-auto max-w-3xl"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
               viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.55, ease: EASE }}
             >
               <FaqAccordion />
             </motion.div>
           </div>
         </section>
 
-        {/* CTA Section */}
-        <section className="py-20 md:py-32 bg-primary/5 dark:bg-primary/10 relative overflow-hidden">
-          {/* Background decoration */}
-          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-[600px] h-[600px] bg-primary/10 dark:bg-primary/15 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/4 w-[600px] h-[600px] bg-primary/10 dark:bg-primary/15 rounded-full blur-3xl"></div>
-
-          {/* Animated shapes */}
-          <motion.div
-            className="absolute top-1/3 left-1/4 w-16 h-16 border border-primary/20 rounded-full hidden lg:block"
-            animate={{
-              y: [0, -20, 0],
-              x: [0, 10, 0],
-              transition: {
-                duration: 5,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              },
-            }}
-          />
-
-          <motion.div
-            className="absolute bottom-1/3 right-1/4 w-12 h-12 border border-primary/10 rounded-lg rotate-12 hidden lg:block"
-            animate={{
-              y: [0, 15, 0],
-              rotate: [12, -5, 12],
-              transition: {
-                duration: 6,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              },
-            }}
-          />
-
-          <div className="container mx-auto px-4 md:px-6 relative z-10">
+        {/* CTA */}
+        <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
             <motion.div
-              className="max-w-4xl mx-auto bg-background rounded-2xl shadow-xl border p-8 md:p-12"
-              initial={{ opacity: 0, y: 40 }}
+              className="mx-auto max-w-3xl rounded-md border bg-card p-8 text-center md:p-12"
+              initial={{ opacity: 0, y: 28 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
               viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.6, ease: EASE }}
             >
-              <div className="flex flex-col items-center text-center space-y-6">
-                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <Target className="h-8 w-8 text-primary" />
-                </div>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tighter">
-                  Ready to Transform Your Career?
-                </h2>
-                <p className="max-w-[700px] text-muted-foreground md:text-xl/relaxed">
-                  Join professionals who want clearer career direction and a
-                  structured job-search plan.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md text-center justify-center items-center">
-                  <Button
-                    size="lg"
-                    className=" shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all group relative overflow-hidden"
-                    asChild
-                  >
-                    <Link href="/sign-up">
-                      <span className="relative z-10">Create Free Account</span>
-                      <span className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors duration-300"></span>
-                    </Link>
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="group relative overflow-hidden"
-                    asChild
-                  >
-                    <Link href="#features">
-                      <span className="relative z-10">Explore Platform</span>
-                      <span className="absolute inset-0 bg-background/0 group-hover:bg-primary/5 transition-colors duration-300"></span>
-                    </Link>
-                  </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Start free and upgrade when you need more advanced guidance.
-                </p>
+              <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
+                <Target className="h-6 w-6" />
+              </div>
+              <h2
+                className="font-display text-2xl font-semibold tracking-tight md:text-3xl"
+                style={{ textWrap: "balance" }}
+              >
+                Ready to put a career agent to work?
+              </h2>
+              <p className="mx-auto mt-3 max-w-[46ch] text-muted-foreground">
+                Free to use — no credit card, no paid tier, no catch.
+              </p>
+              <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <Button size="lg" asChild>
+                  <Link href="/sign-up">Create free account</Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="#features">Explore the platform</Link>
+                </Button>
               </div>
             </motion.div>
           </div>
@@ -993,194 +438,81 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t bg-background">
-        <div className="container mx-auto py-12 md:py-16 px-4 md:px-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-12">
+        <div className="container mx-auto px-4 py-12 md:px-6">
+          <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
             <div className="col-span-2">
-              <div className="flex items-center gap-2 font-bold text-xl mb-4">
+              <div className="flex items-center gap-2 font-display text-xl font-semibold">
                 <span className="text-primary">Elevate</span>
                 <span>AI</span>
               </div>
-              <p className="text-muted-foreground mb-4 max-w-xs">
-                Empowering professionals to advance their careers with
-                AI-powered guidance and tools.
+              <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
+                A multi-agent system for the parts of a job search that usually
+                stall — planning, practice, scheduling, and tracking.
               </p>
-              <div className="flex space-x-4">
-                <a
-                  href="#features"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-5 w-5"
-                  >
-                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
-                    <rect width="4" height="12" x="2" y="9"></rect>
-                    <circle cx="4" cy="4" r="2"></circle>
-                  </svg>
-                </a>
-                <a
-                  href="#faq"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-5 w-5"
-                  >
-                    <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
-                  </svg>
-                </a>
-                <Link
-                  href="/sign-up"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-5 w-5"
-                  >
-                    <rect
-                      width="20"
-                      height="20"
-                      x="2"
-                      y="2"
-                      rx="5"
-                      ry="5"
-                    ></rect>
-                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
-                  </svg>
-                </Link>
-              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-medium mb-2">Product</h3>
+            <div className="flex flex-col gap-2.5 text-sm">
+              <h3 className="mb-1 font-medium">Product</h3>
               <Link
                 href="#features"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 Features
               </Link>
               <Link
-                href="#pricing"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                href="#how-it-works"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Pricing
+                How it works
               </Link>
               <Link
                 href="#product-tour"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Product Tour
+                Product tour
               </Link>
               <Link
                 href="#faq"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 FAQ
               </Link>
             </div>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-medium mb-2">Company</h3>
+            <div className="flex flex-col gap-2.5 text-sm">
+              <h3 className="mb-1 font-medium">Explore</h3>
               <Link
-                href="#how-it-works"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                href="/chatbot"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                About
-              </Link>
-              <Link
-                href="#features"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Blog
-              </Link>
-              <Link
-                href="#pricing"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Careers
-              </Link>
-              <a
-                href="mailto:support@elevateai.app"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Contact
-              </a>
-            </div>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-medium mb-2">Resources</h3>
-              <Link
-                href="/resume"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Career Guide
+                Career Plan
               </Link>
               <Link
                 href="/resume"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Resume Templates
+                Resume Builder
               </Link>
               <Link
                 href="/interview"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Interview Tips
+                Interview Prep
               </Link>
               <Link
-                href="/chatbot"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                href="/jobs"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Skill Development
+                Job Search
               </Link>
             </div>
           </div>
-          <div className="border-t mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t pt-6 sm:flex-row">
             <p className="text-sm text-muted-foreground">
-              © {currentYear} Elevate AI. All rights reserved.
+              © {currentYear} Elevate AI.
             </p>
-            <div className="flex gap-6">
-              <Link
-                href="/sign-in"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Privacy Policy
-              </Link>
-              <Link
-                href="/sign-in"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Terms of Service
-              </Link>
-              <Link
-                href="/sign-in"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Cookie Policy
-              </Link>
-            </div>
+            <p className="font-mono-data text-xs text-muted-foreground/70 flex items-center gap-1.5">
+              <GitBranch className="h-3 w-3" />
+              Next.js · LangGraph · self-hosted LLM
+            </p>
           </div>
         </div>
       </footer>

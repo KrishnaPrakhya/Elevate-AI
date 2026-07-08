@@ -188,39 +188,33 @@ export async function generatePersonalizedInterviewQuiz(
       ? `Focus especially on: ${weakTopics.join(", ")}`
       : "Cover a balanced range of topics";
 
-    const prompt = `
-Generate 10 technical interview questions for a ${industry} professional.
+    const prompt = `Generate 5 technical interview questions for a ${industry} professional.
 Target Role: ${targetRole || "general position"}
 Key Skills: ${skills.join(", ")}
 ${focusAreas}
 
-Each question should:
-- Be realistic for actual interviews
-- Have 4 plausible options
-- Include a detailed explanation
-- Vary in difficulty (3 easy, 5 medium, 2 hard)
-- Include the topic category
+Each question must have 4 options, one correct answer, and a brief explanation.
+Mix difficulties: 1 easy, 3 medium, 1 hard.
 
-Return JSON array:
-[
-  {
-    "question": "...",
-    "options": ["a", "b", "c", "d"],
-    "correctAnswer": "...",
-    "explanation": "...",
-    "topic": "topic category",
-    "difficulty": "medium"
-  }
-]
-`;
+Return ONLY a valid JSON array, no other text:
+[{"question":"...","options":["A","B","C","D"],"correctAnswer":"...","explanation":"...","topic":"...","difficulty":"medium"}]`;
 
     const result = await model.chat.completions.create({
       model: MODEL_NAME,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
+      temperature: 0.7,
+      max_tokens: 4096,
     });
 
     const text = result.choices[0]?.message?.content?.trim() || "[]";
+    const finishReason = result.choices[0]?.finish_reason;
+
+    if (finishReason === "length") {
+      console.warn("[generatePersonalizedInterviewQuiz] Response was truncated (finish_reason=length). Raw length:", text.length);
+    }
+
+    console.log("[generatePersonalizedInterviewQuiz] Raw response length:", text.length, "finish_reason:", finishReason);
+
     const parsed = parseLLMJson<Array<{
       question: string;
       options: string[];
@@ -229,9 +223,16 @@ Return JSON array:
       topic: string;
       difficulty: "easy" | "medium" | "hard";
     }>>(text, []);
-    return Array.isArray(parsed)
-      ? parsed.filter((q) => q && typeof q.question === "string" && Array.isArray(q.options))
+
+    const filtered = Array.isArray(parsed)
+      ? parsed.filter((q) => q && typeof q.question === "string" && Array.isArray(q.options) && q.options.length >= 2)
       : [];
+
+    if (filtered.length === 0) {
+      console.error("[generatePersonalizedInterviewQuiz] Parsing produced 0 questions. Raw text (first 500 chars):", text.slice(0, 500));
+    }
+
+    return filtered;
   } catch (error) {
     console.error("Error generating interview quiz:", error);
     return [];

@@ -13,34 +13,34 @@ export default function FaqAccordion() {
 
   const faqItems = [
     {
-      question: "How does the AI career coach work?",
+      question: "Is Elevate AI free to use?",
       answer:
-        "Our AI career coach uses advanced natural language processing to analyze your resume, career goals, and skills. It then provides personalized recommendations, feedback, and guidance based on current industry trends and best practices.",
+        "Yes. There are no paid tiers, subscriptions, or credit card requirements — every feature described on this page, from the career planner to the voice interview simulator, is available once you sign up.",
     },
     {
-      question: "Is my data secure and private?",
+      question: "What does \"agentic\" actually mean here?",
       answer:
-        "Yes, we take data security and privacy very seriously. All your personal information and career data are encrypted and stored securely. We never share your information with third parties without your explicit consent.",
+        "Requests are routed through a supervisor to specialized agents — a scheduler that creates real Google Calendar events, a job searcher that runs live web searches, a document improver, and others — each shown live in the diagram above. The AI doesn't just describe next steps; specific agents carry them out, with your confirmation before anything is created.",
     },
     {
-      question: "Can I cancel my subscription at any time?",
+      question: "Will my career plan and progress actually persist?",
       answer:
-        "You can cancel your subscription at any time with no questions asked. You'll continue to have access to the platform until the end of your current billing period.",
+        "Your active career plan, skill mastery, assessments, and portfolio are stored in Postgres, not just cached in memory. Skill gaps identified in your plan automatically seed trackable progress in your dashboard, so growth compounds instead of resetting between sessions.",
     },
     {
-      question: "How accurate is the AI feedback?",
+      question: "How does the voice interview simulator work?",
       answer:
-        "Our AI is trained on millions of resumes, job descriptions, and interview responses, making its feedback highly accurate and relevant. However, we always recommend using it as a tool to complement your own judgment and expertise.",
+        "It runs a real-time voice call (LiveKit) where speech is transcribed and answered by the AI interviewer, with feedback generated after each session — closer to a real interview than typing answers into a text box.",
     },
     {
-      question: "Do you offer refunds?",
+      question: "Can it help me find and track job openings?",
       answer:
-        "Yes, we offer a 14-day money-back guarantee if you're not satisfied with our service. Simply contact our support team within 14 days of your purchase to request a refund.",
+        "Yes — an automated search pipeline matches openings against your target role and skill gaps, scores relevance, and drops them into an application tracker where you can move each one from tracking to applied, interviewing, or offer.",
     },
     {
-      question: "Can I switch between pricing plans?",
+      question: "Do I need to connect anything before I start?",
       answer:
-        "Yes, you can upgrade or downgrade your plan at any time. If you upgrade, you'll be charged the prorated difference for the remainder of your billing cycle. If you downgrade, the new rate will apply at the start of your next billing cycle.",
+        "No setup is required to use the core tools. Connecting Google Calendar is optional and only needed if you want the scheduling agent to create events on your behalf.",
     },
   ];
 
@@ -59,15 +59,17 @@ export default function FaqAccordion() {
         <AccordionItem
           key={index}
           value={`item-${index}`}
-          className="border rounded-lg px-6 mb-4 data-[state=open]:shadow-sm hover:border-primary/20 transition-colors"
+          className="mb-3 rounded-md border bg-card px-6 data-[state=open]:border-primary/30"
         >
           <AccordionTrigger
-            className="text-left py-4 hover:no-underline"
+            className="py-4 text-left hover:no-underline"
             onClick={() => handleItemClick(`item-${index}`)}
           >
-            <span className="text-lg font-medium">{item.question}</span>
+            <span className="font-display text-base font-semibold">
+              {item.question}
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pb-4 pt-2 text-muted-foreground">
+          <AccordionContent className="pb-4 pt-1 text-sm leading-relaxed text-muted-foreground">
             {item.answer}
           </AccordionContent>
         </AccordionItem>

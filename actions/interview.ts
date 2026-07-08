@@ -23,6 +23,8 @@ type QuizQuestionInput = {
   explanation?: string;
 };
 
+type QuizQuestions = Awaited<ReturnType<typeof generatePersonalizedInterviewQuiz>>;
+
 export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const {userId}=await auth();
   if(!userId) throw new Error("User is Unauthorized");
@@ -45,22 +47,45 @@ export async function generateQuiz(targetRole?: string, weakTopics?: string[]){
   const cacheKey = `interview:quiz:${user.id}:${(finalTargetRole || "general").toLowerCase()}:${Buffer.from(normalizedWeakTopics.join(",")).toString("base64").slice(0, 32)}`;
 
   try {
-    const questions = await getCachedData(
-      cacheKey,
-      () =>
-        generatePersonalizedInterviewQuiz(
-          user.industry || "general",
-          user.skills || [],
-          finalWeakTopics,
-          finalTargetRole
-        ),
-      CACHE_TTL.MEDIUM
+    // Check cache first
+    let questions: QuizQuestions | null = null;
+    try {
+      const cached = await redis.get<QuizQuestions>(cacheKey);
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        return cached;
+      }
+    } catch {
+      // Redis unavailable — fall through to generation
+    }
+
+    // Generate fresh questions
+    questions = await generatePersonalizedInterviewQuiz(
+      user.industry || "general",
+      user.skills || [],
+      finalWeakTopics,
+      finalTargetRole
     );
 
-    return questions;
+    // Only cache non-empty results to avoid locking out retries
+    if (questions && questions.length > 0) {
+      try {
+        await redis.set(cacheKey, questions, { ex: CACHE_TTL.MEDIUM });
+      } catch {
+        // Cache write failure is non-critical
+      }
+      return questions;
+    }
+
+    throw new Error(
+      "AI could not generate quiz questions. Please try again in a moment."
+    );
   } catch (error) {
     console.error("Error generating interview quiz:", error);
-    throw new Error("Failed to generate quiz");
+    // Invalidate any cached empty result so retries hit the LLM fresh
+    try { await invalidateCache(cacheKey); } catch { /* ignore */ }
+    throw error instanceof Error
+      ? error
+      : new Error("Failed to generate quiz. Please try again.");
   }
 }
 

@@ -108,14 +108,30 @@ interface SpeechRecognition extends EventTarget {
   interimResults: boolean;
   lang: string;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onstart: (() => void) | null;
   onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   start: () => void;
   stop: () => void;
+  abort: () => void;
 }
 
 interface SpeechRecognitionEvent {
   resultIndex: number;
   results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent {
+  error:
+    | "aborted"
+    | "audio-capture"
+    | "bad-grammar"
+    | "language-not-supported"
+    | "network"
+    | "no-speech"
+    | "not-allowed"
+    | "service-not-allowed";
+  message?: string;
 }
 
 interface SpeechRecognitionResultList {
@@ -171,6 +187,7 @@ export default function LocalInterviewSimulator({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const latestAnswerRef = useRef("");
+  const recognitionStartingRef = useRef(false);
 
   const speakText = useCallback(
     (text: string, cancelCurrent = false) =>
@@ -296,12 +313,54 @@ export default function LocalInterviewSimulator({
         setUserAnswer(normalized);
       };
 
+      recognition.onstart = () => {
+        recognitionStartingRef.current = false;
+        setIsRecording(true);
+        toast.info("Listening... Speak your answer");
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        recognitionStartingRef.current = false;
+        setIsRecording(false);
+
+        if (event.error === "no-speech" || event.error === "aborted") {
+          return;
+        }
+
+        const errorMessages: Record<SpeechRecognitionErrorEvent["error"], string> = {
+          "audio-capture":
+            "I could not access your microphone. Check your browser and device mic settings.",
+          "bad-grammar": "Speech recognition grammar failed. Please try again.",
+          "language-not-supported":
+            "This browser does not support English speech recognition right now.",
+          network:
+            "Speech recognition service is unavailable. Check your network and try again.",
+          "not-allowed":
+            "Microphone permission is blocked. Allow microphone access for this site and try again.",
+          "service-not-allowed":
+            "Your browser blocked the speech recognition service for this site.",
+          aborted: "Speech recognition was stopped.",
+          "no-speech": "No speech was detected.",
+        };
+
+        toast.error(errorMessages[event.error] || "Microphone failed to start.");
+      };
+
       recognition.onend = () => {
+        recognitionStartingRef.current = false;
         setIsRecording(false);
       };
 
       recognitionRef.current = recognition;
     }
+
+    return () => {
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Ignore cleanup errors from browser speech recognition.
+      }
+    };
   }, []);
 
   const startInterview = async () => {
@@ -355,16 +414,32 @@ export default function LocalInterviewSimulator({
       return;
     }
 
+    if (isRecording || recognitionStartingRef.current) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
     setUserAnswer("");
     latestAnswerRef.current = "";
-    recognitionRef.current.start();
-    setIsRecording(true);
-    toast.info("Listening... Speak your answer");
+
+    try {
+      recognitionStartingRef.current = true;
+      recognitionRef.current.start();
+    } catch (error) {
+      recognitionStartingRef.current = false;
+      setIsRecording(false);
+      console.error("Could not start speech recognition:", error);
+      toast.error("Could not start microphone. Please wait a moment and try again.");
+    }
   };
 
   const stopRecording = () => {
     if (recognitionRef.current && isRecording) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error("Could not stop speech recognition:", error);
+      }
       setIsRecording(false);
       toast.success("Recording stopped");
 
@@ -551,6 +626,13 @@ export default function LocalInterviewSimulator({
   const endInterview = () => {
     setState("idle");
     window.speechSynthesis.cancel();
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // Ignore browser cleanup errors.
+    }
+    recognitionStartingRef.current = false;
+    setIsRecording(false);
     setCurrentQuestion(null);
     setQuestionIndex(0);
     setResponses([]);

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { message, currentLessonId } = body;
 
-    if (!message.trim()) {
+    if (typeof message !== "string" || !message.trim()) {
       return NextResponse.json(
         { error: "Message is required" },
         { status: 400 }

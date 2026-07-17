@@ -33,26 +33,82 @@ function buildCacheKey(body: Record<string, unknown>): string {
   return `career-insights:${hash}`;
 }
 
+function buildFallbackInsight(body: Record<string, unknown>) {
+  const targetRole =
+    typeof body.targetRole === "string" && body.targetRole.trim()
+      ? body.targetRole.trim()
+      : "your target role";
+
+  return {
+    skillGaps: [
+      {
+        skill: "Role-specific portfolio evidence",
+        importance: 8,
+        learnedVia: "Build or refine one project that demonstrates the target role responsibilities.",
+      },
+      {
+        skill: "Interview communication",
+        importance: 7,
+        learnedVia: "Practice concise STAR-style answers and technical trade-off explanations.",
+      },
+    ],
+    marketTrends: [
+      {
+        trend: "AI-assisted workflows",
+        impact: "positive",
+        description:
+          "Employers increasingly value candidates who can use AI tools to move faster while still validating quality and security.",
+      },
+    ],
+    recommendedActions: [
+      {
+        type: "skill",
+        title: `Map your current skills to ${targetRole}`,
+        description:
+          "List the top responsibilities for the role and attach one proof point, project, or metric to each.",
+        priority: "high",
+        reasoning:
+          "Clear evidence makes resumes, interviews, and portfolio reviews stronger even when AI services are temporarily unavailable.",
+      },
+    ],
+    careerPathSuggestions: [
+      {
+        role: targetRole,
+        matchScore: 70,
+        skillsNeeded: ["Portfolio proof", "Interview practice", "Role-specific projects"],
+      },
+    ],
+    source: "fallback",
+  };
+}
+
 export async function POST(request: NextRequest) {
+  let body: Record<string, unknown> = {};
   try {
-    const body = await request.json();
+    body = await request.json();
     const { industry, skills, experience, bio, targetRole, recentActivity, completedCourses, weakAreas } = body;
 
     const cacheKey = buildCacheKey(body as Record<string, unknown>);
+    const safeIndustry = typeof industry === "string" ? industry : null;
+    const safeExperience = typeof experience === "number" ? experience : null;
+    const safeBio = typeof bio === "string" ? bio : null;
+    const safeTargetRole = typeof targetRole === "string" ? targetRole : undefined;
+    const safeRecentActivity =
+      typeof recentActivity === "string" ? recentActivity : undefined;
 
     const careerInsight = await getCachedData(
       cacheKey,
       async () =>
         analyzeCareerProfile(
           {
-            industry,
+            industry: safeIndustry,
             skills: Array.isArray(skills) ? skills : [],
-            experience,
-            bio,
-            targetRole,
+            experience: safeExperience,
+            bio: safeBio,
+            targetRole: safeTargetRole,
           },
           {
-            recentActivity,
+            recentActivity: safeRecentActivity,
             completedCourses: Array.isArray(completedCourses) ? completedCourses : undefined,
             weakAreas: Array.isArray(weakAreas) ? weakAreas : undefined,
           }
@@ -63,9 +119,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(careerInsight);
   } catch (error) {
     console.error("Error generating career insights:", error);
-    return NextResponse.json(
-      { error: "Failed to generate career insights" },
-      { status: 500 }
-    );
+    return NextResponse.json(buildFallbackInsight(body));
   }
 }

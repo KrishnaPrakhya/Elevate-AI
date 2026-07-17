@@ -45,9 +45,21 @@ export async function POST(request: NextRequest) {
         ? body.timezoneOffsetMinutes
         : null;
 
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    if (!internalSecret) {
+      console.error("/api/chat proxy: INTERNAL_API_SECRET is not set");
+      return NextResponse.json(
+        { error: "Server misconfigured" },
+        { status: 500 },
+      );
+    }
+
     const response = await fetch(`${getBackendBaseUrl()}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Secret": internalSecret,
+      },
       body: JSON.stringify({
         message,
         clerkUserId,

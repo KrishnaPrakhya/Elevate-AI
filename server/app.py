@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import hmac
 import html as html_lib
 import json
 import logging
@@ -14,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
@@ -605,6 +606,23 @@ async def health_check():
     return {"ok": True}
 
 # Database Setup
+def redact_db_url(url: str) -> str:
+    """Strip credentials from a database URL so it is safe to log."""
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            # No authority section (e.g. sqlite:///file.db) means no credentials to hide.
+            return url
+        host = parsed.hostname or ""
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        if parsed.username:
+            host = f"{parsed.username}:***@{host}" if parsed.password else f"{parsed.username}@{host}"
+        return urlunparse(parsed._replace(netloc=host))
+    except Exception:
+        return "<unparseable-url>"
+
+
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     logger.critical("DATABASE_URL not found in environment variables.")
@@ -618,7 +636,7 @@ elif DATABASE_URL.startswith("postgres://"):
 else:
     ASYNC_DATABASE_URL = DATABASE_URL # Assume other dialects are already async or will raise appropriate errors
     if "postgresql" in ASYNC_DATABASE_URL and "asyncpg" not in ASYNC_DATABASE_URL:
-        logger.warning(f"DATABASE_URL \"{DATABASE_URL}\" seems to be for PostgreSQL but does not specify an async driver like asyncpg. SQLAlchemy's async features might fail.")
+        logger.warning(f"DATABASE_URL \"{redact_db_url(DATABASE_URL)}\" seems to be for PostgreSQL but does not specify an async driver like asyncpg. SQLAlchemy's async features might fail.")
 
 # Handle sslmode for asyncpg: asyncpg expects 'ssl' in connect_args, not 'sslmode' as a direct kwarg.
 # SQLAlchemy dialect might incorrectly pass 'sslmode' from URL query as a kwarg.
@@ -655,7 +673,7 @@ if ssl_mode:
     # Other parameters (like sslrootcert) must remain for asyncpg to use them.
     new_query_string = urlencode(query_params, doseq=True)
     ASYNC_DATABASE_URL_FOR_ENGINE = urlunparse(parsed_url._replace(query=new_query_string))
-    logger.info(f"URL for async_engine (sslmode query param removed): {ASYNC_DATABASE_URL_FOR_ENGINE}")
+    logger.info(f"URL for async_engine (sslmode query param removed): {redact_db_url(ASYNC_DATABASE_URL_FOR_ENGINE)}")
 else:
     logger.info("No sslmode found in DATABASE_URL query string for asyncpg special handling.")
 
@@ -1290,6 +1308,23 @@ def extract_email_recipient(message: str) -> Optional[str]:
         return None
     return email_match.group().strip()
 
+
+def agent_error_message(context: str, error: Exception) -> str:
+    """Log the failure with a correlation id and return a message safe to show the user.
+
+    Exception text can contain upstream HTML, connection strings, or credentials,
+    so it must never reach the chat transcript.
+    """
+    error_id = uuid.uuid4().hex[:8]
+    logger.error(
+        f"[{error_id}] Error in {context}: {type(error).__name__}: {error}",
+        exc_info=True,
+    )
+    return (
+        f"Sorry, I ran into a problem while {context}. "
+        f"Please try again in a moment. (Reference: {error_id})"
+    )
+
 # Intent Detection (Async) - Hybrid: Deterministic + LLM for ambiguous cases
 async def detect_intent(
     user_message: str,
@@ -1600,8 +1635,7 @@ async def document_improver(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in document_improver: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while trying to improve your document: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("trying to improve your document", e)})
         state["task_completed"] = True
         return state
 
@@ -1647,8 +1681,7 @@ async def job_searcher(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in job_searcher: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while searching for jobs: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("searching for jobs", e)})
         state["task_completed"] = True
         return state
 
@@ -1708,8 +1741,7 @@ async def email_drafter(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in email_drafter: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while drafting the email: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("drafting the email", e)})
         state["task_completed"] = True
         return state
 
@@ -1797,8 +1829,7 @@ async def career_advisor(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in career_advisor: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while providing career advice: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("providing career advice", e)})
         state["task_completed"] = True
         return state
 
@@ -1941,8 +1972,7 @@ async def schedule_generator(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in schedule_generator: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while generating the schedule: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("generating the schedule", e)})
         state["task_completed"] = True
         return state
 
@@ -1985,8 +2015,7 @@ async def interview_preparer(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in interview_preparer: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while preparing interview questions: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("preparing interview questions", e)})
         state["task_completed"] = True
         return state
 
@@ -2114,8 +2143,7 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
         state["task_completed"] = True
         return state
     except Exception as e:
-        logger.error(f"Error in calendar_event_creator: {str(e)}")
-        state["messages"].append({"role": "assistant", "content": f"Sorry, I encountered an error while creating the calendar event: {str(e)}"})
+        state["messages"].append({"role": "assistant", "content": agent_error_message("creating the calendar event", e)})
         state["task_completed"] = True
         return state
 
@@ -2214,10 +2242,32 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         async with session.begin(): # Optional: Use begin for auto-rollback on error within session block
             yield session
 
+
+INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "")
+if not INTERNAL_API_SECRET:
+    logger.critical(
+        "INTERNAL_API_SECRET is not set. Endpoints that trust a caller-supplied "
+        "clerkUserId will reject every request until it is configured."
+    )
+
+
+async def require_internal_caller(x_internal_secret: str = Header(default="")) -> None:
+    """Verify the request came from the Next.js proxy, which has already authenticated Clerk.
+
+    Endpoints taking a caller-supplied clerkUserId have no other way to establish
+    identity, so an unauthenticated caller could otherwise act as any user.
+    """
+    if not INTERNAL_API_SECRET:
+        raise HTTPException(status_code=503, detail="Server not configured for authenticated requests")
+    if not hmac.compare_digest(x_internal_secret, INTERNAL_API_SECRET):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @app.post('/api/chat', response_model=dict) # Added response_model for clarity
 async def chat_endpoint(
     request_data: ChatRequest,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
+    _: None = Depends(require_internal_caller),
 ):
     try:
         user_message_content = request_data.message

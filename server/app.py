@@ -789,6 +789,62 @@ except Exception as e:
     logger.error(f"LLM test failed: {e}")
 
 
+@app.get("/debug/llm")
+async def debug_llm():
+    """Temporary: reports what Cloudflare returns to this host for the Ollama endpoint.
+
+    Diagnoses upstream reachability from the deployment's egress IP, which cannot be
+    reproduced locally. Remove once the Cloudflare issue is resolved.
+    """
+    import httpx
+
+    def _mask(value: str) -> str:
+        if not value:
+            return "<empty>"
+        return f"{value[:4]}…{value[-2:]} (len={len(value)})"
+
+    report: dict[str, Any] = {
+        "base_url": ollama_base_url,
+        "model": ollama_model,
+        "cf_headers_attached": bool(_ollama_headers),
+        "cf_client_id": _mask(cf_client_id),
+        "cf_client_secret_present": bool(cf_client_secret),
+        "cf_client_secret_len": len(cf_client_secret),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+            resp = await client.get(f"{ollama_base_url}/models", headers=_ollama_headers)
+        body = resp.text
+        report["status"] = resp.status_code
+        report["content_type"] = resp.headers.get("content-type", "")
+        report["cf_mitigated"] = resp.headers.get("cf-mitigated", "")
+        report["cf_ray"] = resp.headers.get("cf-ray", "")
+        report["server"] = resp.headers.get("server", "")
+        report["body_first_300"] = body[:300]
+
+        markers = [
+            m for m in ("_cf_chl_opt", "chl_page", "__cf_chl_rt_tk", "Cloudflare Access")
+            if m in body
+        ]
+        report["cloudflare_markers"] = markers
+        if "_cf_chl_opt" in body or "chl_page" in body:
+            report["verdict"] = "BOT_CHALLENGE — Cloudflare is challenging this host's IP"
+        elif "Cloudflare Access" in body:
+            report["verdict"] = "ACCESS_DENIED — service token rejected or not sent"
+        elif resp.status_code == 200:
+            report["verdict"] = "OK — upstream reachable from this host"
+        else:
+            report["verdict"] = f"UNEXPECTED — HTTP {resp.status_code}"
+    except Exception as e:
+        report["status"] = None
+        report["error_type"] = type(e).__name__
+        report["error"] = str(e)[:300]
+        report["verdict"] = "REQUEST_FAILED — could not reach upstream at all"
+
+    return report
+
+
 async def invoke_sync(runnable: Any, payload: dict[str, Any]) -> Any:
     """Run sync LangChain/Tavily invocations in a worker thread to avoid asyncio loop conflicts."""
     return await asyncio.to_thread(runnable.invoke, payload)

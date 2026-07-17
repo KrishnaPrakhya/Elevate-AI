@@ -640,6 +640,23 @@ else:
 
 # Handle sslmode for asyncpg: asyncpg expects 'ssl' in connect_args, not 'sslmode' as a direct kwarg.
 # SQLAlchemy dialect might incorrectly pass 'sslmode' from URL query as a kwarg.
+#
+# SQLAlchemy forwards any leftover URL query parameter to asyncpg.connect() as a keyword
+# argument, so libpq-only parameters raise TypeError there even though psycopg2/libpq
+# accept them. Neon appends channel_binding to its connection strings by default.
+ASYNCPG_UNSUPPORTED_QUERY_PARAMS = (
+    "channel_binding",
+    "sslrootcert",
+    "sslcert",
+    "sslkey",
+    "sslcrl",
+    "sslcompression",
+    "gssencmode",
+    "connect_timeout",
+    "application_name",
+    "options",
+)
+
 connect_args = {}
 parsed_url = urlparse(ASYNC_DATABASE_URL)
 query_params = parse_qs(parsed_url.query, keep_blank_values=True)
@@ -648,16 +665,11 @@ query_params = parse_qs(parsed_url.query, keep_blank_values=True)
 ssl_mode_values = query_params.pop('sslmode', [None])
 ssl_mode = ssl_mode_values[0] if ssl_mode_values else None
 
-ASYNC_DATABASE_URL_FOR_ENGINE = ASYNC_DATABASE_URL # Default to original if no sslmode was in query
-
 if ssl_mode:
     logger.info(f"Found sslmode='{ssl_mode}' in DATABASE_URL. Processing for asyncpg.")
     if ssl_mode in ['allow', 'prefer', 'require', 'verify-ca', 'verify-full']:
         connect_args['ssl'] = True
-        logger.info(
-            f"Configuring asyncpg with connect_args['ssl'] = True due to sslmode='{ssl_mode}'. "
-            f"Other SSL DSN parameters (e.g., sslrootcert) should remain in the URL for asyncpg to use."
-        )
+        logger.info(f"Configuring asyncpg with connect_args['ssl'] = True due to sslmode='{ssl_mode}'.")
     elif ssl_mode == 'disable':
         # asyncpg default is no SSL if 'ssl' connect_arg is None and DSN doesn't force it.
         # Setting ssl=False explicitly disables it if DSN might otherwise enable it.
@@ -668,14 +680,16 @@ if ssl_mode:
             f"Unknown sslmode \"{ssl_mode}\" found in DATABASE_URL. "
             f"Proceeding without specific SSL connect_args override for asyncpg. sslmode parameter removed from DSN query."
         )
-    
-    # Reconstruct URL without the 'sslmode' query parameter, as we handle it via connect_args['ssl']
-    # Other parameters (like sslrootcert) must remain for asyncpg to use them.
-    new_query_string = urlencode(query_params, doseq=True)
-    ASYNC_DATABASE_URL_FOR_ENGINE = urlunparse(parsed_url._replace(query=new_query_string))
-    logger.info(f"URL for async_engine (sslmode query param removed): {redact_db_url(ASYNC_DATABASE_URL_FOR_ENGINE)}")
 else:
     logger.info("No sslmode found in DATABASE_URL query string for asyncpg special handling.")
+
+dropped_params = [name for name in ASYNCPG_UNSUPPORTED_QUERY_PARAMS if query_params.pop(name, None) is not None]
+if dropped_params:
+    logger.info(f"Removed query params unsupported by asyncpg: {', '.join(dropped_params)}")
+
+new_query_string = urlencode(query_params, doseq=True)
+ASYNC_DATABASE_URL_FOR_ENGINE = urlunparse(parsed_url._replace(query=new_query_string))
+logger.info(f"URL for async_engine (asyncpg-incompatible query params removed): {redact_db_url(ASYNC_DATABASE_URL_FOR_ENGINE)}")
 
 
 # For async operations

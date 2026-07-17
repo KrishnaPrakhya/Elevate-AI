@@ -600,6 +600,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+async def health_check():
+    return {"ok": True}
+
 # Database Setup
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
@@ -3055,6 +3059,31 @@ class SimulationResponse(BaseModel):
     suggestions: List[str] = []
     next_prompt: Optional[str] = None
 
+def build_fallback_simulation_evaluation(input_data: SimulationInput) -> dict:
+    user_response = (input_data.user_response or "").strip()
+    word_count = len([word for word in user_response.split() if word])
+    score = max(40, min(88, 45 + word_count * 2))
+
+    return {
+        "feedback": (
+            "AI evaluation is temporarily unavailable, so this is a local fallback review. "
+            "Your answer shows a reasonable starting approach. Strengthen it by naming the "
+            "trade-offs, failure modes, scaling constraints, validation plan, and production "
+            "monitoring signals you would use."
+        ),
+        "score": score,
+        "suggestions": [
+            "Compare your chosen approach with at least one alternative.",
+            "Describe storage, scaling, and failure-mode behavior.",
+            "Add concrete metrics, tests, rollout, and monitoring steps.",
+        ],
+        "next_prompt": (
+            "What is the biggest trade-off in your proposed solution, and how would you "
+            "detect that it is becoming a production problem?"
+        ),
+        "source": "fallback",
+    }
+
 @app.post("/api/simulation/evaluate")
 async def evaluate_simulation(input_data: SimulationInput):
     """Evaluate a simulation response and provide feedback."""
@@ -3128,7 +3157,7 @@ async def evaluate_simulation(input_data: SimulationInput):
         }
     except Exception as e:
         logger.error(f"Error evaluating simulation: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to evaluate: {str(e)}")
+        return build_fallback_simulation_evaluation(input_data)
 
 
 @app.get("/api/simulation/scenarios")

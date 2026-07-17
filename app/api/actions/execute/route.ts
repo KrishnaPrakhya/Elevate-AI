@@ -645,7 +645,7 @@ export async function GET() {
     return NextResponse.json({
       actions: pendingActions.map((action) => ({
         id: action.id,
-        type: action.type.toLowerCase().replace("_", ""),
+        type: action.type.toLowerCase().replace(/_/g, ""),
         title: action.title,
         description: action.description,
         params: (action.params ?? {}) as Record<string, unknown>,

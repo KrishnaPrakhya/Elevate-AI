@@ -108,14 +108,6 @@ export async function POST(request: NextRequest) {
       })
       .join("\n");
 
-    if (!model) {
-      return NextResponse.json({
-        question: buildFallbackQuestion(safeRole, safeLevel, safeQuestionIndex, safePreviousAnswer),
-        interviewerReply: buildFallbackInterviewerReply(safePreviousAnswer),
-        source: "fallback-no-cloud-key",
-      });
-    }
-
     // Generate adaptive spoken interviewer reply and the next question
     const prompt = `Based on the previous answer, generate:
 1) A brief interviewer spoken reply (1-2 short sentences)

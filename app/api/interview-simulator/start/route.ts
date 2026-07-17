@@ -94,20 +94,6 @@ export async function POST(request: NextRequest) {
         ? level.trim()
         : toExperienceLevel(user?.experience);
 
-    if (!client) {
-      return NextResponse.json({
-        questions: buildFallbackQuestions(
-          safeRole,
-          safeLevel,
-          safeNumQuestions
-        ),
-        role: safeRole,
-        level: safeLevel,
-        mode,
-        source: "fallback-no-cloud-key",
-      });
-    }
-
     const prompt = `Generate ${safeNumQuestions} interview questions for a ${safeLevel} ${safeRole} candidate.
 Return ONLY a JSON array. Each item must include:
 - id: string

@@ -879,10 +879,11 @@ def parse_llm_json(text: Any, fallback: Any = None) -> Any:
     return fallback
 
 
-# Validate Tavily API Key
-if not os.getenv("TAVILY_API_KEY"):
-    logger.critical("❌ TAVILY_API_KEY required for search functionality")
-    raise RuntimeError("Missing TAVILY_API_KEY environment variable")
+# Tavily powers live job-search results. It is optional: missing search credentials
+# must not prevent the core chat, calendar, email, and career features from starting.
+TAVILY_ENABLED = bool(os.getenv("TAVILY_API_KEY"))
+if not TAVILY_ENABLED:
+    logger.warning("TAVILY_API_KEY is not configured; live job search is disabled")
 
 # Pydantic Input Models (Unchanged)
 class DocumentInput(BaseModel):
@@ -1054,6 +1055,13 @@ Industry: {industry}
 
 async def search_job_opportunities(input_data: JobSearchInput) -> str:
     try:
+        if not TAVILY_ENABLED:
+            return (
+                "## Live Job Search Is Not Configured\n\n"
+                "Live job listings are temporarily unavailable. Please try again later "
+                "or add a `TAVILY_API_KEY` to enable this feature."
+            )
+
         query = " ".join(input_data.keywords)
         if input_data.industry:
             query += f" {input_data.industry}"

@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import {
+  getInternalBackendHeaders,
+  getPythonBackendUrl,
+} from "@/lib/python-backend";
 
 export const maxDuration = 60;
 
 const getBackendBaseUrl = () => {
-  const raw =
-    process.env.FASTAPI_URL ||
-    process.env.PYTHON_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
-    "https://elevate-ai-flask.onrender.com";
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  return getPythonBackendUrl();
 };
 
 export async function POST(request: NextRequest) {
@@ -56,10 +55,9 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(`${getBackendBaseUrl()}/api/chat`, {
       method: "POST",
-      headers: {
+      headers: getInternalBackendHeaders({
         "Content-Type": "application/json",
-        "X-Internal-Secret": internalSecret,
-      },
+      }),
       body: JSON.stringify({
         message,
         clerkUserId,

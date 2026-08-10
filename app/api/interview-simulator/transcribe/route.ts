@@ -11,7 +11,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error: "Transcription handled in the browser",
-        message: "Use /interview/simulator-live where browser speech recognition feeds the Ollama Cloud interview flow.",
+        message: "Use /interview/simulator-live where browser speech recognition feeds the Groq interview flow.",
       },
       { status: 410 }
     );

@@ -3,14 +3,14 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson, safeJsonParse } from "@/lib/ai/json";
 import {
   computePerformanceIntelligence,
   recordExecutedAction,
 } from "@/lib/performance/intelligence";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 /**
  * Sync academy progress to career plan
@@ -173,7 +173,7 @@ async function updateCareerPlanFromSkills(userId: string) {
 
   try {
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -407,7 +407,7 @@ export async function analyzeSkillGapsForRole(targetRole: string) {
 
   try {
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
     });
 

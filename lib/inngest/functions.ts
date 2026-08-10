@@ -1,19 +1,15 @@
 import { db } from "../prisma";
 import { inngest } from "./client";
 import { analyzeCareerProfile } from "../ai/career-agent";
-import { createOllamaClient } from "../ai";
+import { createGroqClient } from "../ai";
 import { parseLLMJson } from "../ai/json";
 import { redis } from "../redis";
+import { getInternalBackendHeaders, getPythonBackendUrl } from "../python-backend";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 const getBackendBaseUrl = () => {
-  const raw =
-    process.env.FASTAPI_URL ||
-    process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL ||
-    "https://elevate-ai-flask.onrender.com";
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  return getPythonBackendUrl();
 };
 
 async function sendEmailViaBackend(input: {
@@ -25,7 +21,7 @@ async function sendEmailViaBackend(input: {
 }) {
   const response = await fetch(`${getBackendBaseUrl()}/api/tools/send_email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getInternalBackendHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       to: input.to,
       subject: input.subject,
@@ -83,9 +79,9 @@ export const getIndustryInsights = inngest.createFunction(
     Include at least 5 common roles for salary ranges.
     Growth rate should be a percentage.
     Include at least 5 skills and trends.`;
-      const res = await step.ai.wrap("ollama", async (p) => {
+      const res = await step.ai.wrap("groq", async (p) => {
         return await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: p }],
         });
       }, prompt);
@@ -130,11 +126,11 @@ export const redisKeepalive = inngest.createFunction(
 // RENDER KEEPALIVE (pings every 10 min — free tier spins down after 15 min)
 // ============================================
 
-export const renderKeepalive = inngest.createFunction(
-  { id: "render-keepalive", name: "Render backend keepalive ping", triggers: { cron: "*/10 * * * *" } },
+export const backendHealthMonitor = inngest.createFunction(
+  { id: "backend-health-monitor", name: "Backend health monitor", triggers: { cron: "*/15 * * * *" } },
   async ({ step }) => {
-    await step.run("ping-render", async () => {
-      const base = process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+    await step.run("ping-backend", async () => {
+      const base = getPythonBackendUrl();
       // Render cold start can take ~50s; allow time but cap it.
       const res = await fetch(`${base}/health`, {
         method: "GET",
@@ -767,7 +763,7 @@ async function getAIRecommendation(user: { industry: string | null; experience: 
       Keep it under 20 words and make it actionable.`;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
     });
     return result.choices[0]?.message?.content?.trim() || "";
@@ -1061,4 +1057,4 @@ export const automatedJobSearch = inngest.createFunction(
     );
     return { triggered, failed, total: eligibleUsers.length };
   }
-);
+);

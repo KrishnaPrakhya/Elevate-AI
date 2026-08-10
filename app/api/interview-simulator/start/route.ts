@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { extractJsonArray } from "@/lib/ai/json";
 
 export const maxDuration = 60;
 
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
-const client = createOllamaClient();
+const client = createGroqClient();
 
 const toExperienceLevel = (experience?: number | null) => {
   if (typeof experience !== "number") return "Mid-Level";
@@ -106,7 +106,7 @@ Avoid markdown or extra text.`;
 
     try {
       const result = await client.chat.completions.create({
-        model: ollamaModel,
+        model: groqModel,
         messages: [
           {
             role: "system",
@@ -143,7 +143,7 @@ Avoid markdown or extra text.`;
         role: safeRole,
         level: safeLevel,
         mode,
-        source: "ollama-cloud",
+        source: "groq",
       });
     } catch (backendError) {
       console.warn("Cloud question generation unavailable, using fallback:", backendError);

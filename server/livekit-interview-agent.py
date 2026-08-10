@@ -12,7 +12,8 @@ Set environment variables:
     LIVEKIT_URL=wss://your-project.livekit.cloud
     ELEVENLABS_API_KEY=your_key (for TTS - free tier: 10K chars/month)
     DEEPGRAM_API_KEY=your_key (for STT - free tier: 1hr/month)
-    OLLAMA_BASE_URL=http://localhost:11434 (or use OpenAI/Gemini)
+    GROQ_API_KEY=your_groq_api_key
+    GROQ_BASE_URL=https://api.groq.com/openai/v1
 
 Run:
     python livekit-interview-agent.py
@@ -36,10 +37,11 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ============================================
 
-# Use Ollama (free) or OpenAI/Gemini for LLM
-USE_OLLAMA = os.getenv("USE_OLLAMA", "true").lower() == "true"
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+# Use Groq as the primary LLM. OpenAI/Gemini remain optional fallbacks.
+USE_GROQ = os.getenv("USE_GROQ", "true").lower() == "true"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
@@ -262,9 +264,13 @@ class InterviewAgent(agents.Agent):
         tts = elevenlabs.TTS()  # Text-to-speech
 
         # LLM setup
-        if USE_OLLAMA and OLLAMA_BASE_URL:
-            from livekit.plugins import ollama as lk_ollama
-            llm_model = lk_ollama.LLM(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL)
+        if USE_GROQ and GROQ_API_KEY:
+            from livekit.plugins import openai as lk_openai
+            llm_model = lk_openai.LLM(
+                api_key=GROQ_API_KEY,
+                base_url=GROQ_BASE_URL,
+                model=GROQ_MODEL,
+            )
         elif OPENAI_API_KEY:
             from livekit.plugins import openai as lk_openai
             llm_model = lk_openai.LLM(model="gpt-4o-mini")
@@ -272,7 +278,7 @@ class InterviewAgent(agents.Agent):
             from livekit.plugins import google as lk_google
             llm_model = lk_google.LLM(model="gemini-2.0-flash-lite")
         else:
-            raise ValueError("No LLM configured. Set OLLAMA, OPENAI_API_KEY, or GEMINI_API_KEY")
+            raise ValueError("No LLM configured. Set GROQ_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY")
 
         # Create voice pipeline
         voice_pipeline = agents.voice.VoicePipeline(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { getInternalBackendHeaders, getPythonBackendUrl } from "@/lib/python-backend";
 import type { Prisma } from "@prisma/client";
 
 type ExecutedActionType =
@@ -365,8 +366,7 @@ export async function POST(request: NextRequest) {
 
 async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
   // Call Python backend for email sending
-  const PYTHON_BACKEND_URL =
-    process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+  const PYTHON_BACKEND_URL = getPythonBackendUrl();
 
   const to = getStringParam(params, "to");
   const subject = getStringParam(params, "subject");
@@ -379,7 +379,7 @@ async function executeSendEmail(params: ActionParams): Promise<ActionResult> {
   try {
     const response = await fetch(`${PYTHON_BACKEND_URL}/api/tools/send_email`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getInternalBackendHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(params),
       signal: AbortSignal.timeout(45000),
     });
@@ -403,13 +403,12 @@ async function executeCreateCalendarEvent(
   user: UserRef,
 ): Promise<ActionResult> {
   // Call Python backend for calendar event creation
-  const PYTHON_BACKEND_URL =
-    process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+  const PYTHON_BACKEND_URL = getPythonBackendUrl();
 
   try {
     const response = await fetch(`${PYTHON_BACKEND_URL}/api/tools/create_calendar_event`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getInternalBackendHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(params),
       signal: AbortSignal.timeout(45000),
     });

@@ -1,27 +1,67 @@
 import OpenAI from "openai";
 import { parseLLMJson } from "@/lib/ai/json";
 
-export function createOllamaClient(): OpenAI {
-  const apiKey = process.env.OLLAMA_API_KEY || "ollama";
-  const baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-  const cfClientId = process.env.CF_ACCESS_CLIENT_ID;
-  const cfClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
-  const defaultHeaders: Record<string, string> = {};
-  if (cfClientId && cfClientSecret) {
-    defaultHeaders["CF-Access-Client-Id"] = cfClientId;
-    defaultHeaders["CF-Access-Client-Secret"] = cfClientSecret;
+function shouldUseFallback(status: number): boolean {
+  return status === 401 || status === 408 || status === 429 || status === 498 || status >= 500;
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const description = `${error.name} ${error.message}`.toLowerCase();
+  return description.includes("timeout") || description.includes("network") || description.includes("connection");
+}
+
+/**
+ * Retries one provider failure with the secondary Groq project key. Both keys
+ * access the same Groq API; this protects the app from per-key rate limits or
+ * a temporarily unhealthy request path without retrying invalid requests.
+ */
+async function groqFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const fallbackKey =
+    process.env.GROQ_API_KEY_FALLBACK || process.env.GROQ_FALLBACK_API_KEY;
+
+  const requestWithFallbackKey = () => {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${fallbackKey}`);
+    return globalThis.fetch(input, { ...init, headers });
+  };
+
+  try {
+    const response = await globalThis.fetch(input, init);
+    if (!fallbackKey || !shouldUseFallback(response.status)) {
+      return response;
+    }
+
+    console.warn(`Groq primary key received HTTP ${response.status}; retrying once with fallback key.`);
+    return requestWithFallbackKey();
+  } catch (error) {
+    if (!fallbackKey || !isRetryableNetworkError(error)) {
+      throw error;
+    }
+
+    console.warn("Groq primary request failed at the network layer; retrying once with fallback key.");
+    return requestWithFallbackKey();
   }
+}
+
+export function createGroqClient(): OpenAI {
+  const apiKey = process.env.GROQ_API_KEY || "missing-groq-api-key";
+  const baseURL = process.env.GROQ_BASE_URL || GROQ_BASE_URL;
 
   return new OpenAI({
     apiKey,
     baseURL,
-    ...(Object.keys(defaultHeaders).length ? { defaultHeaders } : {}),
+    // Let groqFetch decide whether to retry with the fallback key. Otherwise
+    // the SDK would retry the same rate-limited primary key first.
+    maxRetries: 0,
+    fetch: groqFetch,
   });
 }
 
-export const model = createOllamaClient();
-export const MODEL_NAME = process.env.OLLAMA_MODEL || "llama3.2:3b";
+export const model = createGroqClient();
+export const MODEL_NAME = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
 // Common prompt templates for cross-feature recommendations
 export const PROMPT_TEMPLATES = {

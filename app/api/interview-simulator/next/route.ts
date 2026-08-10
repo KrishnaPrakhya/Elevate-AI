@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { extractJsonObject } from "@/lib/ai/json";
 
 export const maxDuration = 60;
 
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 const toExperienceLevel = (experience?: number | null) => {
   if (typeof experience !== "number") return "Mid-Level";
@@ -143,7 +143,7 @@ Expected duration should be 60-180 seconds.`;
 
     try {
       const result = await model.chat.completions.create({
-        model: ollamaModel,
+        model: groqModel,
         messages: [
           {
             role: "system",
@@ -197,7 +197,7 @@ Expected duration should be 60-180 seconds.`;
       return NextResponse.json({
         question: sanitizedQuestion,
         interviewerReply,
-        source: "ollama-cloud",
+        source: "groq",
       });
     } catch (backendError) {
       console.warn("Cloud next-question generation unavailable, using fallback:", backendError);

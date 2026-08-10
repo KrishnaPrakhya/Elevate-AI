@@ -4,12 +4,12 @@ import { CACHE_TTL, getCachedData, invalidateCache } from "@/lib/redis";
 import { auth } from "@clerk/nextjs/server";
 import { optimizeResumeSection, analyzeSkillGaps, enhanceTextSection } from "@/lib/ai/career-agent";
 import { revalidatePath } from "next/cache";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson } from "@/lib/ai/json";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { z } from "zod";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 // Input validation schemas
 const saveResumeSchema = z.object({
@@ -213,7 +213,7 @@ export async function analyzeResume(resumeContent: string) {
 
       try {
         const result = await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: prompt }],
         });
         const analysisText = result.choices[0]?.message?.content?.trim() || "";
@@ -284,7 +284,7 @@ export async function tailorToJob(data: { resumeContent: string; jobDescription:
 
       try {
         const result = await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: prompt }],
         });
         const tailoredContent = result.choices[0]?.message?.content?.trim() || "";

@@ -7,10 +7,10 @@
 import OpenAI from 'openai';
 import { BrowserAgent, type BrowserAnalysisResult } from './browser-agent';
 import { ContentAnalyzerAgent, type ContentAnalysisResult } from './content-analyzer';
-import { createOllamaClient } from '@/lib/ai';
+import { createGroqClient } from '@/lib/ai';
 import { extractJsonObject } from '@/lib/ai/json';
 
-const ollamaClient = createOllamaClient();
+const groqClient = createGroqClient();
 
 // ============================================
 // State Types for the Graph
@@ -134,7 +134,7 @@ export class PortfolioReviewOrchestrator {
   constructor() {
     this.browserAgent = new BrowserAgent();
     this.contentAnalyzer = new ContentAnalyzerAgent();
-    this.client = ollamaClient;
+    this.client = groqClient;
   }
 
   // ============================================
@@ -309,7 +309,7 @@ export class PortfolioReviewOrchestrator {
       (professionalismScore * 0.20)
     );
 
-    // Generate AI feedback if Ollama Cloud is available
+    // Generate AI feedback if Groq is available
     let aiFeedback: PortfolioReviewResult['aiFeedback'];
 
     if (this.client) {
@@ -529,7 +529,7 @@ export class PortfolioReviewOrchestrator {
 
     try {
       const result = await this.client!.chat.completions.create({
-        model: (process.env.OLLAMA_MODEL || 'llama3.2:3b'), // Same model used across the app (Ollama Cloud)
+        model: (process.env.GROQ_MODEL || 'openai/gpt-oss-20b'), // Same model used across the app (Groq)
         messages: [
           { role: 'system', content: 'You are an expert portfolio reviewer. Return only valid JSON.' },
           { role: 'user', content: prompt },

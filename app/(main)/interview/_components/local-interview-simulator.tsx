@@ -175,7 +175,7 @@ export default function LocalInterviewSimulator({
   const [selectedLevel, setSelectedLevel] = useState("Mid-Level");
   const [roleOptions, setRoleOptions] =
     useState<string[]>(DEFAULT_ROLE_OPTIONS);
-  const [interviewSource, setInterviewSource] = useState("ollama-cloud");
+  const [interviewSource, setInterviewSource] = useState("groq");
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [lastInterviewerReply, setLastInterviewerReply] = useState("");
   const [autoVoiceTurn, setAutoVoiceTurn] = useState(initialMode === "voice");
@@ -385,12 +385,12 @@ export default function LocalInterviewSimulator({
           `Let us begin with question one.`;
         setCurrentQuestion(response.data.questions[0]);
         setTimeRemaining(response.data.questions[0].expectedDuration);
-        setInterviewSource(response.data.source || "ollama-cloud");
+        setInterviewSource(response.data.source || "groq");
         setLastInterviewerReply(openingPrompt);
         setState("active");
         if ((response.data.source || "").startsWith("fallback")) {
           toast.info(
-            "Using backup question flow. Add/update OLLAMA_API_KEY for Cloud mode.",
+            "Using backup question flow. Add/update GROQ_API_KEY for Cloud mode.",
           );
         }
         toast.success("Interview started! Good luck!");
@@ -640,7 +640,7 @@ export default function LocalInterviewSimulator({
     setUserAnswer("");
     latestAnswerRef.current = "";
     setSessionStartedAt(null);
-    setInterviewSource("ollama-cloud");
+    setInterviewSource("groq");
     setLastInterviewerReply("");
   };
 
@@ -679,12 +679,12 @@ export default function LocalInterviewSimulator({
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary">
             <Brain className="w-4 h-4" />
             <span className="text-sm font-medium">
-              Ollama Cloud Interview Agent
+              Groq Interview Agent
             </span>
           </div>
           <h1 className="text-4xl font-bold">Interview Simulator</h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Practice with Ollama Cloud-powered interviews. Voice mode uses your
+            Practice with Groq-powered interviews. Voice mode uses your
             browser microphone for real-time transcription while the interview
             intelligence and feedback run on your cloud model.
           </p>
@@ -843,7 +843,7 @@ export default function LocalInterviewSimulator({
                 <div className="text-sm text-blue-900 dark:text-blue-100">
                   <p className="font-medium mb-1">What to expect:</p>
                   <ul className="list-disc list-inside space-y-1 text-blue-800 dark:text-blue-200">
-                    <li>Ollama Cloud questions tailored to role and level</li>
+                    <li>Groq questions tailored to role and level</li>
                     <li>Adaptive difficulty using ongoing answer context</li>
                     <li>Live transcription in voice mode</li>
                     <li>AI interviewer speaks back between questions</li>
@@ -1048,7 +1048,7 @@ export default function LocalInterviewSimulator({
           >
             {interviewSource.startsWith("fallback")
               ? "Fallback Flow"
-              : "Ollama Cloud"}
+              : "Groq"}
           </Badge>
         </div>
         <Button

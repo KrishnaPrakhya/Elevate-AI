@@ -1,7 +1,7 @@
 /**
  * Shared helpers for parsing LLM output.
  *
- * Small models (e.g. llama3.2:3b) frequently wrap JSON in markdown fences,
+ * Small models (e.g. openai/gpt-oss-20b) frequently wrap JSON in markdown fences,
  * add a conversational preamble ("Here's the JSON:"), or emit trailing notes.
  * These helpers tolerate all of that and NEVER throw — callers always get a
  * usable value or an explicit fallback, so a bad model response degrades

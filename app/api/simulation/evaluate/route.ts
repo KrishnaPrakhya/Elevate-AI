@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const FASTAPI_URL =
-  process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+import { getInternalBackendHeaders, getPythonBackendUrl } from "@/lib/python-backend";
 
 function buildFallbackEvaluation(body: Record<string, unknown>) {
   const rawResponse =
@@ -33,9 +31,9 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
 
-    const response = await fetch(`${FASTAPI_URL}/api/simulation/evaluate`, {
+    const response = await fetch(`${getPythonBackendUrl()}/api/simulation/evaluate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getInternalBackendHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(20_000),

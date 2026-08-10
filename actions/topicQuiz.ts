@@ -2,12 +2,12 @@
 
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson } from "@/lib/ai/json";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { getCachedData, CACHE_TTL, redis } from "@/lib/redis";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 export async function generateTopicQuiz(topics:string[]){
   const {userId}=await auth();
   if(!userId) throw new Error("User is Unauthorized");
@@ -48,7 +48,7 @@ export async function generateTopicQuiz(topics:string[]){
           }
         `;
         const res = await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
@@ -105,7 +105,7 @@ export async function generateTopicContent(topics: string[]) {
     `;
 
         const res = await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";
@@ -185,7 +185,7 @@ export async function getTopTopics(){
         ]
         `;
         const res = await model.chat.completions.create({
-          model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+          model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
           messages: [{ role: "user", content: prompt }],
         });
         const text = res.choices[0]?.message?.content || "";

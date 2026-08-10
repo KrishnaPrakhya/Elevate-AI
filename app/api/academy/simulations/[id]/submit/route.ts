@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/prisma";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson } from "@/lib/ai/json";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 import { ASSESSMENT_CATEGORY } from "@/lib/growth/categories";
 
 export const maxDuration = 60;
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 // Submit simulation and get AI evaluation
 export async function POST(
@@ -84,7 +84,7 @@ export async function POST(
     `;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
       temperature: 0.5,
     });

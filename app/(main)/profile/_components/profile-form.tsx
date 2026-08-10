@@ -290,14 +290,9 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                       toast.error("User ID not found. Please sign in again.");
                       return;
                     }
-                    const redirectUrl = encodeURIComponent(
-                      `${window.location.origin}/profile?google_calendar=connected`,
-                    );
-                    const backendBaseUrl = (
-                      process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
-                      "https://elevate-ai-flask.onrender.com"
-                    ).replace(/\/$/, "");
-                    window.location.href = `${backendBaseUrl}/api/google/connect?clerk_user_id=${clerkUserId}&next_url=${redirectUrl}`;
+                    // Clerk authentication stays on Next.js. The server route
+                    // starts OAuth with the backend's internal service secret.
+                    window.location.href = "/api/google/connect";
                   }}
                 >
                   {isConnectingCalendar ? (
@@ -312,7 +307,7 @@ export default function ProfileForm({ initialUser }: ProfileFormProps) {
                     </>
                   )}
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">
+                    <p className="text-xs text-muted-foreground text-center">
                   You will be redirected to Google to authorize access
                 </p>
               </>

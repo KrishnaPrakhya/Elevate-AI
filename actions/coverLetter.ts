@@ -2,14 +2,14 @@
 
 import { db } from "@/lib/prisma"
 import { auth } from "@clerk/nextjs/server"
-import { createOllamaClient } from "@/lib/ai"
+import { createGroqClient } from "@/lib/ai"
 import { enhanceTextSection } from "@/lib/ai/career-agent"
 import { parseLLMJson } from "@/lib/ai/json"
 import { recordExecutedAction } from "@/lib/performance/intelligence"
 import { revalidatePath } from "next/cache"
 import { getCachedData, invalidateCache, CACHE_TTL } from "@/lib/redis"
 
-const model = createOllamaClient()
+const model = createGroqClient()
 
 interface CoverLetterProp {
   content: any
@@ -240,7 +240,7 @@ export const analyzeCoverLetter = async (content: string) => {
 
       try {
         const result = await model.chat.completions.create({
-        model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+        model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
         messages: [{ role: "user", content: prompt }],
       });
       const analysisText = result.choices[0]?.message?.content?.trim() || ""
@@ -302,7 +302,7 @@ export async function tailorToJobCoverLetter(data: TailorProps) {
 
       try {
         const result = await model.chat.completions.create({
-        model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+        model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
         messages: [{ role: "user", content: prompt }],
       });
       const tailoredContent = result.choices[0]?.message?.content?.trim() || ""
@@ -369,7 +369,7 @@ export const generateCoverLetter = async (jobTitle: string, companyName: string,
 
       try {
         const result = await model.chat.completions.create({
-        model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+        model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
         messages: [{ role: "user", content: prompt }],
       });
       const raw = result.choices[0]?.message?.content?.trim() || ""

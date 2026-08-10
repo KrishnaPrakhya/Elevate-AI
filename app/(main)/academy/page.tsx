@@ -1845,7 +1845,7 @@ export default function AcademyPage() {
                     Voice Mock Interview
                   </CardTitle>
                   <CardDescription>
-                    Practice with an Ollama Cloud interviewer using natural
+                    Practice with an Groq interviewer using natural
                     voice conversation
                   </CardDescription>
                 </div>
@@ -1855,7 +1855,7 @@ export default function AcademyPage() {
                 className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
               >
                 <Zap className="w-3 h-3 mr-1" />
-                Ollama Cloud
+                Groq
               </Badge>
             </div>
           </CardHeader>
@@ -1867,7 +1867,7 @@ export default function AcademyPage() {
                   <span className="text-sm font-semibold">Cloud Voice</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Natural conversation powered by Ollama Cloud and browser
+                  Natural conversation powered by Groq and browser
                   speech tools
                 </p>
               </div>

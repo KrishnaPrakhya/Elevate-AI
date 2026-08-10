@@ -11,7 +11,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error: "LiveKit voice rooms have been replaced",
-        message: "Use /interview/simulator-live (browser voice + Ollama Cloud adaptive interview).",
+        message: "Use /interview/simulator-live (browser voice + Groq adaptive interview).",
       },
       { status: 410 }
     );

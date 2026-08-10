@@ -1,7 +1,7 @@
 """
 LiveKit Voice AI Interviewer Agent
 ===================================
-Real-time voice-to-voice AI interviewer using LiveKit Agents + Ollama Cloud.
+Real-time voice-to-voice AI interviewer using LiveKit Agents + Groq.
 
 Install dependencies:
     pip install livekit-agents livekit-plugins-silero livekit-plugins-deepgram livekit-plugins-elevenlabs
@@ -12,8 +12,9 @@ Environment variables:
     LIVEKIT_URL=wss://your-project.livekit.cloud
     DEEPGRAM_API_KEY=your_key (free tier: 1hr/month)
     ELEVENLABS_API_KEY=your_key (free tier: 10K chars/month)
-    OLLAMA_BASE_URL=http://localhost:11434/v1 (or your Cloudflare tunnel URL)
-    OLLAMA_MODEL=llama3.2:3b
+    GROQ_API_KEY=your_groq_api_key
+    GROQ_BASE_URL=https://api.groq.com/openai/v1
+    GROQ_MODEL=openai/gpt-oss-20b
 
 Run:
     python livekit-voice-agent.py
@@ -42,10 +43,10 @@ LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
 LIVEKIT_URL = os.getenv("LIVEKIT_URL", "wss://localhost:7880")
 
-# Self-hosted Ollama configuration (OpenAI-compatible API)
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+# Groq configuration (OpenAI-compatible API)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 # Speech services
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
@@ -330,13 +331,13 @@ class InterviewAgent(agents.Agent):
         stt = deepgram.STT(api_key=DEEPGRAM_API_KEY)  # Speech-to-text
         tts = elevenlabs.TTS(api_key=ELEVENLABS_API_KEY, voice=ELEVENLABS_VOICE_ID)  # Text-to-speech
 
-        # LLM setup - Use Ollama Cloud with OpenAI-compatible API
+        # LLM setup - Use Groq with OpenAI-compatible API
         from livekit.plugins import openai as lk_openai
 
         llm_model = lk_openai.LLM(
-            api_key=OLLAMA_API_KEY,
-            base_url=OLLAMA_BASE_URL,
-            model=OLLAMA_MODEL,
+            api_key=GROQ_API_KEY,
+            base_url=GROQ_BASE_URL,
+            model=GROQ_MODEL,
         )
 
         # Create voice pipeline
@@ -419,8 +420,8 @@ if __name__ == "__main__":
         exit(1)
 
     logger.info("Starting LiveKit Voice Interview Agent...")
-    logger.info(f"Using local Ollama: {OLLAMA_BASE_URL}")
-    logger.info(f"Model: {OLLAMA_MODEL}")
+    logger.info(f"Using Groq API: {GROQ_BASE_URL}")
+    logger.info(f"Model: {GROQ_MODEL}")
 
     # Run the worker
     cli.run_app(WorkerOptions(agent_cls=InterviewAgent))

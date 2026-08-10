@@ -12,6 +12,7 @@
  */
 
 import { db } from "../prisma";
+import { getInternalBackendHeaders, getPythonBackendUrl } from "../python-backend";
 import {
   Prisma,
   type ActionType,
@@ -20,12 +21,7 @@ import {
 } from "@prisma/client";
 
 const getBackendBaseUrl = () => {
-  const raw =
-    process.env.FASTAPI_URL ||
-    process.env.NEXT_PUBLIC_FLASK_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_FAST_API_BACKEND_URL_LOCAL ||
-    "https://elevate-ai-flask.onrender.com";
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  return getPythonBackendUrl();
 };
 
 async function sendEmailViaBackend(input: {
@@ -37,7 +33,7 @@ async function sendEmailViaBackend(input: {
 }) {
   const response = await fetch(`${getBackendBaseUrl()}/api/tools/send_email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getInternalBackendHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       to: input.to,
       subject: input.subject,

@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { extractJsonObject } from "@/lib/ai/json";
 import { ASSESSMENT_CATEGORY } from "@/lib/growth/categories";
 
 export const maxDuration = 60;
 
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
-const client = createOllamaClient();
+const client = createGroqClient();
 
 type InterviewResponse = {
   questionId?: string;
@@ -123,7 +123,7 @@ Responses: ${JSON.stringify(responseList)}`;
     if (client) {
       try {
         const result = await client.chat.completions.create({
-          model: ollamaModel,
+          model: groqModel,
           messages: [
             {
               role: "system",
@@ -162,7 +162,7 @@ Responses: ${JSON.stringify(responseList)}`;
           };
         }
       } catch (backendError) {
-        console.warn("Ollama Cloud feedback unavailable, using fallback:", backendError);
+        console.warn("Groq feedback unavailable, using fallback:", backendError);
       }
     }
 
@@ -199,7 +199,7 @@ Responses: ${JSON.stringify(responseList)}`;
       },
     });
 
-    return NextResponse.json({ feedback: feedbackData, source: client ? "ollama-cloud" : "fallback" });
+    return NextResponse.json({ feedback: feedbackData, source: client ? "groq" : "fallback" });
   } catch (error) {
     console.error("Error generating feedback:", error);
     return NextResponse.json(

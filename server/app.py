@@ -788,30 +788,18 @@ def init_db():
         db_session.close()
 
 
-# Initialize LLM
-import base64 as _base64
-
-ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
-ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-cf_client_id = os.getenv("CF_ACCESS_CLIENT_ID", "")
-cf_client_secret = os.getenv("CF_ACCESS_CLIENT_SECRET", "")
-
-_ollama_headers = {}
-if cf_client_id and cf_client_secret:
-    _ollama_headers = {
-        "CF-Access-Client-Id": cf_client_id,
-        "CF-Access-Client-Secret": cf_client_secret,
-    }
+# Initialize the Groq OpenAI-compatible LLM client.
+groq_api_key = os.getenv("GROQ_API_KEY", "")
+groq_base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(
-    model=ollama_model,
-    openai_api_key=ollama_api_key,
-    base_url=ollama_base_url,
-    **({"default_headers": _ollama_headers} if _ollama_headers else {}),
+    model=groq_model,
+    openai_api_key=groq_api_key or "missing-groq-api-key",
+    base_url=groq_base_url,
 )
-logger.info(f"Local Ollama LLM initialized. Base URL: {ollama_base_url}, Model: {ollama_model}")
+logger.info("Groq LLM initialized. Base URL: %s, Model: %s", groq_base_url, groq_model)
 
 # Test the LLM connection
 try:
@@ -827,7 +815,7 @@ async def invoke_sync(runnable: Any, payload: dict[str, Any]) -> Any:
 
 
 async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, Any]) -> str:
-    """Render a chat prompt template and call Ollama synchronously in a worker thread."""
+    """Render a chat prompt template and call Groq synchronously in a worker thread."""
     try:
         chain = prompt | llm | StrOutputParser()
         result = await invoke_sync(chain, payload)
@@ -840,7 +828,7 @@ async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, 
 def parse_llm_json(text: Any, fallback: Any = None) -> Any:
     """Tolerantly extract a JSON object/array from LLM output.
 
-    Small models (llama3.2:3b) often wrap JSON in markdown fences or add a
+    Small models (openai/gpt-oss-20b) often wrap JSON in markdown fences or add a
     conversational preamble. This strips fences, tries a direct parse, then
     falls back to slicing the outermost {...} or [...]. Returns ``fallback``
     instead of raising so callers degrade gracefully.
@@ -2656,7 +2644,10 @@ async def finish_voice_interview(request_data: dict):
 # ============================================
 
 @app.post("/api/tools/send_email")
-async def send_email_tool(input_data: SendEmailInput):
+async def send_email_tool(
+    input_data: SendEmailInput,
+    _: None = Depends(require_internal_caller),
+):
     """Send email via Gmail API. Used by AI agents for notifications."""
     try:
         from tools.email import EmailTool
@@ -2692,11 +2683,13 @@ async def send_email_tool(input_data: SendEmailInput):
 
 
 def _google_oauth_redirect_uri() -> str:
-    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "https://elevate-ai-flask.onrender.com/api/google/callback")
+    # Azure Container Apps has a stable HTTPS FQDN. Set this explicitly in the
+    # Container App and register the exact URL in Google Cloud Console.
+    return os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:5000/api/google/callback")
 
 
 def _google_state_serializer() -> URLSafeSerializer:
-    secret = os.getenv("GOOGLE_OAUTH_STATE_SECRET") or os.getenv("CLERK_SECRET_KEY") or os.getenv("OLLAMA_API_KEY", "dev-secret")
+    secret = os.getenv("GOOGLE_OAUTH_STATE_SECRET") or os.getenv("CLERK_SECRET_KEY") or os.getenv("GROQ_API_KEY", "dev-secret")
     return URLSafeSerializer(secret_key=secret, salt="google-oauth-state")
 
 
@@ -2751,6 +2744,7 @@ async def google_connect(
     clerk_user_id: str = Query(..., description="Clerk user id to bind Google OAuth connection"),
     next_url: Optional[str] = Query(None, description="Optional frontend URL to redirect to after callback"),
     auto_redirect: bool = Query(True, description="When true, immediately redirect browser to Google consent screen"),
+    _: None = Depends(require_internal_caller),
 ):
     """Start Google OAuth consent flow for calendar access."""
     if not GOOGLE_CALENDAR_AVAILABLE:
@@ -2870,7 +2864,10 @@ async def google_callback(
 
 
 @app.post("/api/tools/create_calendar_event")
-async def create_calendar_event_tool(input_data: CreateCalendarEventInput):
+async def create_calendar_event_tool(
+    input_data: CreateCalendarEventInput,
+    _: None = Depends(require_internal_caller),
+):
     """Create Google Calendar event. Used by AI agents for scheduling."""
     try:
         if not GOOGLE_CALENDAR_AVAILABLE:
@@ -2910,7 +2907,10 @@ async def create_calendar_event_tool(input_data: CreateCalendarEventInput):
 
 
 @app.post("/api/tools/track_job_application")
-async def track_job_application_tool(input_data: TrackJobApplicationInput):
+async def track_job_application_tool(
+    input_data: TrackJobApplicationInput,
+    _: None = Depends(require_internal_caller),
+):
     """Track a job application in the database."""
     try:
         async with AsyncSessionLocal() as db:
@@ -2952,7 +2952,10 @@ async def track_job_application_tool(input_data: TrackJobApplicationInput):
 
 
 @app.post("/api/tools/schedule_mentorship")
-async def schedule_mentorship_tool(input_data: ScheduleMentorshipInput):
+async def schedule_mentorship_tool(
+    input_data: ScheduleMentorshipInput,
+    _: None = Depends(require_internal_caller),
+):
     """Schedule a mentorship session."""
     try:
         async with AsyncSessionLocal() as db:
@@ -2989,7 +2992,10 @@ async def schedule_mentorship_tool(input_data: ScheduleMentorshipInput):
 
 
 @app.post("/api/tools/update_progress")
-async def update_user_progress_tool(input_data: UpdateProgressInput):
+async def update_user_progress_tool(
+    input_data: UpdateProgressInput,
+    _: None = Depends(require_internal_caller),
+):
     """Update user learning progress."""
     try:
         async with AsyncSessionLocal() as db:
@@ -3149,7 +3155,10 @@ def build_fallback_simulation_evaluation(input_data: SimulationInput) -> dict:
     }
 
 @app.post("/api/simulation/evaluate")
-async def evaluate_simulation(input_data: SimulationInput):
+async def evaluate_simulation(
+    input_data: SimulationInput,
+    _: None = Depends(require_internal_caller),
+):
     """Evaluate a simulation response and provide feedback."""
     try:
         # Generate AI feedback based on the scenario and response

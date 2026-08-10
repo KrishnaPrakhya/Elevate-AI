@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const FASTAPI_URL =
-  process.env.FASTAPI_URL || "https://elevate-ai-flask.onrender.com";
+import { getPythonBackendUrl } from "@/lib/python-backend";
 
 const fallbackScenarios = [
   {
@@ -36,7 +34,7 @@ const fallbackScenarios = [
 
 export async function GET() {
   try {
-    const response = await fetch(`${FASTAPI_URL}/api/simulation/scenarios`, {
+    const response = await fetch(`${getPythonBackendUrl()}/api/simulation/scenarios`, {
       cache: "no-store",
       signal: AbortSignal.timeout(8_000),
     });

@@ -4,14 +4,14 @@ import { db } from "@/lib/prisma";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson } from "@/lib/ai/json";
 import { inngest } from "@/lib/inngest/client";
 import { getCachedData, CACHE_TTL, invalidateCache } from "@/lib/redis";
 import { redis } from "@/lib/redis";
 import { recordExecutedAction } from "@/lib/performance/intelligence";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 // ============================================
 // ENROLLMENT & LEARNING PATH
@@ -1093,7 +1093,7 @@ export async function getPersonalizedRecommendations() {
             and active plan gaps: ${planGapText},
             generate a single, actionable learning tip. Keep it under 2 sentences.`;
           const result = await model.chat.completions.create({
-            model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+            model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
             messages: [{ role: "user", content: prompt }],
           });
           aiTip = result.choices[0]?.message?.content?.trim() || "";
@@ -1193,7 +1193,7 @@ IMPORTANT:
 - Importance: 1-10 scale based on industry relevance`;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [
         { role: "system", content: "You are a career development expert. Analyze skill gaps objectively based on actual learning progress." },
         { role: "user", content: prompt },
@@ -1281,7 +1281,7 @@ Return JSON:
 }`;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
     });
 

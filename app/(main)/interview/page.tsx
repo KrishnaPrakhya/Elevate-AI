@@ -93,7 +93,7 @@ export default function Page() {
                 <div>
                   <h2 className="text-xl font-bold">Live Voice Interview</h2>
                   <p className="text-sm text-muted-foreground">
-                    Real-time voice interview with Ollama Cloud
+                    Real-time voice interview with Groq
                   </p>
                 </div>
               </div>
@@ -106,7 +106,7 @@ export default function Page() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <CheckIcon />
-                  <span>Ollama Cloud interview engine</span>
+                  <span>Groq interview engine</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckIcon />

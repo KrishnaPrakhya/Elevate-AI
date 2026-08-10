@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+chroma_db/
+microservices/
+livekit-agent.py
+livekit-interview-agent.py
+livekit-voice-agent.py
+*.json
+!requirements.txt

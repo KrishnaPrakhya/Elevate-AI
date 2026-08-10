@@ -1,9 +1,9 @@
-import { createOllamaClient } from "../ai";
+import { createGroqClient } from "../ai";
 import { parseLLMJson } from "./json";
 
-export const model = createOllamaClient();
+export const model = createGroqClient();
 
-export const MODEL_NAME = process.env.OLLAMA_MODEL || "llama3.2:3b";
+export const MODEL_NAME = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
 // ============================================
 // AI CAREER AGENT - Central Intelligence

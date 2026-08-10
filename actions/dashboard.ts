@@ -3,11 +3,11 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { getCachedData, CACHE_TTL } from "@/lib/redis";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { parseLLMJson } from "@/lib/ai/json";
 import { headers } from "next/headers";
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 
 interface SalaryRange {
@@ -190,7 +190,7 @@ export const generateAIinsights = async (
     `;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [{ role: "user", content: prompt }],
     });
     const text = result.choices[0]?.message?.content || "";

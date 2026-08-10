@@ -1,27 +1,18 @@
 import OpenAI from "openai";
 import { parseLLMJson } from "@/lib/ai/json";
 
-export function createOllamaClient(): OpenAI {
-  const apiKey = process.env.OLLAMA_API_KEY || "ollama";
-  const baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
-  const cfClientId = process.env.CF_ACCESS_CLIENT_ID;
-  const cfClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
-
-  const defaultHeaders: Record<string, string> = {};
-  if (cfClientId && cfClientSecret) {
-    defaultHeaders["CF-Access-Client-Id"] = cfClientId;
-    defaultHeaders["CF-Access-Client-Secret"] = cfClientSecret;
-  }
+export function createGroqClient(): OpenAI {
+  const apiKey = process.env.GROQ_API_KEY || "missing-groq-api-key";
+  const baseURL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 
   return new OpenAI({
     apiKey,
     baseURL,
-    ...(Object.keys(defaultHeaders).length ? { defaultHeaders } : {}),
   });
 }
 
-export const model = createOllamaClient();
-export const MODEL_NAME = process.env.OLLAMA_MODEL || "llama3.2:3b";
+export const model = createGroqClient();
+export const MODEL_NAME = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
 // Common prompt templates for cross-feature recommendations
 export const PROMPT_TEMPLATES = {

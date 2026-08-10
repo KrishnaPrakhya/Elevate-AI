@@ -2,7 +2,7 @@
 LiveKit AI Interviewer Agent
 ============================
 This agent connects to LiveKit rooms and conducts mock interviews.
-It uses Ollama or Google Gemini for AI responses.
+It uses Groq for AI responses.
 
 Requirements:
     pip install livekit livekit-agents livekit-plugins-av
@@ -20,9 +20,9 @@ from livekit import agents, rtc
 from livekit.agents import JobContext, WorkerOptions, cli
 
 # Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # Interview questions database
 INTERVIEW_QUESTIONS = {
@@ -135,13 +135,17 @@ class InterviewAgent(agents.Agent):
 
     async def _conduct_interview(self, room: rtc.Room, ctx: rtc.ChatContext):
         """Conduct the interview session."""
-        from livekit.plugins import silero, deepgram, ollama
+        from livekit.plugins import silero, deepgram, openai
 
         # Initialize speech-to-text
         stt = deepgram.STT()
 
         # Initialize text-to-llm
-        llm = ollama.LLM(model=OLLAMA_MODEL)
+        llm = openai.LLM(
+            api_key=GROQ_API_KEY,
+            base_url=GROQ_BASE_URL,
+            model=GROQ_MODEL,
+        )
 
         # Initialize LLM with interview context
         interview_ctx = ctx.copy()

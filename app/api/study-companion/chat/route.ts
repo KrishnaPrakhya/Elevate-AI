@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { createOllamaClient } from "@/lib/ai";
+import { createGroqClient } from "@/lib/ai";
 import { extractJsonObject } from "@/lib/ai/json";
 
 export const maxDuration = 60;
@@ -29,7 +29,7 @@ function formatMarkdownResponse(content: string): string {
   return formatted.trim();
 }
 
-const model = createOllamaClient();
+const model = createGroqClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     `;
 
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [
         {
           role: "system",

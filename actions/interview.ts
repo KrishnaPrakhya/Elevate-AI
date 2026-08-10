@@ -220,11 +220,11 @@ export const saveQuizResult = async (
       Keep it encouraging and actionable (under 3 sentences).
     `;
     try {
-      const { createOllamaClient } = await import("@/lib/ai");
-      const model = createOllamaClient();
+      const { createGroqClient } = await import("@/lib/ai");
+      const model = createGroqClient();
 
       const tipResult2 = await model.chat.completions.create({
-        model: process.env.OLLAMA_MODEL || "llama3.2:3b",
+        model: process.env.GROQ_MODEL || "openai/gpt-oss-20b",
         messages: [{ role: "user", content: improvementPrompt }],
       });
 

@@ -5,6 +5,10 @@ import {
   formatGrowthContextForPrompt,
   type UserGrowthContext,
 } from "@/lib/growth/getUserGrowthContext";
+import {
+  getInternalBackendHeaders,
+  getPythonBackendUrl,
+} from "@/lib/python-backend";
 
 export const maxDuration = 60;
 
@@ -22,9 +26,6 @@ export const maxDuration = 60;
  * - schedule_generator: Learning schedules
  * - interview_preparer: Interview preparation
  */
-
-const PYTHON_BACKEND_URL =
-  process.env.PYTHON_BACKEND_URL || "https://elevate-ai-flask.onrender.com";
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,11 +84,11 @@ export async function POST(request: NextRequest) {
 
     // Forward to Python LangGraph backend
     try {
-      const response = await fetch(`${PYTHON_BACKEND_URL}/api/chat`, {
+      const response = await fetch(`${getPythonBackendUrl()}/api/chat`, {
         method: "POST",
-        headers: {
+        headers: getInternalBackendHeaders({
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify({
           message,
           user_profile: userContext,
@@ -240,8 +241,8 @@ async function handleLocalFallback(
   ctx: UserGrowthContext,
   agent: string
 ) {
-  const { createOllamaClient } = await import("@/lib/ai");
-  const model = createOllamaClient();
+  const { createGroqClient } = await import("@/lib/ai");
+  const model = createGroqClient();
 
   const systemPrompt = getAgentSystemPrompt(agent);
 
@@ -258,7 +259,7 @@ ${formatGrowthContextForPrompt(ctx)}
 
   try {
     const result = await model.chat.completions.create({
-      model: (process.env.OLLAMA_MODEL || "llama3.2:3b"),
+      model: (process.env.GROQ_MODEL || "openai/gpt-oss-20b"),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },

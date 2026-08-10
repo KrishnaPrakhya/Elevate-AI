@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { analyzeCareerProfile } from "@/lib/ai/career-agent";
 import { CACHE_TTL, getCachedData } from "@/lib/redis";
 import { createHash } from "crypto";
@@ -85,6 +86,11 @@ function buildFallbackInsight(body: Record<string, unknown>) {
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown> = {};
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     body = await request.json();
     const { industry, skills, experience, bio, targetRole, recentActivity, completedCourses, weakAreas } = body;
 

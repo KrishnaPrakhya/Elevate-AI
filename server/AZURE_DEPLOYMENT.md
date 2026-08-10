@@ -1,7 +1,6 @@
 # Deploy the FastAPI backend to Azure Container Apps
 
-This folder is the deployable backend. It runs `server/app.py` as a Docker
-container; the Next.js app remains on Vercel.
+This folder contains the deployable backend. It runs `server/app.py` as a Docker container; the Next.js app remains on Vercel.
 
 ## Resulting architecture
 
@@ -10,205 +9,121 @@ Browser -> Vercel / Next.js -> Azure Container Apps / FastAPI
                                       |
                                       +-> Neon Postgres
                                       +-> Groq API (hosted model inference)
-Google OAuth -> Azure /api/google/callback -> Vercel profile page
+Google OAuth -> Azure callback -> Vercel profile page
 ```
 
-The Azure service is externally reachable only for the Google OAuth callback
-and `/health`. Every application mutation and chat request from Next.js carries
-`X-Internal-Secret` and is rejected by FastAPI without it.
+The Azure service is externally reachable only for `/health` and the Google OAuth callback. Every application mutation and chat request from Next.js carries `X-Internal-Secret` and is rejected by FastAPI without it.
 
-## 1. Prerequisites
+## 1. Before you start
 
-- Azure subscription with Contributor permissions.
-- Azure CLI installed, then sign in with `az login`.
-- Docker is optional. `az containerapp up --source .` can build the image in
-  Azure from this folder's `Dockerfile`.
-- A copy of the values from `azure.env.example`. Never commit real values.
+Have these ready before you open Azure Portal:
 
-From PowerShell, run the following from the repository root:
+- An Azure subscription with permission to create and edit resources.
+- The values from `azure.env.example`.
+- Your production Vercel URL.
+- Your Google OAuth client details.
 
-```powershell
-az extension add --name containerapp --upgrade
-az provider register --namespace Microsoft.App
-az provider register --namespace Microsoft.OperationalInsights
+Use the Azure Portal for the full setup. This guide intentionally avoids CLI steps.
 
-$resourceGroup = "elevate-ai-rg"
-$location = "eastus"
-$environment = "elevate-ai-env"
-$appName = "elevate-ai-api"
+## 2. Create the Azure resources in the portal
 
-Set-Location .\server
-az containerapp up `
-  --name $appName `
-  --resource-group $resourceGroup `
-  --location $location `
-  --environment $environment `
-  --source . `
-  --ingress external `
-  --target-port 8080 `
-  --env-vars PORT=8080
-```
+1. Sign in to the [Azure Portal](https://portal.azure.com).
+2. Create or open the resource group you want to use, for example `elevate-ai-rg`.
+3. Create an Azure Container Apps environment in a nearby region. `eastus` is a sensible first choice because the Neon database is already in US East.
+4. Create a Container App named `elevate-ai-api`.
+5. Use the backend container image built from this folder's `Dockerfile`.
+6. Set the container app ingress to External.
+7. Set the target port to `8080`.
 
-`eastus` is a sensible first choice because the existing Neon database is in
-US East. Choose another supported region only if latency or budget requires it.
-The first command creates the resource group, Container Apps environment,
-container registry, image, and Container App. It outputs an Azure FQDN.
+If the portal asks for CPU and memory, start with 1 vCPU and 2 GiB memory. Set min replicas to 1 and max replicas to 2.
 
-```powershell
-$fqdn = az containerapp show --name $appName --resource-group $resourceGroup --query "properties.configuration.ingress.fqdn" --output tsv
-$backendUrl = "https://$fqdn"
-Invoke-WebRequest "$backendUrl/health" | Select-Object -Expand Content
-```
+## 3. Add secrets
 
-Expected output: `{"ok":true}`.
+In the Azure Portal, open **Container App > elevate-ai-api > Secrets** and add these secrets. Use your real values, but keep the secret names short because Container Apps limits secret name length.
 
-## 2. Configure secrets and environment variables
+| Secret name            | Backend variable                     |
+| ---------------------- | ------------------------------------ |
+| `database-url`         | `DATABASE_URL`                       |
+| `int-api-secret`       | `INTERNAL_API_SECRET`                |
+| `groq-api-key`         | `GROQ_API_KEY`                       |
+| `groq-fallback-key`    | `GROQ_API_KEY_FALLBACK`              |
+| `tavily-api-key`       | `TAVILY_API_KEY` if used             |
+| `google-client-id`     | `GOOGLE_CLIENT_ID`                   |
+| `google-client-secret` | `GOOGLE_CLIENT_SECRET`               |
+| `google-state-secret`  | `GOOGLE_OAUTH_STATE_SECRET`          |
+| `gmail-sender-email`   | `GMAIL_SENDER_EMAIL` if used         |
+| `gmail-sender-refresh` | `GMAIL_SENDER_REFRESH_TOKEN` if used |
+| `livekit-api-key`      | `LIVEKIT_API_KEY` if used            |
+| `livekit-api-secret`   | `LIVEKIT_API_SECRET` if used         |
 
-In the Azure portal, open **Container App > elevate-ai-api > Security >
-Secrets** and add secrets with these names. Use the values in your local
-environment; the names are deliberately short because Container Apps limits
-secret names to 20 characters.
+## 4. Set environment variables
 
-| Secret name | Backend variable |
-| --- | --- |
-| `database-url` | `DATABASE_URL` |
-| `int-api-secret` | `INTERNAL_API_SECRET` |
-| `groq-api-key` | `GROQ_API_KEY` |
-| `groq-fallback-key` | `GROQ_API_KEY_FALLBACK` |
-| `tavily-api-key` | `TAVILY_API_KEY` (if used) |
-| `google-client-id` | `GOOGLE_CLIENT_ID` |
-| `google-client-secret` | `GOOGLE_CLIENT_SECRET` |
-| `google-state-secret` | `GOOGLE_OAUTH_STATE_SECRET` |
-| `gmail-sender-email` | `GMAIL_SENDER_EMAIL` (if used) |
-| `gmail-sender-refresh` | `GMAIL_SENDER_REFRESH_TOKEN` (if used) |
-| `livekit-api-key` | `LIVEKIT_API_KEY` (if used) |
-| `livekit-api-secret` | `LIVEKIT_API_SECRET` (if used) |
+In the same Container App, open **Containers > Environment variables** and add these values. For secret-backed values, choose the secret reference instead of pasting the raw value into the variable field.
 
-Then open **Containers > Edit and deploy > Environment variables** and set:
-
-| Variable | Value |
-| --- | --- |
-| `PORT` | `8080` |
-| `CORS_ALLOWED_ORIGINS` | `https://elevate-ai-snowy.vercel.app,http://localhost:3000` |
-| `DATABASE_URL` | Reference secret `database-url` |
-| `INTERNAL_API_SECRET` | Reference secret `int-api-secret` |
-| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` |
-| `GROQ_MODEL` | `openai/gpt-oss-20b` |
-| `GROQ_API_KEY` | Reference secret `groq-api-key` |
-| `GROQ_API_KEY_FALLBACK` | Reference secret `groq-fallback-key` |
-| `GOOGLE_CLIENT_ID` | Reference secret `google-client-id` |
-| `GOOGLE_CLIENT_SECRET` | Reference secret `google-client-secret` |
-| `GOOGLE_OAUTH_STATE_SECRET` | Reference secret `google-state-secret` |
-| `GOOGLE_OAUTH_REDIRECT_URI` | `$backendUrl/api/google/callback` (use the actual URL) |
+| Variable                        | Value                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `PORT`                          | `8080`                                                                  |
+| `CORS_ALLOWED_ORIGINS`          | `https://elevate-ai-snowy.vercel.app,http://localhost:3000`             |
+| `DATABASE_URL`                  | Secret reference `database-url`                                         |
+| `INTERNAL_API_SECRET`           | Secret reference `int-api-secret`                                       |
+| `GROQ_BASE_URL`                 | `https://api.groq.com/openai/v1`                                        |
+| `GROQ_MODEL`                    | `openai/gpt-oss-20b`                                                    |
+| `GROQ_API_KEY`                  | Secret reference `groq-api-key`                                         |
+| `GROQ_API_KEY_FALLBACK`         | Secret reference `groq-fallback-key`                                    |
+| `GOOGLE_CLIENT_ID`              | Secret reference `google-client-id`                                     |
+| `GOOGLE_CLIENT_SECRET`          | Secret reference `google-client-secret`                                 |
+| `GOOGLE_OAUTH_STATE_SECRET`     | Secret reference `google-state-secret`                                  |
+| `GOOGLE_OAUTH_REDIRECT_URI`     | `https://YOUR-APP.REGION.azurecontainerapps.io/api/google/callback`     |
 | `GOOGLE_OAUTH_SUCCESS_REDIRECT` | `https://elevate-ai-snowy.vercel.app/profile?google_calendar=connected` |
-| `GOOGLE_OAUTH_FAILURE_REDIRECT` | `https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed` |
+| `GOOGLE_OAUTH_FAILURE_REDIRECT` | `https://elevate-ai-snowy.vercel.app/profile?google_calendar=failed`    |
 
-Add optional secrets only when the corresponding integration is enabled.
-Creating or changing environment variables creates a new revision. Secrets
-themselves are not automatically picked up by existing revisions, so restart or
-deploy a new revision after changing a secret.
+Add the optional variables only when the related integration is enabled.
 
-For CLI users, the equivalent pattern is:
+## 5. Configure health probes
 
-```powershell
-az containerapp secret set --name $appName --resource-group $resourceGroup --secrets "int-api-secret=YOUR_VALUE"
-az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars "INTERNAL_API_SECRET=secretref:int-api-secret"
-```
+In **Containers > Health probes**, add HTTP probes that check `/health` on port `8080`.
 
-Use the portal or Azure Key Vault for the full secret set instead of putting
-real values in shell history.
+- Startup probe: initial delay 10 seconds, period 10 seconds, failure threshold 30.
+- Readiness probe: initial delay 5 seconds, period 10 seconds.
+- Liveness probe: initial delay 10 seconds, period 20 seconds.
 
-## 3. Configure health and scale
+## 6. Copy the Azure URL into Vercel
 
-In **Containers > Health probes**, configure HTTP probes against `/health` on
-port `8080`:
+After the Container App is created, open it in the portal and copy the public ingress URL from the Overview page.
 
-- Startup: initial delay 10 seconds, period 10 seconds, failure threshold 30.
-- Readiness: initial delay 5 seconds, period 10 seconds.
-- Liveness: initial delay 10 seconds, period 20 seconds.
-
-Start with **1 vCPU, 2 GiB memory, min replicas 1, max replicas 2**. Keeping
-one replica warm avoids a slow Python/LangGraph cold start. Groq handles model
-capacity, while Azure scale limits keep your own infrastructure spending and
-request concurrency predictable.
-
-## 4. Point Vercel at Azure
-
-In Vercel > Project > Settings > Environment Variables, add these for
-Production, Preview, and Development as appropriate:
+Then in Vercel, open **Project > Settings > Environment Variables** and add or update these values for Production, Preview, and Development as needed:
 
 ```text
 PYTHON_BACKEND_URL=https://YOUR-APP.REGION.azurecontainerapps.io
-INTERNAL_API_SECRET=the-exact-same-value-as-Azure
+INTERNAL_API_SECRET=the-same-value-as-the-Azure-secret
 GROQ_API_KEY=your-primary-groq-key
 GROQ_API_KEY_FALLBACK=your-secondary-groq-key
 GROQ_BASE_URL=https://api.groq.com/openai/v1
 GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-`PYTHON_BACKEND_URL` is server-only; do not prefix it with `NEXT_PUBLIC_`.
-All Groq keys are server-only secrets; never prefix them with `NEXT_PUBLIC_`.
-The secondary key is used once only when the primary key is rate-limited,
-temporarily unavailable, or encounters a network timeout. The new
-Clerk-protected `/api/google/connect` route means the browser no longer needs
-the Azure backend URL.
+`PYTHON_BACKEND_URL` is server-only, so do not prefix it with `NEXT_PUBLIC_`. The Groq keys are also server-only secrets.
 
-> Groq enforces an organization-wide rate-limit ceiling. A second key from the
-> same organization is useful for key-specific or per-project failures, but it
-> cannot bypass the organization-wide RPM/TPM limit. Do not create extra
-> organizations to evade service limits; use Groq's limits page, request
-> capacity, or reduce/consolidate requests instead.
+> Groq enforces an organization-wide rate-limit ceiling. A second key from the same organization can help with key-specific or temporary failures, but it does not bypass the organization-wide limit.
 
-Redeploy Vercel after saving the variables. Remove any legacy Render URL values
-from `FASTAPI_URL`, `FLASK_BACKEND_URL`, and `NEXT_PUBLIC_FLASK_BACKEND_URL`
-after confirming the Azure URL is active. Keep `PYTHON_BACKEND_URL`: it is the
-new canonical server-only address.
+## 7. Update Google OAuth
 
-## 5. Update Google OAuth
-
-In Google Cloud Console > APIs & Services > Credentials > your OAuth web client,
-add this exact Authorized redirect URI:
+In Google Cloud Console, open **APIs & Services > Credentials > your OAuth web client** and add this Authorized redirect URI:
 
 ```text
 https://YOUR-APP.REGION.azurecontainerapps.io/api/google/callback
 ```
 
-It must exactly match `GOOGLE_OAUTH_REDIRECT_URI`: same hostname, HTTPS, and
-path, with no trailing slash. Keep `http://localhost:5000/api/google/callback`
-as an additional URI for local development if you use it.
+It must match the value you entered for `GOOGLE_OAUTH_REDIRECT_URI` exactly: same hostname, HTTPS, and path, with no trailing slash. Keep `http://localhost:5000/api/google/callback` if you still use local development.
 
-## 6. Verification checklist
+## 8. Verify the deployment
 
-```powershell
-# Public probe
-Invoke-WebRequest "$backendUrl/health" | Select-Object -Expand Content
+1. In the Azure Portal, open the Container App and confirm the latest revision is running.
+2. Open the app URL in a browser and check that `/health` returns `{"ok":true}`.
+3. Trigger a chat request from the Vercel app and confirm it uses the Azure backend.
+4. Try Google Calendar connect from Profile and confirm the redirect returns to the profile page.
+5. Open **Log stream** in the Container App if something does not start correctly.
 
-# FastAPI must reject untrusted chat traffic
-Invoke-WebRequest "$backendUrl/api/chat" -Method POST -ContentType "application/json" -Body '{"message":"hello","clerkUserId":"test"}'
-# Expected: 401 or 503, never a successful response.
-```
+## 9. Updating later
 
-Then on the deployed Vercel app:
-
-1. Send a chatbot message; it should return a response or use the local
-   fallback, never call Render.
-2. Run a simulation evaluation and a calendar action.
-3. Connect Google Calendar from Profile; it should go through
-   `/api/google/connect`, consent, Azure callback, then return to Profile.
-4. In Azure, use **Log stream** for the Container App and check the active
-   revision is healthy.
-
-## 7. Updating later
-
-Push the code to your normal branch, then either rerun the source deployment
-command from this folder or set up the GitHub Actions workflow generated by
-`az containerapp up --repo <repository-url>`. For a manual source update:
-
-```powershell
-Set-Location .\server
-az containerapp up --name $appName --resource-group $resourceGroup --source .
-```
-
-Do not rerun `--repo` merely to deploy an update: Azure's CLI documentation
-notes that it can generate additional workflows. Push to the generated workflow
-instead.
+When the code changes, update the container image in your deployment workflow, then return to the Azure Portal and open the latest revision if you need to confirm the rollout. If you change secrets or environment variables, save the changes and restart or create a new revision so the container picks them up.

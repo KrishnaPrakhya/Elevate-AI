@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { getInternalBackendHeaders, getPythonBackendUrl } from "@/lib/python-backend";
 
 function buildFallbackEvaluation(body: Record<string, unknown>) {
@@ -29,6 +30,11 @@ function buildFallbackEvaluation(body: Record<string, unknown>) {
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown> = {};
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     body = await request.json();
 
     const response = await fetch(`${getPythonBackendUrl()}/api/simulation/evaluate`, {

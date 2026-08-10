@@ -1,13 +1,62 @@
 import OpenAI from "openai";
 import { parseLLMJson } from "@/lib/ai/json";
 
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+
+function shouldUseFallback(status: number): boolean {
+  return status === 401 || status === 408 || status === 429 || status === 498 || status >= 500;
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const description = `${error.name} ${error.message}`.toLowerCase();
+  return description.includes("timeout") || description.includes("network") || description.includes("connection");
+}
+
+/**
+ * Retries one provider failure with the secondary Groq project key. Both keys
+ * access the same Groq API; this protects the app from per-key rate limits or
+ * a temporarily unhealthy request path without retrying invalid requests.
+ */
+async function groqFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const fallbackKey =
+    process.env.GROQ_API_KEY_FALLBACK || process.env.GROQ_FALLBACK_API_KEY;
+
+  const requestWithFallbackKey = () => {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${fallbackKey}`);
+    return globalThis.fetch(input, { ...init, headers });
+  };
+
+  try {
+    const response = await globalThis.fetch(input, init);
+    if (!fallbackKey || !shouldUseFallback(response.status)) {
+      return response;
+    }
+
+    console.warn(`Groq primary key received HTTP ${response.status}; retrying once with fallback key.`);
+    return requestWithFallbackKey();
+  } catch (error) {
+    if (!fallbackKey || !isRetryableNetworkError(error)) {
+      throw error;
+    }
+
+    console.warn("Groq primary request failed at the network layer; retrying once with fallback key.");
+    return requestWithFallbackKey();
+  }
+}
+
 export function createGroqClient(): OpenAI {
   const apiKey = process.env.GROQ_API_KEY || "missing-groq-api-key";
-  const baseURL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+  const baseURL = process.env.GROQ_BASE_URL || GROQ_BASE_URL;
 
   return new OpenAI({
     apiKey,
     baseURL,
+    // Let groqFetch decide whether to retry with the fallback key. Otherwise
+    // the SDK would retry the same rate-limited primary key first.
+    maxRetries: 0,
+    fetch: groqFetch,
   });
 }
 

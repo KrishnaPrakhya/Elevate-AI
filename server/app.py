@@ -790,6 +790,7 @@ def init_db():
 
 # Initialize the Groq OpenAI-compatible LLM client.
 groq_api_key = os.getenv("GROQ_API_KEY", "")
+groq_fallback_api_key = os.getenv("GROQ_API_KEY_FALLBACK") or os.getenv("GROQ_FALLBACK_API_KEY", "")
 groq_base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
@@ -799,7 +800,23 @@ llm = ChatOpenAI(
     openai_api_key=groq_api_key or "missing-groq-api-key",
     base_url=groq_base_url,
 )
+fallback_llm = ChatOpenAI(
+    model=groq_model,
+    openai_api_key=groq_fallback_api_key,
+    base_url=groq_base_url,
+    max_retries=0,
+) if groq_fallback_api_key else None
 logger.info("Groq LLM initialized. Base URL: %s, Model: %s", groq_base_url, groq_model)
+
+
+def is_retryable_groq_error(error: Exception) -> bool:
+    """Only fail over for rate limits, transient provider failures, or network errors."""
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code in (401, 408, 429, 498) or status_code >= 500
+
+    description = f"{type(error).__name__} {error}".lower()
+    return "timeout" in description or "network" in description or "connection" in description
 
 # Test the LLM connection
 try:
@@ -821,6 +838,11 @@ async def invoke_prompt_template(prompt: ChatPromptTemplate, payload: dict[str, 
         result = await invoke_sync(chain, payload)
         return str(result).strip()
     except Exception as e:
+        if fallback_llm and is_retryable_groq_error(e):
+            logger.warning("Primary Groq request failed (%s); retrying once with fallback key.", type(e).__name__)
+            fallback_chain = prompt | fallback_llm | StrOutputParser()
+            result = await invoke_sync(fallback_chain, payload)
+            return str(result).strip()
         logger.error(f"invoke_prompt_template error: {e}")
         raise
 

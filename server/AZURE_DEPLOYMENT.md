@@ -74,6 +74,7 @@ secret names to 20 characters.
 | `database-url` | `DATABASE_URL` |
 | `int-api-secret` | `INTERNAL_API_SECRET` |
 | `groq-api-key` | `GROQ_API_KEY` |
+| `groq-fallback-key` | `GROQ_API_KEY_FALLBACK` |
 | `tavily-api-key` | `TAVILY_API_KEY` (if used) |
 | `google-client-id` | `GOOGLE_CLIENT_ID` |
 | `google-client-secret` | `GOOGLE_CLIENT_SECRET` |
@@ -94,6 +95,7 @@ Then open **Containers > Edit and deploy > Environment variables** and set:
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` |
 | `GROQ_API_KEY` | Reference secret `groq-api-key` |
+| `GROQ_API_KEY_FALLBACK` | Reference secret `groq-fallback-key` |
 | `GOOGLE_CLIENT_ID` | Reference secret `google-client-id` |
 | `GOOGLE_CLIENT_SECRET` | Reference secret `google-client-secret` |
 | `GOOGLE_OAUTH_STATE_SECRET` | Reference secret `google-state-secret` |
@@ -138,11 +140,24 @@ Production, Preview, and Development as appropriate:
 ```text
 PYTHON_BACKEND_URL=https://YOUR-APP.REGION.azurecontainerapps.io
 INTERNAL_API_SECRET=the-exact-same-value-as-Azure
+GROQ_API_KEY=your-primary-groq-key
+GROQ_API_KEY_FALLBACK=your-secondary-groq-key
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
 `PYTHON_BACKEND_URL` is server-only; do not prefix it with `NEXT_PUBLIC_`.
-The new Clerk-protected `/api/google/connect` route means the browser no longer
-needs the Azure backend URL.
+All Groq keys are server-only secrets; never prefix them with `NEXT_PUBLIC_`.
+The secondary key is used once only when the primary key is rate-limited,
+temporarily unavailable, or encounters a network timeout. The new
+Clerk-protected `/api/google/connect` route means the browser no longer needs
+the Azure backend URL.
+
+> Groq enforces an organization-wide rate-limit ceiling. A second key from the
+> same organization is useful for key-specific or per-project failures, but it
+> cannot bypass the organization-wide RPM/TPM limit. Do not create extra
+> organizations to evade service limits; use Groq's limits page, request
+> capacity, or reduce/consolidate requests instead.
 
 Redeploy Vercel after saving the variables. Remove any legacy Render URL values
 from `FASTAPI_URL`, `FLASK_BACKEND_URL`, and `NEXT_PUBLIC_FLASK_BACKEND_URL`

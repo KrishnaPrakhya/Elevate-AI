@@ -5,7 +5,7 @@ import os
 import asyncio
 groq_api_key = os.getenv("GROQ_API_KEY", "")
 groq_fallback_api_key = os.getenv("GROQ_API_KEY_FALLBACK") or os.getenv("GROQ_FALLBACK_API_KEY", "")
-groq_base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+groq_base_url = "https://api.groq.com/openai/v1"
 
 llm = ChatOpenAI(
     model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),

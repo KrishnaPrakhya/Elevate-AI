@@ -785,115 +785,81 @@ export async function checkAndAwardAchievements(userId: string, type: string) {
 export async function getLeaderboard(
   type: "WEEKLY" | "MONTHLY" | "ALL_TIME" = "WEEKLY"
 ) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
   const now = new Date();
   let startDate: Date;
 
   switch (type) {
     case "WEEKLY":
-      startDate = new Date(now.setDate(now.getDate() - 7));
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 7);
       break;
     case "MONTHLY":
-      startDate = new Date(now.setMonth(now.getMonth() - 1));
+      startDate = new Date(now);
+      startDate.setMonth(startDate.getMonth() - 1);
       break;
     case "ALL_TIME":
       startDate = new Date(0);
       break;
   }
 
-  const leaderboard = await getCachedData(
-    `academy:leaderboard:${type}`,
-    () =>
-      db.leaderboard.findFirst({
-        where: {
-          type,
-          startDate: { gte: startDate },
-        },
-        include: {
-          entries: {
-            orderBy: { rank: "asc" },
-            take: 50,
-          },
-        },
-      }),
-    CACHE_TTL.SHORT
-  );
+  const dateFilter = type === "ALL_TIME" ? undefined : { gte: startDate };
+  const [completedLessons, earnedAchievements] = await Promise.all([
+    db.lessonProgress.findMany({
+      where: {
+        status: "COMPLETED",
+        ...(dateFilter ? { completedAt: dateFilter } : {}),
+      },
+      select: { enrollment: { select: { userId: true } } },
+    }),
+    db.userAchievement.findMany({
+      where: dateFilter ? { earnedAt: dateFilter } : {},
+      select: { userId: true },
+    }),
+  ]);
 
-  return leaderboard;
-}
-
-// ============================================
-// COHORTS & MENTORSHIP
-// ============================================
-
-export async function getCohorts() {
-  return getCachedData(
-    "academy:cohorts:active",
-    () =>
-      db.cohort.findMany({
-        where: { isActive: true },
-        include: {
-          members: { take: 5 },
-          _count: { select: { members: true } },
-        },
-        orderBy: { startsAt: "asc" },
-      }),
-    CACHE_TTL.SHORT
-  );
-}
-
-export async function joinCohort(cohortId: string) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-  if (!user) throw new Error("User not found");
-
-  const cohort = await db.cohort.findUnique({ where: { id: cohortId } });
-  if (!cohort) throw new Error("Cohort not found");
-
-  const memberCount = await db.cohortMember.count({ where: { cohortId } });
-  if (memberCount >= cohort.maxMembers) {
-    throw new Error("Cohort is full");
+  const pointsByUser = new Map<string, number>();
+  for (const lesson of completedLessons) {
+    const id = lesson.enrollment.userId;
+    pointsByUser.set(id, (pointsByUser.get(id) || 0) + 5);
+  }
+  for (const achievement of earnedAchievements) {
+    pointsByUser.set(
+      achievement.userId,
+      (pointsByUser.get(achievement.userId) || 0) + 10,
+    );
   }
 
-  const member = await db.cohortMember.create({
-    data: { cohortId, userId: user.id },
+  const ranked = [...pointsByUser.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 50);
+  const users = await db.user.findMany({
+    where: { id: { in: ranked.map(([id]) => id) } },
+    select: { id: true, name: true, imageUrl: true },
   });
+  const usersById = new Map(users.map((user) => [user.id, user]));
 
-  await inngest.send({
-    name: "academy/cohort-joined",
-    data: { userId: user.id, cohortId },
-  });
-
-  revalidatePath("/academy/cohorts");
-  return member;
+  return {
+    id: `live-${type.toLowerCase()}`,
+    type,
+    period: `${startDate.toISOString()}_${now.toISOString()}`,
+    startDate,
+    endDate: now,
+    entries: ranked.map(([id, points], index) => ({
+      id: `${type.toLowerCase()}-${id}`,
+      userId: id,
+      points,
+      rank: index + 1,
+      user: usersById.get(id) || null,
+    })),
+  };
 }
 
-export async function getUserCohort() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-  if (!user) throw new Error("User not found");
-
-  const membership = await getCachedData(
-    `academy:userCohort:${user.id}`,
-    () =>
-      db.cohortMember.findFirst({
-        where: { userId: user.id },
-        include: {
-          cohort: {
-            include: {
-              members: { include: { user: true } },
-            },
-          },
-        },
-      }),
-    CACHE_TTL.SHORT
-  );
-
-  return membership?.cohort || null;
-}
+// ============================================
+// MENTORSHIP
+// ============================================
 
 export async function scheduleMentorshipSession(
   mentorId: string,
@@ -936,6 +902,90 @@ export async function getMentors() {
       }),
     CACHE_TTL.SHORT
   );
+}
+
+export interface AcademyEmailPreferencesInput {
+  dailyDigest: boolean;
+  weeklyProgress: boolean;
+  streakReminders: boolean;
+  deadlineAlerts: boolean;
+  achievementAlerts: boolean;
+  mentorUpdates: boolean;
+  leaderboardUpdates: boolean;
+  emailTime: string;
+  timezone: string;
+}
+
+const academyEmailPreferenceSelect = {
+  dailyDigest: true,
+  weeklyProgress: true,
+  streakReminders: true,
+  deadlineAlerts: true,
+  achievementAlerts: true,
+  mentorUpdates: true,
+  leaderboardUpdates: true,
+  emailTime: true,
+  timezone: true,
+} satisfies Prisma.EmailPreferenceSelect;
+
+async function getAuthenticatedAcademyUser() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await db.user.findUnique({
+    where: { clerkUserId: userId },
+    select: { id: true },
+  });
+  if (!user) throw new Error("User not found");
+  return user;
+}
+
+export async function getAcademyEmailPreferences() {
+  const user = await getAuthenticatedAcademyUser();
+
+  return db.emailPreference.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: { userId: user.id },
+    select: academyEmailPreferenceSelect,
+  });
+}
+
+export async function updateAcademyEmailPreferences(
+  input: AcademyEmailPreferencesInput,
+) {
+  const user = await getAuthenticatedAcademyUser();
+  const emailTime = input.emailTime.trim();
+  const timezone = input.timezone.trim();
+
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(emailTime)) {
+    throw new Error("Email time must use HH:mm format");
+  }
+  if (!timezone || timezone.length > 100) {
+    throw new Error("Invalid timezone");
+  }
+
+  const data = {
+    dailyDigest: Boolean(input.dailyDigest),
+    weeklyProgress: Boolean(input.weeklyProgress),
+    streakReminders: Boolean(input.streakReminders),
+    deadlineAlerts: Boolean(input.deadlineAlerts),
+    achievementAlerts: Boolean(input.achievementAlerts),
+    mentorUpdates: Boolean(input.mentorUpdates),
+    leaderboardUpdates: Boolean(input.leaderboardUpdates),
+    emailTime,
+    timezone,
+  };
+
+  const preferences = await db.emailPreference.upsert({
+    where: { userId: user.id },
+    update: data,
+    create: { userId: user.id, ...data },
+    select: academyEmailPreferenceSelect,
+  });
+
+  revalidatePath("/academy/settings");
+  return preferences;
 }
 
 // ============================================

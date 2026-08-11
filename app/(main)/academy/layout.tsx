@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Trophy, Flame, Users, Target, Settings, Mic, Brain } from "lucide-react";
+import { BookOpen, Trophy, Flame, Target, Settings, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/academy", label: "Dashboard", icon: BookOpen },
   { href: "/academy/paths", label: "Learning Paths", icon: BookOpen },
   { href: "/academy/mentors", label: "Mentorship", icon: Mic },
-  { href: "/academy/simulation", label: "Simulations", icon: Brain },
   { href: "/academy/streak", label: "Streak & Goals", icon: Flame },
   { href: "/academy/achievements", label: "Achievements", icon: Trophy },
   { href: "/academy/leaderboard", label: "Leaderboard", icon: Target },
-  { href: "/academy/cohorts", label: "Cohorts", icon: Users },
   { href: "/academy/settings", label: "Settings", icon: Settings },
 ];
 

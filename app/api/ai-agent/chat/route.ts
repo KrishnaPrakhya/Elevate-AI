@@ -12,6 +12,29 @@ import {
 
 export const maxDuration = 60;
 
+function getConversationalReply(message: string): string | null {
+  const normalized = message
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/^(thanks|thank you|thank you so much|thx)$/.test(normalized)) {
+    return "You’re welcome! What would you like to work on next?";
+  }
+  if (/^(how are you|how's it going|hows it going|what's up|whats up)$/.test(normalized)) {
+    return "I’m doing well and ready to help. What are you working on today?";
+  }
+  if (/^(hi|hello|hey|hey there|hi there|yo|good morning|good afternoon|good evening)$/.test(normalized)) {
+    return "Hey! 👋 What would you like help with today?";
+  }
+  if (/^(who are you|what can you do|help)$/.test(normalized)) {
+    return "I’m your AI Career Advisor. I can help with job searches, resumes, interviews, learning plans, and professional emails—what should we tackle?";
+  }
+
+  return null;
+}
+
 /**
  * Unified AI Agent Chat Endpoint
  *
@@ -35,13 +58,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, context, agent } = body;
+    const { context, agent } = body;
+    const message = typeof body?.message === "string" ? body.message.trim() : "";
 
     if (!message) {
       return NextResponse.json(
         { error: "Message is required" },
         { status: 400 }
       );
+    }
+
+    const conversationalReply = getConversationalReply(message);
+    if (conversationalReply) {
+      return NextResponse.json({
+        response: conversationalReply,
+        agent: "greeting_handler",
+        intent: "greeting",
+        suggestions: [],
+      });
     }
 
     // Build the canonical, cross-feature growth context (single source of truth).
@@ -305,7 +339,9 @@ function getAgentSystemPrompt(agent: string): string {
     supervisor: `You are a helpful career assistant who can help with various aspects of career development including resume review, job search, interview prep, and career planning. You provide thoughtful, personalized advice.`,
   };
 
-  return prompts[agent] || prompts.supervisor;
+  const responsePolicy = `Answer the user's exact request and match its depth. Do not restate their profile or generate an unsolicited roadmap. For simple questions, respond in 2-5 concise sentences. Use headings or bullets only when they improve clarity, and use tables only for genuine comparisons or when requested. Ask one focused clarifying question if essential information is missing.`;
+
+  return `${prompts[agent] || prompts.supervisor}\n\n${responsePolicy}`;
 }
 
 /**

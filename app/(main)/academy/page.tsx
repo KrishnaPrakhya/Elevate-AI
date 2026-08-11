@@ -24,7 +24,6 @@ import {
   Mic,
   GraduationCap,
   Trophy,
-  Brain,
 } from "lucide-react";
 import {
   Card,
@@ -1225,12 +1224,12 @@ export default function AcademyPage() {
         </Card>
       </motion.div>
 
-      {/* Quick Actions - Mentorship & Simulations */}
+      {/* Live mentorship */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.27 }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        className="grid grid-cols-1 gap-4"
       >
         {/* Mentorship Card */}
         <Card className="border-primary/20 bg-gradient-to-br from-purple-500/10 to-background">
@@ -1261,32 +1260,6 @@ export default function AcademyPage() {
           </CardContent>
         </Card>
 
-        {/* Simulations Card */}
-        <Card className="border-primary/20 bg-gradient-to-br from-orange-500/10 to-background">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-orange-500/10 rounded-lg">
-                <Brain className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <CardTitle>Simulations</CardTitle>
-                <CardDescription>Practice real-world scenarios</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Test your skills with interactive simulations of real-world
-              technical and behavioral scenarios.
-            </p>
-            <Link href="/academy/simulation">
-              <Button className="w-full gap-2 bg-orange-600 hover:bg-orange-700">
-                <Brain className="w-4 h-4" />
-                Start Simulation
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
       </motion.div>
 
       {/* Practical Path Recommendations */}
@@ -1808,7 +1781,7 @@ export default function AcademyPage() {
                     onClick={() => {
                       setSkillInput(selectedSkill.label);
                       setSelectedSkill(null);
-                      toast.info(`Generating plan for ${selectedSkill.label}`);
+                      toast.info(`${selectedSkill.label} added as your plan focus`);
                     }}
                   >
                     <Sparkles className="w-4 h-4 mr-2" />

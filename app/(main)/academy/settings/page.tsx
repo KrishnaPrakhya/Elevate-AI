@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getUser } from "@/actions/user";
+import {
+  getAcademyEmailPreferences,
+  updateAcademyEmailPreferences,
+} from "@/actions/academy";
 import { Loader2, Save, Mail, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -16,7 +19,6 @@ interface EmailPreferences {
   streakReminders: boolean;
   deadlineAlerts: boolean;
   achievementAlerts: boolean;
-  cohortMessages: boolean;
   mentorUpdates: boolean;
   leaderboardUpdates: boolean;
   emailTime: string;
@@ -32,7 +34,6 @@ export default function AcademySettingsPage() {
     streakReminders: true,
     deadlineAlerts: true,
     achievementAlerts: true,
-    cohortMessages: true,
     mentorUpdates: true,
     leaderboardUpdates: false,
     emailTime: "09:00",
@@ -42,25 +43,8 @@ export default function AcademySettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const user = await getUser();
-        const userWithPrefs = user as typeof user & {
-          emailPreference?: EmailPreferences;
-        };
-        if (userWithPrefs.emailPreference) {
-          setPreferences({
-            dailyDigest: userWithPrefs.emailPreference.dailyDigest,
-            weeklyProgress: userWithPrefs.emailPreference.weeklyProgress,
-            streakReminders: userWithPrefs.emailPreference.streakReminders,
-            deadlineAlerts: userWithPrefs.emailPreference.deadlineAlerts,
-            achievementAlerts: userWithPrefs.emailPreference.achievementAlerts,
-            cohortMessages: userWithPrefs.emailPreference.cohortMessages,
-            mentorUpdates: userWithPrefs.emailPreference.mentorUpdates,
-            leaderboardUpdates:
-              userWithPrefs.emailPreference.leaderboardUpdates,
-            emailTime: userWithPrefs.emailPreference.emailTime,
-            timezone: userWithPrefs.emailPreference.timezone,
-          });
-        }
+        const savedPreferences = await getAcademyEmailPreferences();
+        setPreferences(savedPreferences);
       } catch (error) {
         console.error("Error loading settings:", error);
       } finally {
@@ -80,8 +64,8 @@ export default function AcademySettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // In a real app, this would call an action to update preferences
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const savedPreferences = await updateAcademyEmailPreferences(preferences);
+      setPreferences(savedPreferences);
       toast.success("Settings saved successfully!");
     } catch {
       toast.error("Failed to save settings");
@@ -179,19 +163,6 @@ export default function AcademySettingsPage() {
               <Switch
                 checked={preferences.achievementAlerts}
                 onCheckedChange={() => handleToggle("achievementAlerts")}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
-              <div>
-                <p className="font-medium">Cohort Messages</p>
-                <p className="text-sm text-muted-foreground">
-                  Updates from your learning cohort
-                </p>
-              </div>
-              <Switch
-                checked={preferences.cohortMessages}
-                onCheckedChange={() => handleToggle("cohortMessages")}
               />
             </div>
 

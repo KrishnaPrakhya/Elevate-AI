@@ -791,7 +791,11 @@ def init_db():
 # Initialize the Groq OpenAI-compatible LLM client.
 groq_api_key = os.getenv("GROQ_API_KEY", "")
 groq_fallback_api_key = os.getenv("GROQ_API_KEY_FALLBACK") or os.getenv("GROQ_FALLBACK_API_KEY", "")
-groq_base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_API_BASE_URL = "https://api.groq.com/openai/v1"
+configured_groq_base_url = os.getenv("GROQ_BASE_URL", "").rstrip("/")
+if configured_groq_base_url and configured_groq_base_url != GROQ_API_BASE_URL:
+    logger.warning("Ignoring GROQ_BASE_URL because this deployment uses the official Groq endpoint.")
+groq_base_url = GROQ_API_BASE_URL
 groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 from langchain_openai import ChatOpenAI

@@ -3,6 +3,18 @@ import { parseLLMJson } from "@/lib/ai/json";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
+function resolveGroqBaseUrl(): string {
+  const configured = process.env.GROQ_BASE_URL?.replace(/\/+$/, "");
+
+  // This project no longer supports self-hosted OpenAI-compatible providers.
+  // Ignoring a stale Ollama/Cloudflare URL avoids opaque 5xx errors in Vercel.
+  if (configured && configured !== GROQ_BASE_URL) {
+    console.warn("Ignoring GROQ_BASE_URL because Elevate AI uses the official Groq endpoint.");
+  }
+
+  return GROQ_BASE_URL;
+}
+
 function shouldUseFallback(status: number): boolean {
   return status === 401 || status === 408 || status === 429 || status === 498 || status >= 500;
 }
@@ -48,7 +60,7 @@ async function groqFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 export function createGroqClient(): OpenAI {
   const apiKey = process.env.GROQ_API_KEY || "missing-groq-api-key";
-  const baseURL = process.env.GROQ_BASE_URL || GROQ_BASE_URL;
+  const baseURL = resolveGroqBaseUrl();
 
   return new OpenAI({
     apiKey,

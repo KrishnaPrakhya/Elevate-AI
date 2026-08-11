@@ -11,6 +11,29 @@ const getBackendBaseUrl = () => {
   return getPythonBackendUrl();
 };
 
+function getConversationalReply(message: string): string | null {
+  const normalized = message
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/^(thanks|thank you|thank you so much|thx)$/.test(normalized)) {
+    return "You’re welcome! What would you like to work on next?";
+  }
+  if (/^(how are you|how's it going|hows it going|what's up|whats up)$/.test(normalized)) {
+    return "I’m doing well and ready to help. What are you working on today?";
+  }
+  if (/^(hi|hello|hey|hey there|hi there|yo|good morning|good afternoon|good evening)$/.test(normalized)) {
+    return "Hey! 👋 What would you like help with today?";
+  }
+  if (/^(who are you|what can you do|help)$/.test(normalized)) {
+    return "I’m your AI Career Advisor. I can help with job searches, resumes, interviews, learning plans, and professional emails—what should we tackle?";
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
@@ -27,6 +50,15 @@ export async function POST(request: NextRequest) {
         { error: "Message is required" },
         { status: 400 },
       );
+    }
+
+    const conversationalReply = getConversationalReply(message);
+    if (conversationalReply) {
+      return NextResponse.json({
+        response: conversationalReply,
+        intent: "greeting",
+        pending_actions: [],
+      });
     }
 
     const clerkUserId =

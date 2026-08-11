@@ -203,16 +203,6 @@ async function Header() {
                     <span>Leaderboard</span>
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link
-                    href="/academy/cohorts"
-                    className="flex items-center gap-2 cursor-pointer"
-                  >
-                    <Users className="h-4 w-4 text-primary" />
-                    <span>Cohorts</span>
-                  </Link>
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </SignedIn>

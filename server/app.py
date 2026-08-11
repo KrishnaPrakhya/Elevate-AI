@@ -904,6 +904,7 @@ class JobSearchInput(BaseModel):
     remote: Optional[bool] = Field(None, description="Whether looking for remote positions")
 
 class CareerAdviceInput(BaseModel):
+    user_question: str = Field(description="The user's current question")
     current_role: Optional[str] = Field(None, description="User's current role")
     target_role: Optional[str] = Field(None, description="User's target role")
     industry: Optional[str] = Field(None, description="User's industry")
@@ -1126,16 +1127,18 @@ async def search_job_opportunities(input_data: JobSearchInput) -> str:
 async def provide_career_advice(input_data: CareerAdviceInput) -> str:
     try:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert career advisor.
-            Provide personalized, actionable career advice based on the user's profile.
-            Include:
-            1. Career path recommendations
-            2. Skills to develop
-            3. Potential roles to target
-            4. Industry-specific advice
-            5. Networking suggestions
-            Be specific and practical."""),
-            ("user", """Current role: {current_role}
+            ("system", """You are an expert career advisor having a natural conversation.
+
+Answer the user's exact question; do not automatically generate a career roadmap.
+Match response depth to the request:
+- Greeting or small talk: one friendly sentence, no profile summary and no markdown sections.
+- Simple question: answer directly in 2-5 concise sentences.
+- Advice request: give focused recommendations relevant to the stated problem.
+- Detailed plan request: only then use sections, milestones, or a table.
+
+Use profile context silently for personalization. Never announce or repeat the user's profile unless it directly supports the answer. Ask one concise clarifying question when essential information is missing. Prefer short paragraphs and bullets; use tables only for genuine comparisons."""),
+            ("user", """User's question: {user_question}
+            Current role: {current_role}
             Target role: {target_role}
             Industry: {industry}
             Skills: {skills}
@@ -1143,6 +1146,7 @@ async def provide_career_advice(input_data: CareerAdviceInput) -> str:
             Career goals: {career_goals}""")
         ])
         return await invoke_prompt_template(prompt, {
+            "user_question": input_data.user_question,
             "current_role": input_data.current_role or "Not specified",
             "target_role": input_data.target_role or "Not specified",
             "industry": input_data.industry or "Not specified",
@@ -1377,6 +1381,14 @@ async def detect_intent(
     # Normalize common "calender" misspelling so all downstream checks work correctly.
     message = user_message.lower().strip().replace("calender", "calendar")
 
+    # === PRIORITY 0: Greetings & Conversational Openers ===
+    greeting_patterns = [
+        r"^(hi|hello|hey|hey there|good morning|good afternoon|good evening|hi there|yo|who are you|what can you do|help|thanks|thank you|how are you|how'?s it going|what'?s up)[\s.!?]*$"
+    ]
+    for pattern in greeting_patterns:
+        if re.search(pattern, message):
+            return {"intent": "greeting", "confidence": 1.0, "params": {}}
+
     # === PRIORITY 1: Calendar Events (HIGHEST - must check first) ===
     # Check for ANY calendar-related intent first (including "add to calendar", "google calendar", etc.)
     calendar_patterns = [
@@ -1532,6 +1544,7 @@ async def detect_intent(
 - document_improvement: Resume/CV/cover letter help
 - email_drafting: Draft or compose an email
 - career_advice: General career guidance
+- greeting: Greetings, thanks, identity questions, or casual small talk
 
 Return JSON: {"intent": "intent_name", "confidence": 0.8, "params": {}}"""),
             ("user", "{message}")
@@ -1593,6 +1606,7 @@ async def supervisor_agent(state: AgentState) -> AgentState:
         extracted_params = intent_result.get("params", {})
 
         intent_to_agent = {
+            "greeting": "greeting_handler",
             "document_improvement": "document_improver",
             "job_search": "job_searcher",
             "email_drafting": "email_drafter",
@@ -1616,6 +1630,29 @@ async def supervisor_agent(state: AgentState) -> AgentState:
         return state
 
 # Agent Functions (Async)
+async def greeting_handler(state: AgentState) -> AgentState:
+    try:
+        user_profile = state.get("user_profile", {})
+        user_name = user_profile.get("name") or "there"
+        latest_message = state["messages"][-1]["content"].lower().strip()
+
+        if "thank" in latest_message or latest_message == "thx":
+            greeting_msg = "You’re welcome! What would you like to work on next?"
+        elif "how are you" in latest_message or "how's it going" in latest_message:
+            greeting_msg = "I’m doing well and ready to help. What are you working on today?"
+        elif "what can you do" in latest_message or "who are you" in latest_message or latest_message == "help":
+            greeting_msg = "I’m your AI Career Advisor. I can help with jobs, resumes, interviews, learning plans, and professional emails—what should we tackle?"
+        else:
+            greeting_msg = f"Hey {user_name}! 👋 What would you like help with today?"
+        state["messages"].append({"role": "assistant", "content": greeting_msg})
+        state["task_completed"] = True
+        return state
+    except Exception as e:
+        logger.error(f"Error in greeting_handler: {str(e)}")
+        state["messages"].append({"role": "assistant", "content": "Hello! How can I assist you today?"})
+        state["task_completed"] = True
+        return state
+
 async def document_improver(state: AgentState) -> AgentState:
     try:
         user_profile = state.get("user_profile", {})
@@ -1826,6 +1863,7 @@ async def career_advisor(state: AgentState) -> AgentState:
             career_goals = latest_message_content # Use the full message as potential goal statement
 
         result = await provide_career_advice(CareerAdviceInput(
+            user_question=latest_message_content,
             current_role=user_profile.get("current_role"),
             target_role=target_role, # Use LLM extracted or None
             industry=user_profile.get("industry"),
@@ -2186,7 +2224,7 @@ async def calendar_event_creator(state: AgentState) -> AgentState:
 
 # Router: Decides the next step in the graph
 def router_logic(state: AgentState) -> Literal[
-    "supervisor", "document_improver", "job_searcher",
+    "supervisor", "greeting_handler", "document_improver", "job_searcher",
     "career_advisor", "email_drafter", "schedule_generator", "interview_preparer",
     "calendar_event_creator", "__end__"
 ]:
@@ -2205,6 +2243,7 @@ def create_career_advisor_graph():
 
         # Define nodes
         workflow.add_node("supervisor", supervisor_agent)
+        workflow.add_node("greeting_handler", greeting_handler)
         workflow.add_node("document_improver", document_improver)
         workflow.add_node("job_searcher", job_searcher)
         workflow.add_node("career_advisor", career_advisor)
@@ -2222,6 +2261,7 @@ def create_career_advisor_graph():
         # Define edges
         # Supervisor routes to one of the agents or ends the process
         agent_nodes_map = {
+            "greeting_handler": "greeting_handler",
             "document_improver": "document_improver",
             "job_searcher": "job_searcher",
             "career_advisor": "career_advisor",
@@ -2240,7 +2280,7 @@ def create_career_advisor_graph():
 
         # After each agent runs, it goes to the router_logic, which decides if it should end or go back to supervisor
         # (typically, agents set task_completed=True, so router_logic sends to "__end__")
-        agent_node_names = ["document_improver", "job_searcher", "career_advisor", "email_drafter", "schedule_generator", "interview_preparer", "calendar_event_creator"]
+        agent_node_names = ["greeting_handler", "document_improver", "job_searcher", "career_advisor", "email_drafter", "schedule_generator", "interview_preparer", "calendar_event_creator"]
         for node_name in agent_node_names:
             workflow.add_conditional_edges(
                 node_name,
@@ -2346,7 +2386,6 @@ async def chat_endpoint(
             'experience_years': user.experience if user.experience is not None else 0,
             'current_role': user.targetRole or '',
             'timezone': request_timezone,
-            'timezone_offset_minutes': request_timezone_offset,
         }
 
         stmt_history = select(ChatHistory).where(ChatHistory.userId == user.id).order_by(ChatHistory.createdAt.asc()).limit(20) # Increased limit slightly
@@ -2355,10 +2394,15 @@ async def chat_endpoint(
 
         messages_for_graph = []
         if chat_history_db_models:
-          
             for i, msg_model in enumerate(chat_history_db_models):
-            
-                messages_for_graph.append({"role": "user", "content": msg_model.content})
+                raw_content = msg_model.content or ""
+                if raw_content.startswith("ASSISTANT: "):
+                    messages_for_graph.append({"role": "assistant", "content": raw_content[11:]})
+                elif raw_content.startswith("USER: "):
+                    messages_for_graph.append({"role": "user", "content": raw_content[6:]})
+                else:
+                    role = "user" if i % 2 == 0 else "assistant"
+                    messages_for_graph.append({"role": role, "content": raw_content})
 
 
         # Add current user message
@@ -2403,7 +2447,7 @@ async def chat_endpoint(
             # Save user's message
             user_msg_db = ChatHistory(
                 userId=user.id,
-                content=user_message_content,
+                content=f"USER: {user_message_content}",
                 createdAt=now_naive,
             )
             db.add(user_msg_db)
@@ -3143,162 +3187,6 @@ async def list_available_tools():
                 "endpoint": "/api/tools/update_progress",
                 "method": "POST",
                 "description": "Update user learning progress"
-            }
-        ]
-    }
-
-
-# ============================================
-# Simulation Endpoints
-# ============================================
-
-class SimulationInput(BaseModel):
-    scenario_id: str = Field(description="Simulation scenario ID")
-    user_response: str = Field(description="User's response to the scenario")
-    context: Optional[dict] = Field(default=None, description="Additional context")
-
-class SimulationResponse(BaseModel):
-    feedback: str
-    score: Optional[int] = None
-    suggestions: List[str] = []
-    next_prompt: Optional[str] = None
-
-def build_fallback_simulation_evaluation(input_data: SimulationInput) -> dict:
-    user_response = (input_data.user_response or "").strip()
-    word_count = len([word for word in user_response.split() if word])
-    score = max(40, min(88, 45 + word_count * 2))
-
-    return {
-        "feedback": (
-            "AI evaluation is temporarily unavailable, so this is a local fallback review. "
-            "Your answer shows a reasonable starting approach. Strengthen it by naming the "
-            "trade-offs, failure modes, scaling constraints, validation plan, and production "
-            "monitoring signals you would use."
-        ),
-        "score": score,
-        "suggestions": [
-            "Compare your chosen approach with at least one alternative.",
-            "Describe storage, scaling, and failure-mode behavior.",
-            "Add concrete metrics, tests, rollout, and monitoring steps.",
-        ],
-        "next_prompt": (
-            "What is the biggest trade-off in your proposed solution, and how would you "
-            "detect that it is becoming a production problem?"
-        ),
-        "source": "fallback",
-    }
-
-@app.post("/api/simulation/evaluate")
-async def evaluate_simulation(
-    input_data: SimulationInput,
-    _: None = Depends(require_internal_caller),
-):
-    """Evaluate a simulation response and provide feedback."""
-    try:
-        # Generate AI feedback based on the scenario and response
-        evaluation_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert evaluator for technical simulations.
-            Analyze the user's response and provide:
-            1. Constructive feedback on their approach
-            2. A score from 0-100
-            3. Specific suggestions for improvement
-            4. A follow-up question to deepen the discussion
-
-            Be encouraging but honest. Focus on practical engineering trade-offs."""),
-            ("user", """Scenario: {scenario}
-            User Response: {response}
-
-            Provide detailed evaluation and feedback.""")
-        ])
-
-        # Get scenario details based on scenario_id
-        scenarios = {
-            "api-design": "Design a rate-limiter for a public API. Consider algorithms like Token Bucket or Leaky Bucket, and where to store state.",
-            "system-design": "Design a URL shortening service like bit.ly. Consider scalability, database choices, and caching strategies.",
-            "debugging": "Debug a production issue where API latency spikes randomly. Describe your debugging approach.",
-            "negotiation": "Negotiate a technical decision with a stakeholder who wants to cut corners on testing.",
-        }
-
-        scenario = scenarios.get(input_data.scenario_id, input_data.scenario_id)
-
-        feedback = await invoke_prompt_template(evaluation_prompt, {
-            "scenario": scenario,
-            "response": input_data.user_response
-        })
-
-        # Parse feedback to extract score and suggestions
-        score = None
-        suggestions = []
-        next_prompt = None
-
-        # Try to extract score from feedback
-        score_match = re.search(r'score[:\s]+(\d+)', feedback.lower())
-        if score_match:
-            score = int(score_match.group(1))
-        else:
-            # Estimate score based on response quality (simple heuristic)
-            if len(input_data.user_response) > 200:
-                score = min(85, 60 + len(input_data.user_response) // 50)
-            else:
-                score = max(40, len(input_data.user_response) // 10)
-
-        # Extract suggestions (look for numbered or bulleted lists)
-        suggestion_patterns = [
-            r'[\d\.]+\s+([A-Z][^.!?]+[.!?])',
-            r'[-*•]\s+([A-Z][^.!?]+[.!?])',
-        ]
-        for pattern in suggestion_patterns:
-            matches = re.findall(pattern, feedback)
-            suggestions.extend(matches[:3])  # Limit to 3 suggestions
-
-        # Extract next prompt (look for follow-up questions)
-        question_matches = re.findall(r'[^.!?]+\?', feedback)
-        if question_matches:
-            next_prompt = question_matches[-1].strip()
-
-        return {
-            "feedback": feedback,
-            "score": score,
-            "suggestions": suggestions[:3],
-            "next_prompt": next_prompt
-        }
-    except Exception as e:
-        logger.error(f"Error evaluating simulation: {e}")
-        return build_fallback_simulation_evaluation(input_data)
-
-
-@app.get("/api/simulation/scenarios")
-async def list_simulation_scenarios():
-    """List available simulation scenarios."""
-    return {
-        "scenarios": [
-            {
-                "id": "api-design",
-                "title": "API Rate Limiter Design",
-                "description": "Design a rate-limiter for a public API",
-                "difficulty": "intermediate",
-                "category": "system-design"
-            },
-            {
-                "id": "system-design",
-                "title": "URL Shortener Service",
-                "description": "Design a scalable URL shortening service",
-                "difficulty": "intermediate",
-                "category": "system-design"
-            },
-            {
-                "id": "debugging",
-                "title": "Production Debugging",
-                "description": "Debug random API latency spikes",
-                "difficulty": "advanced",
-                "category": "technical"
-            },
-            {
-                "id": "negotiation",
-                "title": "Technical Negotiation",
-                "description": "Negotiate testing standards with stakeholders",
-                "difficulty": "intermediate",
-                "category": "soft-skill"
             }
         ]
     }

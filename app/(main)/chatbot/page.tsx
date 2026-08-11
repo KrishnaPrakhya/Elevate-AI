@@ -84,7 +84,7 @@ export default async function CareerAdvisorPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-12rem)] w-full">
+    <div className="container mx-auto py-4 px-2 sm:px-4 flex flex-col w-full min-h-[calc(100vh-6rem)] justify-center">
       <CareerAdvisorChat userProfile={userProfile} />
     </div>
   );

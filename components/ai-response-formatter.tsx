@@ -30,17 +30,32 @@ export function AIResponseFormatter({
 
   const markdownComponents: Components = {
     h1: ({ children }) => (
-      <h1 className="mt-5 mb-3 text-2xl font-bold tracking-tight">
+      <h1
+        className={cn(
+          "mt-5 mb-3 font-bold tracking-tight",
+          variant === "chat" ? "text-lg" : "text-2xl",
+        )}
+      >
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="mt-4 mb-2 text-xl font-semibold tracking-tight">
+      <h2
+        className={cn(
+          "mt-4 mb-2 font-semibold tracking-tight",
+          variant === "chat" ? "text-base" : "text-xl",
+        )}
+      >
         {children}
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 className="mt-4 mb-2 text-lg font-semibold tracking-tight">
+      <h3
+        className={cn(
+          "mt-4 mb-2 font-semibold tracking-tight",
+          variant === "chat" ? "text-sm" : "text-lg",
+        )}
+      >
         {children}
       </h3>
     ),
@@ -77,7 +92,12 @@ export function AIResponseFormatter({
     ),
     table: ({ children }) => (
       <div className="my-4 overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[520px] border-collapse text-sm">
+        <table
+          className={cn(
+            "w-full border-collapse text-sm",
+            variant === "chat" ? "min-w-[440px]" : "min-w-[520px]",
+          )}
+        >
           {children}
         </table>
       </div>
@@ -172,45 +192,55 @@ export function formatAIResponse(content: string): string {
   };
 
   const normalizeTableRow = (line: string): string => {
-    const trimmed = line.trim();
+    let trimmed = line.trim();
     if (!isPotentialTableRow(trimmed)) return line;
+
+    // Remove redundant trailing empty pipes e.g. "| Col 1 | Col 2 | | |" -> "| Col 1 | Col 2 |"
+    trimmed = trimmed.replace(/(\s*\|\s*){2,}$/, " |");
 
     let row = trimmed;
     if (!row.startsWith("|")) row = `| ${row}`;
     if (!row.endsWith("|")) row = `${row} |`;
-    row = row.replace(/\|\|+/g, "| |");
-    row = row.replace(/\s*\|\s*/g, " | ");
-    row = row.replace(/\s{2,}/g, " ").trim();
 
-    return row;
+    row = row.replace(/\s*\|\s*/g, " | ");
+    return row.trim();
   };
 
   const insertMissingTableSeparators = (text: string): string => {
     const lines = text.split("\n");
     const output: string[] = [];
+    let inTable = false;
 
     for (let i = 0; i < lines.length; i++) {
       const current = normalizeTableRow(lines[i]);
       const next = i + 1 < lines.length ? lines[i + 1].trim() : "";
 
-      output.push(current);
-
-      if (
-        !isPotentialTableRow(current) ||
-        isTableSeparatorRow(next) ||
-        !isPotentialTableRow(next)
-      ) {
+      if (isTableSeparatorRow(current)) {
+        output.push(current);
+        inTable = true;
         continue;
       }
 
-      const cellCount = current
-        .split("|")
-        .map((cell) => cell.trim())
-        .filter(Boolean).length;
-
-      if (cellCount >= 2) {
-        output.push(`| ${new Array(cellCount).fill("---").join(" | ")} |`);
+      if (!isPotentialTableRow(current)) {
+        output.push(current);
+        inTable = false;
+        continue;
       }
+
+      output.push(current);
+
+      if (!inTable && !isTableSeparatorRow(next) && isPotentialTableRow(next)) {
+        const cellCount = current
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter(Boolean).length;
+
+        if (cellCount >= 2) {
+          output.push(`| ${new Array(cellCount).fill("---").join(" | ")} |`);
+        }
+      }
+
+      inTable = true;
     }
 
     return output.join("\n");
@@ -234,11 +264,12 @@ export function formatAIResponse(content: string): string {
     next = next.replace(/([^\n])\s*(#{1,6}\s+)/g, "$1\n\n$2");
     next = next.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
 
-    // Some model outputs compact table rows with double pipes between rows.
-    next = next.replace(/\|\|\s*(?=\|)/g, "\n");
+    // Only normalize complete horizontal-rule lines. Never touch the `---`
+    // cells inside GFM table separator rows.
+    next = next.replace(/^[ \t]*(-{3,})[ \t]*$/gm, "\n$1\n");
 
-    // Ensure horizontal rules are isolated lines.
-    next = next.replace(/\s*(---+)\s*/g, "\n$1\n");
+    // Drop orphan pipe-only lines produced by malformed model tables.
+    next = next.replace(/^[ \t]*\|+[ \t]*$/gm, "");
 
     next = insertMissingTableSeparators(next);
 

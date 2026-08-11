@@ -13,8 +13,6 @@ export const ASSESSMENT_CATEGORY = {
   TECHNICAL: "Technical",
   /** Voice/text mock interview simulations (interview-simulator/finish). */
   INTERVIEW_SIMULATION: "Interview Simulation",
-  /** Academy scenario simulations (academy/simulations submit). */
-  ACADEMY_SIMULATION: "Academy Simulation",
   /** Topic-focused practice quizzes (actions/topicQuiz.ts). */
   TOPIC_QUIZ: "Topic Quiz",
 } as const;
@@ -31,8 +29,8 @@ const TECHNICAL_TOKENS = ["technical", "quiz"];
 
 /**
  * Tokens that classify a stored category into the "interview/simulation"
- * performance bucket (mock interviews + academy simulations both count as
- * interview-readiness signals).
+ * performance bucket. Historical academy-simulation rows remain recognized
+ * for backwards compatibility.
  */
 const INTERVIEW_TOKENS = ["interview simulation", "academy simulation", "simulation"];
 

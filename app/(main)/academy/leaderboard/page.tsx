@@ -14,9 +14,8 @@ interface LeaderboardEntry {
   userId: string;
   user?: {
     name: string | null;
-    email: string;
     imageUrl: string | null;
-  };
+  } | null;
 }
 
 interface Leaderboard {
@@ -163,8 +162,7 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
-                    {currentLeaderboard.entries[1].user?.name?.[0] ||
-                      currentLeaderboard.entries[1].user?.email?.[0]}
+                    {currentLeaderboard.entries[1].user?.name?.[0] || "L"}
                   </div>
                 )}
               </div>
@@ -195,8 +193,7 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-yellow-600 font-bold text-xl">
-                    {currentLeaderboard.entries[0].user?.name?.[0] ||
-                      currentLeaderboard.entries[0].user?.email?.[0]}
+                    {currentLeaderboard.entries[0].user?.name?.[0] || "L"}
                   </div>
                 )}
               </div>
@@ -227,8 +224,7 @@ export default function LeaderboardPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-amber-600 font-bold">
-                    {currentLeaderboard.entries[2].user?.name?.[0] ||
-                      currentLeaderboard.entries[2].user?.email?.[0]}
+                    {currentLeaderboard.entries[2].user?.name?.[0] || "L"}
                   </div>
                 )}
               </div>
@@ -262,13 +258,16 @@ export default function LeaderboardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {currentLeaderboard.entries.slice(3).map((entry) => (
+              {(currentLeaderboard.entries.length >= 3
+                ? currentLeaderboard.entries.slice(3)
+                : currentLeaderboard.entries
+              ).map((entry) => (
                 <div
                   key={entry.id}
                   className={`flex items-center gap-4 p-3 rounded-lg ${getRankBg(entry.rank)}`}
                 >
                   <div className="w-10 flex justify-center">
-                    {getRankIcon(entry.rank + 3)}
+                    {getRankIcon(entry.rank)}
                   </div>
                   <div className="relative w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
                     {entry.user?.imageUrl ? (
@@ -281,7 +280,7 @@ export default function LeaderboardPage() {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
-                        {entry.user?.name?.[0] || entry.user?.email?.[0]}
+                        {entry.user?.name?.[0] || "L"}
                       </div>
                     )}
                   </div>
@@ -290,7 +289,7 @@ export default function LeaderboardPage() {
                       {entry.user?.name || "Anonymous"}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {currentLeaderboard.entries.indexOf(entry) + 1} of{" "}
+                      {entry.rank} of{" "}
                       {currentLeaderboard.entries.length} learners
                     </p>
                   </div>

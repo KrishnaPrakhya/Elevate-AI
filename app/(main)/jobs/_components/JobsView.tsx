@@ -15,7 +15,6 @@ import {
   Clock,
   XCircle,
   Trophy,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,10 +96,28 @@ function MatchScoreBadge({ score }: { score: number }) {
       : "bg-red-500/10 text-red-600 dark:text-red-400";
 
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${color}`}>
+    <span className={`inline-flex whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded-full ${color}`}>
       {score}% match
     </span>
   );
+}
+
+function cleanJobText(value?: string | null) {
+  return (value || "")
+    .replace(/#{2,6}\s*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getDisplayDescription(job: Job) {
+  let description = cleanJobText(job.description);
+  const salary = cleanJobText(job.salaryRange);
+
+  if (salary && description.toLowerCase().startsWith(salary.toLowerCase())) {
+    description = description.slice(salary.length).replace(/^\s*(?:a year|per year|annually)?\s*/i, "");
+  }
+
+  return description;
 }
 
 function JobCard({
@@ -117,77 +134,94 @@ function JobCard({
   const meta = job.metadata as JobMeta | null;
   const cfg = STATUS_CONFIG[job.status];
   const Icon = cfg.icon;
+  const role = cleanJobText(job.role) || "Untitled role";
+  const company = cleanJobText(job.company) || "Unknown company";
+  const description = getDisplayDescription(job);
 
   return (
-    <Card className="group hover:shadow-md transition-shadow">
-      <CardHeader className={compact ? "pb-2 pt-3 px-3" : "pb-2"}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-semibold truncate">{job.role}</CardTitle>
-            <CardDescription className="text-xs mt-0.5 truncate">{job.company}</CardDescription>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {meta?.matchScore != null && <MatchScoreBadge score={meta.matchScore} />}
-            {job.remote && (
-              <Badge variant="outline" className="text-xs flex items-center gap-1">
-                <Wifi className="h-2.5 w-2.5" /> Remote
-              </Badge>
-            )}
-          </div>
+    <Card className="group h-full min-w-0 gap-0 overflow-hidden transition-shadow hover:shadow-md">
+      <CardHeader className={compact ? "gap-2 px-3 pb-2 pt-3" : "gap-2 pb-3"}>
+        <div className="min-w-0">
+          <CardTitle
+            className="line-clamp-2 break-words text-sm font-semibold leading-snug"
+            title={role}
+          >
+            {role}
+          </CardTitle>
+          <CardDescription className="mt-1 line-clamp-1 break-words text-xs" title={company}>
+            {company}
+          </CardDescription>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {meta?.matchScore != null && <MatchScoreBadge score={meta.matchScore} />}
+          {job.remote && (
+            <Badge variant="outline" className="flex whitespace-nowrap text-xs items-center gap-1">
+              <Wifi className="h-2.5 w-2.5" /> Remote
+            </Badge>
+          )}
         </div>
       </CardHeader>
-      <CardContent className={compact ? "px-3 pb-2 space-y-1" : "pb-2 space-y-1"}>
+      <CardContent className={compact ? "flex-1 space-y-1 px-3 pb-3" : "flex-1 space-y-1 pb-3"}>
         {job.location && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <MapPin className="h-3 w-3" /> {job.location}
+          <p className="flex min-w-0 items-start gap-1 text-xs text-muted-foreground">
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="min-w-0 break-words">{cleanJobText(job.location)}</span>
           </p>
         )}
         {job.salaryRange && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <DollarSign className="h-3 w-3" /> {job.salaryRange}
+          <p className="flex min-w-0 items-start gap-1 text-xs text-muted-foreground">
+            <DollarSign className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="min-w-0 break-words">{cleanJobText(job.salaryRange)}</span>
           </p>
         )}
-        {!compact && job.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{job.description}</p>
+        {!compact && description && (
+          <p className="mt-1 line-clamp-3 break-words text-xs text-muted-foreground">{description}</p>
         )}
         <p className="text-xs text-muted-foreground">
           Found {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
         </p>
       </CardContent>
-      <CardFooter className={`gap-2 flex-wrap ${compact ? "px-3 pb-3" : "pb-3"}`}>
-        <a href={job.jobUrl} target="_blank" rel="noopener noreferrer">
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-            <ExternalLink className="h-3 w-3" /> View Job
+      <CardFooter className={`items-start gap-2 ${compact ? "px-3 pb-3" : "pb-4"}`}>
+        <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+          <Button asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+            <a href={job.jobUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-3 w-3" /> View Job
+            </a>
           </Button>
-        </a>
-        <Select
-          value={job.status}
-          onValueChange={(v) => onStatusChange(job.id, v as ApplicationStatus)}
-        >
-          <SelectTrigger className="h-7 text-xs w-[120px] gap-1">
-            <Icon className="h-3 w-3" />
-            <SelectValue />
-            <ChevronDown className="h-3 w-3 opacity-50" />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(STATUS_CONFIG) as ApplicationStatus[]).map((s) => {
-              const c = STATUS_CONFIG[s];
-              const SI = c.icon;
-              return (
-                <SelectItem key={s} value={s} className="text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <SI className="h-3 w-3" />
-                    {c.label}
-                  </span>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+          <Select
+            value={job.status}
+            onValueChange={(v) => onStatusChange(job.id, v as ApplicationStatus)}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label={`Update status for ${role}`}
+              className="h-8 min-w-[118px] max-w-[150px] flex-1 gap-1 px-2 text-xs"
+            >
+              <Icon className="h-3 w-3" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(STATUS_CONFIG) as ApplicationStatus[]).map((s) => {
+                const c = STATUS_CONFIG[s];
+                const SI = c.icon;
+                return (
+                  <SelectItem key={s} value={s} className="text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <SI className="h-3 w-3" />
+                      {c.label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 px-2 ml-auto"
+          aria-label={`Delete ${role}`}
+          title="Delete job"
+          className="h-8 shrink-0 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => onDelete(job.id)}
         >
           <Trash2 className="h-3 w-3" />
